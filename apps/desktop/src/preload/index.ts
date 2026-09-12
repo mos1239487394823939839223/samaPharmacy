@@ -19,6 +19,10 @@ import {
   type ItemListRow,
   type PingResult,
   type RendererApi,
+  type WarehouseInput,
+  type WarehouseRow,
+  type SupplierInput,
+  type SupplierRow,
 } from '@pharmacy/shared';
 
 function send<T>(request: DbRequest): Promise<T> {
@@ -56,6 +60,24 @@ const api: RendererApi = {
       ipcRenderer.on(IPC_EVENTS.importProgress, handler);
       return () => ipcRenderer.removeListener(IPC_EVENTS.importProgress, handler);
     },
+  },
+
+  warehouses: {
+    list: (includeInactive) => send<WarehouseRow[]>({ kind: 'warehouses.list', includeInactive }),
+    get: (id) => send<WarehouseRow | null>({ kind: 'warehouses.get', id }),
+    create: (input: WarehouseInput) => send<number>({ kind: 'warehouses.create', input }),
+    update: (id, input: WarehouseInput) => send<void>({ kind: 'warehouses.update', id, input }),
+    deactivate: (id) => send<void>({ kind: 'warehouses.deactivate', id }),
+  },
+
+  suppliers: {
+    list: (limit) => send<SupplierRow[]>({ kind: 'suppliers.list', limit }),
+    search: (query, limit) => send<SupplierRow[]>({ kind: 'suppliers.search', query, limit }),
+    get: (id) => send<SupplierRow | null>({ kind: 'suppliers.get', id }),
+    balance: (id) => send<number>({ kind: 'suppliers.balance', id }),
+    create: (input: SupplierInput) => send<number>({ kind: 'suppliers.create', input }),
+    update: (id, input: SupplierInput) => send<void>({ kind: 'suppliers.update', id, input }),
+    deactivate: (id) => send<void>({ kind: 'suppliers.deactivate', id }),
   },
 };
 

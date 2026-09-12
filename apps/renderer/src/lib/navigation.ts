@@ -17,6 +17,7 @@ export type ScreenId =
   | 'purchases.invoices'
   | 'purchases.returnByInvoice'
   | 'purchases.returnGeneral'
+  | 'suppliers.list'
   | 'items.list'
   | 'items.ibnSina'
   | 'customers.list'
@@ -114,6 +115,7 @@ export const DRAWER_TREE: DrawerNode[] = [
     label: ar.drawer.purchases,
     children: [
       { label: ar.drawer.purchaseInvoices, screen: 'purchases.invoices' },
+      { label: ar.drawer.suppliersList, screen: 'suppliers.list' },
       { label: ar.drawer.purchaseReturnByInvoice, screen: 'purchases.returnByInvoice' },
       { label: ar.drawer.purchaseReturnGeneral, screen: 'purchases.returnGeneral' },
     ],
@@ -134,6 +136,7 @@ export const SCREEN_LABELS: Record<ScreenId, string> = {
   'purchases.invoices': ar.drawer.purchaseInvoices,
   'purchases.returnByInvoice': ar.drawer.purchaseReturnByInvoice,
   'purchases.returnGeneral': ar.drawer.purchaseReturnGeneral,
+  'suppliers.list': ar.drawer.suppliersList,
   'items.list': ar.drawer.itemsList,
   'items.ibnSina': ar.drawer.itemsIbnSina,
   'customers.list': ar.drawer.customersList,

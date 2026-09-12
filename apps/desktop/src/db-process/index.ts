@@ -30,10 +30,22 @@ import {
   readSheet,
   existingKeys,
   bulkInsertItems,
+  listWarehouses,
+  getWarehouse,
+  createWarehouse,
+  updateWarehouse,
+  deactivateWarehouse,
+  listSuppliers,
+  searchSuppliers,
+  getSupplier,
+  getSupplierBalance,
+  createSupplier,
+  updateSupplier,
+  deactivateSupplier,
   type Db,
 } from '@pharmacy/db';
 import { guessMapping, validateRows, type ImportField } from '@pharmacy/core';
-import { itemInputSchema } from '@pharmacy/shared';
+import { itemInputSchema, warehouseInputSchema, supplierInputSchema } from '@pharmacy/shared';
 import type {
   DbRequestEnvelope,
   DbResponseEnvelope,
@@ -174,6 +186,46 @@ function dispatch(envelope: DbRequestEnvelope): DbResponseEnvelope {
           elapsedMs: outcome.elapsedMs,
         });
       }
+
+      case 'warehouses.list':
+        return ok(listWarehouses(requireDb(), req.includeInactive));
+
+      case 'warehouses.get':
+        return ok(getWarehouse(requireDb(), req.id) ?? null);
+
+      case 'warehouses.create':
+        return ok(createWarehouse(requireDb(), warehouseInputSchema.parse(req.input)));
+
+      case 'warehouses.update':
+        updateWarehouse(requireDb(), req.id, warehouseInputSchema.parse(req.input));
+        return ok(undefined);
+
+      case 'warehouses.deactivate':
+        deactivateWarehouse(requireDb(), req.id);
+        return ok(undefined);
+
+      case 'suppliers.list':
+        return ok(listSuppliers(requireDb(), req.limit));
+
+      case 'suppliers.search':
+        return ok(searchSuppliers(requireDb(), req.query, req.limit));
+
+      case 'suppliers.get':
+        return ok(getSupplier(requireDb(), req.id) ?? null);
+
+      case 'suppliers.balance':
+        return ok(getSupplierBalance(requireDb(), req.id));
+
+      case 'suppliers.create':
+        return ok(createSupplier(requireDb(), supplierInputSchema.parse(req.input)));
+
+      case 'suppliers.update':
+        updateSupplier(requireDb(), req.id, supplierInputSchema.parse(req.input));
+        return ok(undefined);
+
+      case 'suppliers.deactivate':
+        deactivateSupplier(requireDb(), req.id);
+        return ok(undefined);
 
       // Handled in the main process, which owns the window and the filesystem.
       // Listed so the exhaustiveness check below stays meaningful.

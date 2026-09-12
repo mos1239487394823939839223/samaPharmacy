@@ -682,3 +682,16 @@
     font-weight: 600;
   }
 }
+
+@layer components {
+  .badge {
+    display: inline-block;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--accent);
+    background: var(--accent-soft);
+    border-radius: 0.3rem;
+    padding-inline: 0.4rem;
+    padding-block: 0.1rem;
+  }
+}

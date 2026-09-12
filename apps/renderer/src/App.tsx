@@ -14,6 +14,8 @@ import { Drawer } from './components/Drawer';
 import { Placeholder } from './components/Placeholder';
 import { HealthCheck } from './components/HealthCheck';
 import { ItemsScreen } from './modules/items/ItemsScreen';
+import { WarehousesScreen } from './modules/warehouses/WarehousesScreen';
+import { SuppliersScreen } from './modules/suppliers/SuppliersScreen';
 import { MODULES, SCREEN_LABELS, type ScreenId } from './lib/navigation';
 import { attachShortcuts, type ShortcutBinding } from './lib/shortcuts';
 
@@ -92,6 +94,10 @@ export function App() {
             <HealthCheck />
           ) : screen === 'items.list' ? (
             <ItemsScreen showBadges={showBadges} />
+          ) : screen === 'warehouses' ? (
+            <WarehousesScreen />
+          ) : screen === 'suppliers.list' ? (
+            <SuppliersScreen />
           ) : (
             <Placeholder screen={screen} />
           )}

@@ -13,6 +13,8 @@ import type {
   ImportResult,
   ImportProgressEvent,
 } from './items';
+import type { WarehouseInput, WarehouseRow } from './warehouses';
+import type { SupplierInput, SupplierRow } from './suppliers';
 
 /** Requests the main process forwards to the database utilityProcess. */
 export type DbRequest =
@@ -29,7 +31,19 @@ export type DbRequest =
   | { kind: 'import.pickFile' }
   | { kind: 'import.preview'; filePath: string; mapping?: Record<string, number> }
   | { kind: 'import.apply'; filePath: string; mapping: Record<string, number> }
-  | { kind: 'import.saveRejects'; csv: string };
+  | { kind: 'import.saveRejects'; csv: string }
+  | { kind: 'warehouses.list'; includeInactive?: boolean }
+  | { kind: 'warehouses.get'; id: number }
+  | { kind: 'warehouses.create'; input: WarehouseInput }
+  | { kind: 'warehouses.update'; id: number; input: WarehouseInput }
+  | { kind: 'warehouses.deactivate'; id: number }
+  | { kind: 'suppliers.list'; limit?: number }
+  | { kind: 'suppliers.search'; query: string; limit?: number }
+  | { kind: 'suppliers.get'; id: number }
+  | { kind: 'suppliers.balance'; id: number }
+  | { kind: 'suppliers.create'; input: SupplierInput }
+  | { kind: 'suppliers.update'; id: number; input: SupplierInput }
+  | { kind: 'suppliers.deactivate'; id: number };
 
 export interface PingResult {
   sqliteVersion: string;
@@ -91,6 +105,22 @@ export interface RendererApi {
     /** Writes the rejected-rows CSV somewhere the user chooses. */
     saveRejects(csv: string): Promise<string | null>;
     onProgress(listener: (p: ImportProgressEvent) => void): () => void;
+  };
+  warehouses: {
+    list(includeInactive?: boolean): Promise<WarehouseRow[]>;
+    get(id: number): Promise<WarehouseRow | null>;
+    create(input: WarehouseInput): Promise<number>;
+    update(id: number, input: WarehouseInput): Promise<void>;
+    deactivate(id: number): Promise<void>;
+  };
+  suppliers: {
+    list(limit?: number): Promise<SupplierRow[]>;
+    search(query: string, limit?: number): Promise<SupplierRow[]>;
+    get(id: number): Promise<SupplierRow | null>;
+    balance(id: number): Promise<number>;
+    create(input: SupplierInput): Promise<number>;
+    update(id: number, input: SupplierInput): Promise<void>;
+    deactivate(id: number): Promise<void>;
   };
 }
 
