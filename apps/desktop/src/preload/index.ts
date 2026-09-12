@@ -29,6 +29,9 @@ import {
   type ItemStockRow,
   type BatchRow,
   type StockMoveRow,
+  type SalesInvoiceInput,
+  type SalesInvoiceRow,
+  type SalesLineRow,
 } from '@pharmacy/shared';
 
 function send<T>(request: DbRequest): Promise<T> {
@@ -106,6 +109,16 @@ const api: RendererApi = {
       send<BatchRow[]>({ kind: 'stock.sellableBatches', itemId, warehouseId }),
     batchMoves: (batchId) => send<StockMoveRow[]>({ kind: 'stock.batchMoves', batchId }),
     lowStock: (limit) => send<ItemStockRow[]>({ kind: 'stock.lowStock', limit }),
+  },
+
+  sales: {
+    create: (input: SalesInvoiceInput) => send<number>({ kind: 'sales.create', input }),
+    get: (id) =>
+      send<(SalesInvoiceRow & { lines: SalesLineRow[] }) | null>({ kind: 'sales.get', id }),
+    list: (opts) =>
+      send<SalesInvoiceRow[]>({ kind: 'sales.list', limit: opts?.limit, offset: opts?.offset }),
+    confirm: (id) => send<void>({ kind: 'sales.confirm', id }),
+    voidInvoice: (id) => send<void>({ kind: 'sales.void', id }),
   },
 };
 

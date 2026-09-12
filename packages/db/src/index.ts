@@ -6,3 +6,4 @@ export * from './repositories/warehouses';
 export * from './repositories/suppliers';
 export * from './repositories/purchases';
 export * from './repositories/stock';
+export * from './repositories/sales';

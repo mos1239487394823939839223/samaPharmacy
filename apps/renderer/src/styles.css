@@ -734,3 +734,41 @@
     background: var(--bg);
   }
 }
+
+@layer components {
+  .pos {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .pos__search-bar {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .pos__search {
+    flex: 1;
+    font-size: 1.05rem;
+    padding-block: 0.6rem;
+  }
+
+  .pos__warehouse {
+    font-size: 0.82rem;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+
+  .pos__footer {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 0.6rem;
+    padding-inline: 1.25rem;
+    padding-block: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+}

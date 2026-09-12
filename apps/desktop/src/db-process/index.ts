@@ -53,6 +53,12 @@ import {
   getSellableBatches,
   getBatchMoves,
   getLowStockItems,
+  createSalesInvoice,
+  getSalesInvoice,
+  getSalesLines,
+  listSalesInvoices,
+  confirmSalesInvoice,
+  voidSalesInvoice,
   type Db,
 } from '@pharmacy/db';
 import { guessMapping, validateRows, type ImportField } from '@pharmacy/core';
@@ -61,6 +67,7 @@ import {
   warehouseInputSchema,
   supplierInputSchema,
   purchaseInvoiceInputSchema,
+  salesInvoiceInputSchema,
 } from '@pharmacy/shared';
 import type {
   DbRequestEnvelope,
@@ -280,6 +287,27 @@ function dispatch(envelope: DbRequestEnvelope): DbResponseEnvelope {
 
       case 'stock.lowStock':
         return ok(getLowStockItems(requireDb(), req.limit));
+
+      case 'sales.create':
+        return ok(createSalesInvoice(requireDb(), salesInvoiceInputSchema.parse(req.input)));
+
+      case 'sales.get': {
+        const conn = requireDb();
+        const invoice = getSalesInvoice(conn, req.id);
+        if (!invoice) return ok(null);
+        return ok({ ...invoice, lines: getSalesLines(conn, req.id) });
+      }
+
+      case 'sales.list':
+        return ok(listSalesInvoices(requireDb(), req.limit, req.offset));
+
+      case 'sales.confirm':
+        confirmSalesInvoice(requireDb(), req.id);
+        return ok(undefined);
+
+      case 'sales.void':
+        voidSalesInvoice(requireDb(), req.id);
+        return ok(undefined);
 
       // Handled in the main process, which owns the window and the filesystem.
       // Listed so the exhaustiveness check below stays meaningful.

@@ -18,6 +18,7 @@ import { WarehousesScreen } from './modules/warehouses/WarehousesScreen';
 import { SuppliersScreen } from './modules/suppliers/SuppliersScreen';
 import { PurchasesScreen } from './modules/purchases/PurchasesScreen';
 import { StockScreen } from './modules/stock/StockScreen';
+import { SalesScreen } from './modules/sales/SalesScreen';
 import { MODULES, SCREEN_LABELS, type ScreenId } from './lib/navigation';
 import { attachShortcuts, type ShortcutBinding } from './lib/shortcuts';
 
@@ -104,6 +105,8 @@ export function App() {
             <PurchasesScreen />
           ) : screen === 'items.stock' ? (
             <StockScreen />
+          ) : screen === 'sales.invoices' ? (
+            <SalesScreen />
           ) : (
             <Placeholder screen={screen} />
           )}

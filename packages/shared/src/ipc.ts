@@ -17,6 +17,7 @@ import type { WarehouseInput, WarehouseRow } from './warehouses';
 import type { SupplierInput, SupplierRow } from './suppliers';
 import type { PurchaseInvoiceInput, PurchaseInvoiceRow, PurchaseLineRow } from './purchases';
 import type { ItemStockRow, BatchRow, StockMoveRow } from './stock';
+import type { SalesInvoiceInput, SalesInvoiceRow, SalesLineRow } from './sales';
 
 /** Requests the main process forwards to the database utilityProcess. */
 export type DbRequest =
@@ -55,7 +56,12 @@ export type DbRequest =
   | { kind: 'stock.batches'; itemId: number }
   | { kind: 'stock.sellableBatches'; itemId: number; warehouseId?: number }
   | { kind: 'stock.batchMoves'; batchId: number }
-  | { kind: 'stock.lowStock'; limit?: number };
+  | { kind: 'stock.lowStock'; limit?: number }
+  | { kind: 'sales.create'; input: SalesInvoiceInput }
+  | { kind: 'sales.get'; id: number }
+  | { kind: 'sales.list'; limit?: number; offset?: number }
+  | { kind: 'sales.confirm'; id: number }
+  | { kind: 'sales.void'; id: number };
 
 export interface PingResult {
   sqliteVersion: string;
@@ -148,6 +154,14 @@ export interface RendererApi {
     sellableBatches(itemId: number, warehouseId?: number): Promise<BatchRow[]>;
     batchMoves(batchId: number): Promise<StockMoveRow[]>;
     lowStock(limit?: number): Promise<ItemStockRow[]>;
+  };
+  sales: {
+    create(input: SalesInvoiceInput): Promise<number>;
+    get(id: number): Promise<(SalesInvoiceRow & { lines: SalesLineRow[] }) | null>;
+    list(opts?: { limit?: number; offset?: number }): Promise<SalesInvoiceRow[]>;
+    /** Decrements stock, writes stock_moves. Only place a sale actually leaves the pharmacy. */
+    confirm(id: number): Promise<void>;
+    voidInvoice(id: number): Promise<void>;
   };
 }
 
