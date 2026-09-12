@@ -608,3 +608,77 @@
     margin-block: 0 0.5rem;
   }
 }
+
+@layer components {
+  .import__bar {
+    display: flex;
+    gap: 0.6rem;
+    margin-block-end: 1rem;
+  }
+
+  .stats {
+    display: flex;
+    gap: 1rem;
+    margin-block: 0.75rem 0.25rem;
+  }
+
+  .stat {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 0.5rem;
+    padding-inline: 0.9rem;
+    padding-block: 0.6rem;
+    min-inline-size: 8rem;
+  }
+
+  .stat__value {
+    font-size: 1.3rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .stat__label {
+    font-size: 0.78rem;
+    color: var(--muted);
+  }
+
+  .stat--good .stat__value {
+    color: #16794a;
+  }
+
+  .stat--bad .stat__value {
+    color: #b91c1c;
+  }
+
+  .progress {
+    position: relative;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 0.5rem;
+    block-size: 1.6rem;
+    margin-block: 0.75rem;
+    overflow: hidden;
+  }
+
+  .progress__fill {
+    position: absolute;
+    inset-block: 0;
+    inset-inline-start: 0;
+    background: var(--accent-soft);
+    border-inline-end: 2px solid var(--accent);
+    transition: inline-size 0.15s ease-out;
+  }
+
+  .progress__label {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    block-size: 100%;
+    font-size: 0.8rem;
+    font-weight: 600;
+  }
+}

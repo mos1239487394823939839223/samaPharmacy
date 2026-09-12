@@ -5,9 +5,10 @@
  * no database handle of its own.
  */
 
-import { app, BrowserWindow, Menu, ipcMain, session } from 'electron';
+import { app, BrowserWindow, Menu, ipcMain, session, dialog } from 'electron';
+import { writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { IPC, type DbRequest } from '@pharmacy/shared';
+import { IPC, IPC_EVENTS, type DbRequest } from '@pharmacy/shared';
 import { DbClient } from './db-client';
 
 const db = new DbClient();
@@ -88,7 +89,37 @@ app.whenReady().then(async () => {
 
   await db.start(dbProcessPath, databasePath, migrationsDir);
 
-  ipcMain.handle(IPC.dbRequest, (_event, request: DbRequest) => db.request(request));
+  ipcMain.handle(IPC.dbRequest, async (_event, request: DbRequest) => {
+    // File dialogs need the main process — the db process has no window, and
+    // the renderer must never touch the filesystem (rule 5).
+    if (request.kind === 'import.pickFile') {
+      const result = await dialog.showOpenDialog({
+        properties: ['openFile'],
+        filters: [{ name: 'Spreadsheets', extensions: ['csv', 'xlsx', 'xls', 'txt'] }],
+      });
+      return result.canceled ? null : (result.filePaths[0] ?? null);
+    }
+
+    if (request.kind === 'import.saveRejects') {
+      const result = await dialog.showSaveDialog({
+        defaultPath: 'rejected-rows.csv',
+        filters: [{ name: 'CSV', extensions: ['csv'] }],
+      });
+      if (result.canceled || !result.filePath) return null;
+      // BOM so Excel opens the Arabic reasons as UTF-8 rather than mojibake.
+      await writeFile(result.filePath, '\uFEFF' + request.csv, 'utf8');
+      return result.filePath;
+    }
+
+    return db.request(request);
+  });
+
+  // Relay db-process progress to the window.
+  db.onProgress((channel, data) => {
+    if (channel === 'import') {
+      mainWindow?.webContents.send(IPC_EVENTS.importProgress, data);
+    }
+  });
 
   createWindow();
 

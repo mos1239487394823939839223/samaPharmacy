@@ -5,7 +5,14 @@
  * Renderer imports the types only; it never imports anything that touches I/O.
  */
 
-import type { ItemInput, ItemListRow, ItemDetail } from './items';
+import type {
+  ItemInput,
+  ItemListRow,
+  ItemDetail,
+  ImportPreview,
+  ImportResult,
+  ImportProgressEvent,
+} from './items';
 
 /** Requests the main process forwards to the database utilityProcess. */
 export type DbRequest =
@@ -18,7 +25,11 @@ export type DbRequest =
   | { kind: 'items.update'; id: number; input: ItemInput }
   | { kind: 'items.deactivate'; id: number }
   | { kind: 'items.count' }
-  | { kind: 'items.findByBarcode'; barcode: string };
+  | { kind: 'items.findByBarcode'; barcode: string }
+  | { kind: 'import.pickFile' }
+  | { kind: 'import.preview'; filePath: string; mapping?: Record<string, number> }
+  | { kind: 'import.apply'; filePath: string; mapping: Record<string, number> }
+  | { kind: 'import.saveRejects'; csv: string };
 
 export interface PingResult {
   sqliteVersion: string;
@@ -72,4 +83,18 @@ export interface RendererApi {
     count(): Promise<number>;
     findByBarcode(barcode: string): Promise<ItemListRow | null>;
   };
+  import: {
+    /** Opens the OS file dialog. Returns null if the user cancels. */
+    pickFile(): Promise<string | null>;
+    preview(filePath: string, mapping?: Record<string, number>): Promise<ImportPreview>;
+    apply(filePath: string, mapping: Record<string, number>): Promise<ImportResult>;
+    /** Writes the rejected-rows CSV somewhere the user chooses. */
+    saveRejects(csv: string): Promise<string | null>;
+    onProgress(listener: (p: ImportProgressEvent) => void): () => void;
+  };
 }
+
+/** Main → renderer push channel for long-running work. */
+export const IPC_EVENTS = {
+  importProgress: 'import:progress',
+} as const;

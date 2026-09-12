@@ -21,3 +21,16 @@ export {
   describeStock,
   validateUnitSet,
 } from './units';
+
+export {
+  type ImportField,
+  type ParsedRow,
+  type RejectedRow,
+  type ValidationResult,
+  REQUIRED_FIELDS,
+  IMPORTABLE_FIELDS,
+  REJECT_REASONS,
+  guessMapping,
+  validateRows,
+  rejectedToCsv,
+} from './import';

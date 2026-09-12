@@ -19,6 +19,13 @@ export class DbClient {
   private pending = new Map<number, Pending>();
   private nextId = 1;
   private ready: Promise<void> | null = null;
+  private progressListeners = new Set<(channel: string, data: unknown) => void>();
+
+  /** Subscribe to progress pushed by the db process during long operations. */
+  onProgress(listener: (channel: string, data: unknown) => void): () => void {
+    this.progressListeners.add(listener);
+    return () => this.progressListeners.delete(listener);
+  }
 
   async start(entryPath: string, databasePath: string, migrationsDir: string): Promise<void> {
     if (this.ready) return this.ready;
@@ -42,6 +49,7 @@ export class DbClient {
         const payload = message as
           | { type: 'ready' }
           | { type: 'init-failed'; error: string }
+          | { type: 'progress'; channel: string; data: unknown }
           | { type: 'response'; envelope: DbResponseEnvelope };
 
         if (payload.type === 'ready') {
@@ -50,6 +58,10 @@ export class DbClient {
         }
         if (payload.type === 'init-failed') {
           reject(new Error(`Database init failed: ${payload.error}`));
+          return;
+        }
+        if (payload.type === 'progress') {
+          for (const l of this.progressListeners) l(payload.channel, payload.data);
           return;
         }
         if (payload.type === 'response') {

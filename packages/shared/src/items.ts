@@ -58,6 +58,29 @@ export interface ItemListRow {
   isActive: number;
 }
 
+export interface ImportPreview {
+  filePath: string;
+  headers: string[];
+  /** Suggested column mapping; the user confirms or overrides it. */
+  mapping: Record<string, number>;
+  totalRows: number;
+  acceptedCount: number;
+  /** First rows that would be imported, for eyeballing the mapping. */
+  sample: Array<Record<string, string | number | null>>;
+  rejected: Array<{ rowNumber: number; reason: string; raw: string[] }>;
+}
+
+export interface ImportResult {
+  inserted: number;
+  rejectedCount: number;
+  elapsedMs: number;
+}
+
+export interface ImportProgressEvent {
+  done: number;
+  total: number;
+}
+
 export interface ItemDetail extends ItemListRow {
   barcodes: string[];
   units: Array<{

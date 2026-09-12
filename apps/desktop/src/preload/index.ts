@@ -9,7 +9,11 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import {
   IPC,
+  IPC_EVENTS,
   type DbRequest,
+  type ImportPreview,
+  type ImportProgressEvent,
+  type ImportResult,
   type ItemDetail,
   type ItemInput,
   type ItemListRow,
@@ -35,6 +39,23 @@ const api: RendererApi = {
     count: () => send<number>({ kind: 'items.count' }),
     findByBarcode: (barcode) =>
       send<ItemListRow | null>({ kind: 'items.findByBarcode', barcode }),
+  },
+
+  import: {
+    pickFile: () => send<string | null>({ kind: 'import.pickFile' }),
+    preview: (filePath, mapping) =>
+      send<ImportPreview>({ kind: 'import.preview', filePath, mapping }),
+    apply: (filePath, mapping) =>
+      send<ImportResult>({ kind: 'import.apply', filePath, mapping }),
+    saveRejects: (csv) => send<string | null>({ kind: 'import.saveRejects', csv }),
+    onProgress: (listener: (p: ImportProgressEvent) => void) => {
+      // Wrap rather than passing the listener to ipcRenderer directly, so the
+      // renderer never receives the IpcRendererEvent and with it a handle back
+      // into the main process.
+      const handler = (_e: unknown, data: ImportProgressEvent) => listener(data);
+      ipcRenderer.on(IPC_EVENTS.importProgress, handler);
+      return () => ipcRenderer.removeListener(IPC_EVENTS.importProgress, handler);
+    },
   },
 };
 

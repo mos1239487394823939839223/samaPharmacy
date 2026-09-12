@@ -27,8 +27,12 @@ import {
   listItems,
   countItems,
   deactivateItem,
+  readSheet,
+  existingKeys,
+  bulkInsertItems,
   type Db,
 } from '@pharmacy/db';
+import { guessMapping, validateRows, type ImportField } from '@pharmacy/core';
 import { itemInputSchema } from '@pharmacy/shared';
 import type {
   DbRequestEnvelope,
@@ -133,6 +137,53 @@ function dispatch(envelope: DbRequestEnvelope): DbResponseEnvelope {
 
       case 'items.findByBarcode':
         return ok(findByBarcode(requireDb(), req.barcode) ?? null);
+
+      case 'import.preview': {
+        const conn = requireDb();
+        const { headers, rows } = readSheet(req.filePath);
+        const mapping = (req.mapping ?? guessMapping(headers)) as Partial<
+          Record<ImportField, number>
+        >;
+        const { accepted, rejected } = validateRows(rows, mapping, existingKeys(conn));
+        return ok({
+          filePath: req.filePath,
+          headers,
+          mapping,
+          totalRows: rows.length,
+          acceptedCount: accepted.length,
+          sample: accepted.slice(0, 20),
+          // Cap what crosses the boundary: a wholly mismatched mapping can
+          // reject all 35,000 rows, and serialising those would stall the UI.
+          rejected: rejected.slice(0, 200),
+        });
+      }
+
+      case 'import.apply': {
+        const conn = requireDb();
+        const { rows } = readSheet(req.filePath);
+        const mapping = req.mapping as Partial<Record<ImportField, number>>;
+        const { accepted, rejected } = validateRows(rows, mapping, existingKeys(conn));
+
+        const outcome = bulkInsertItems(conn, accepted, (p) =>
+          process.parentPort.postMessage({ type: 'progress', channel: 'import', data: p })
+        );
+
+        return ok({
+          inserted: outcome.inserted,
+          rejectedCount: rejected.length,
+          elapsedMs: outcome.elapsedMs,
+        });
+      }
+
+      // Handled in the main process, which owns the window and the filesystem.
+      // Listed so the exhaustiveness check below stays meaningful.
+      case 'import.pickFile':
+      case 'import.saveRejects':
+        return {
+          id: envelope.id,
+          ok: false,
+          error: `${req.kind} is handled in the main process, not the db process`,
+        };
 
       default: {
         const exhaustive: never = req;

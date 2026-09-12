@@ -11,8 +11,9 @@ import type { ItemDetail, ItemListRow } from '@pharmacy/shared';
 import { fromPiastres } from '@pharmacy/core';
 import { ar } from '../../i18n/ar';
 import { ItemForm } from './ItemForm';
+import { ImportWizard } from './ImportWizard';
 
-type Mode = { view: 'list' } | { view: 'create' } | { view: 'edit'; item: ItemDetail };
+type Mode = { view: 'list' } | { view: 'create' } | { view: 'edit'; item: ItemDetail } | { view: 'import' };
 
 export function ItemsScreen({ showBadges }: { showBadges: boolean }) {
   const [mode, setMode] = useState<Mode>({ view: 'list' });
@@ -90,6 +91,15 @@ export function ItemsScreen({ showBadges }: { showBadges: boolean }) {
     );
   }
 
+  if (mode.view === 'import') {
+    return (
+      <ImportWizard
+        onClose={() => setMode({ view: 'list' })}
+        onImported={() => void load(query)}
+      />
+    );
+  }
+
   return (
     <div className="items">
       <div className="items__bar">
@@ -106,6 +116,9 @@ export function ItemsScreen({ showBadges }: { showBadges: boolean }) {
           onClick={() => setMode({ view: 'create' })}
         >
           {ar.items.add}
+        </button>
+        <button type="button" className="btn" onClick={() => setMode({ view: 'import' })}>
+          {ar.items.import.open}
         </button>
         <span className="items__count">
           {ar.items.count}: <span dir="ltr">{total}</span>
