@@ -12,6 +12,13 @@
 @layer base {
   :root {
     color-scheme: light;
+    --bg: #f4f6f8;
+    --surface: #ffffff;
+    --border: #dfe3e8;
+    --text: #14181f;
+    --muted: #6b7280;
+    --accent: #1d4ed8;
+    --accent-soft: #eaf0ff;
   }
 
   html,
@@ -23,37 +30,229 @@
   body {
     margin: 0;
     font-family: Cairo, system-ui, sans-serif;
-    background: #f6f7f9;
-    color: #14181f;
+    background: var(--bg);
+    color: var(--text);
+  }
+
+  button {
+    font-family: inherit;
+    font-size: inherit;
+    cursor: pointer;
   }
 }
 
 @layer components {
-  .health {
+  .shell {
     display: flex;
     flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    min-block-size: 100%;
-    padding-inline: 1.5rem;
-    padding-block: 2rem;
-    gap: 1.25rem;
+    block-size: 100%;
   }
 
-  .health h1 {
-    margin: 0;
-    font-size: 1.5rem;
+  .shell__body {
+    display: flex;
+    flex: 1;
+    min-block-size: 0;
+  }
+
+  .shell__content {
+    flex: 1;
+    overflow-y: auto;
+    padding-inline: 1.5rem;
+    padding-block: 1.25rem;
+  }
+
+  .shell__heading {
+    margin-block: 0 1rem;
+    font-size: 1.25rem;
     font-weight: 700;
   }
 
+  /* ---- toolbar ---- */
+
+  .toolbar {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding-inline: 0.75rem;
+    padding-block: 0.5rem;
+    background: var(--surface);
+    border-block-end: 1px solid var(--border);
+  }
+
+  .toolbar__icon {
+    border: 1px solid var(--border);
+    background: var(--surface);
+    border-radius: 0.5rem;
+    inline-size: 2.25rem;
+    block-size: 2.25rem;
+    font-size: 1rem;
+    line-height: 1;
+  }
+
+  .toolbar__icon:hover {
+    background: var(--bg);
+  }
+
+  .toolbar__modules {
+    display: flex;
+    gap: 0.4rem;
+    flex: 1;
+    flex-wrap: wrap;
+  }
+
+  .module {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.2rem;
+    border: 1px solid transparent;
+    background: transparent;
+    border-radius: 0.5rem;
+    padding-inline: 0.85rem;
+    padding-block: 0.4rem;
+    color: var(--text);
+  }
+
+  .module:hover {
+    background: var(--bg);
+  }
+
+  .module--active {
+    background: var(--accent-soft);
+    border-color: #c7d7fe;
+    color: var(--accent);
+  }
+
+  .module__label {
+    font-size: 0.95rem;
+    font-weight: 600;
+  }
+
+  .module__badge {
+    font-size: 0.65rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: #fff;
+    background: var(--accent);
+    border-radius: 0.3rem;
+    padding-inline: 0.35rem;
+    padding-block: 0.08rem;
+  }
+
+  .module--active .module__badge {
+    background: var(--accent);
+  }
+
+  .toolbar__toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.78rem;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+
+  /* ---- drawer ---- */
+
+  .drawer {
+    inline-size: 15rem;
+    flex-shrink: 0;
+    overflow-y: auto;
+    background: var(--surface);
+    border-inline-end: 1px solid var(--border);
+    padding-block: 0.75rem;
+  }
+
+  .drawer__root {
+    padding-inline: 1rem;
+    padding-block: 0.25rem 0.6rem;
+    font-weight: 700;
+    font-size: 0.95rem;
+  }
+
+  .drawer__tree,
+  .drawer__children {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  .drawer__group {
+    padding-inline: 1rem;
+    padding-block: 0.5rem 0.2rem;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--muted);
+  }
+
+  .drawer__children {
+    padding-inline-start: 0.5rem;
+  }
+
+  .drawer__leaf {
+    display: block;
+    inline-size: 100%;
+    text-align: start;
+    border: none;
+    background: transparent;
+    color: var(--text);
+    font-size: 0.88rem;
+    padding-inline: 1.25rem;
+    padding-block: 0.4rem;
+    border-radius: 0.35rem;
+  }
+
+  .drawer__leaf:hover {
+    background: var(--bg);
+  }
+
+  .drawer__leaf--active {
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-weight: 600;
+  }
+
+  /* ---- content ---- */
+
+  .placeholder {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 0.75rem;
+    padding-inline: 1.25rem;
+    padding-block: 1.5rem;
+    max-inline-size: 34rem;
+  }
+
+  .placeholder h2 {
+    margin-block: 0 0.5rem;
+    font-size: 1.05rem;
+    font-weight: 600;
+  }
+
+  .placeholder code {
+    display: inline-block;
+    margin-block-start: 0.75rem;
+    font-size: 0.75rem;
+    color: var(--muted);
+    background: var(--bg);
+    border-radius: 0.3rem;
+    padding-inline: 0.4rem;
+    padding-block: 0.15rem;
+  }
+
   .muted {
-    color: #6b7280;
+    color: var(--muted);
+    margin-block: 0.15rem;
+  }
+
+  .small {
+    font-size: 0.82rem;
   }
 
   .card {
     inline-size: min(34rem, 100%);
-    background: #fff;
-    border: 1px solid #e3e6ea;
+    background: var(--surface);
+    border: 1px solid var(--border);
     border-radius: 0.75rem;
     padding-inline: 1.25rem;
     padding-block: 1.25rem;
@@ -79,7 +278,7 @@
   }
 
   .card dt {
-    color: #6b7280;
+    color: var(--muted);
   }
 
   .card dd {

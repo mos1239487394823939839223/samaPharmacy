@@ -1,12 +1,20 @@
 /**
- * M0 health check.
+ * Application shell — blueprint §1.1 and §3 screen 1.
  *
- * Proves the full round trip: renderer → preload bridge → main → utilityProcess
- * → SQLite and back. Replaced by the application shell at M2.
+ * Toolbar, drawer and the shortcut layer. Every module routes to a placeholder
+ * until its own milestone builds it. The keyboard model is deliberately built
+ * first: rule 12 says no POS interaction may require the mouse, and that is far
+ * cheaper to honour from the start than to retrofit.
  */
 
-import { useEffect, useState } from 'react';
-import type { PingResult, RendererApi } from '@pharmacy/shared';
+import { useEffect, useMemo, useState } from 'react';
+import type { RendererApi } from '@pharmacy/shared';
+import { Toolbar } from './components/Toolbar';
+import { Drawer } from './components/Drawer';
+import { Placeholder } from './components/Placeholder';
+import { HealthCheck } from './components/HealthCheck';
+import { MODULES, SCREEN_LABELS, type ScreenId } from './lib/navigation';
+import { attachShortcuts, type ShortcutBinding } from './lib/shortcuts';
 
 declare global {
   interface Window {
@@ -14,57 +22,69 @@ declare global {
   }
 }
 
-type State =
-  | { status: 'loading' }
-  | { status: 'ok'; result: PingResult }
-  | { status: 'error'; message: string };
+const BADGES_KEY = 'ui.showShortcutBadges';
+const DRAWER_KEY = 'ui.drawerOpen';
+
+function readFlag(key: string, fallback: boolean): boolean {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw === null ? fallback : raw === 'true';
+  } catch {
+    return fallback;
+  }
+}
 
 export function App() {
-  const [state, setState] = useState<State>({ status: 'loading' });
+  const [screen, setScreen] = useState<ScreenId>('health');
+  const [drawerOpen, setDrawerOpen] = useState(() => readFlag(DRAWER_KEY, true));
+  const [showBadges, setShowBadges] = useState(() => readFlag(BADGES_KEY, true));
 
   useEffect(() => {
-    window.api
-      .ping()
-      .then((result) => setState({ status: 'ok', result }))
-      .catch((err: Error) => setState({ status: 'error', message: err.message }));
-  }, []);
+    try {
+      localStorage.setItem(DRAWER_KEY, String(drawerOpen));
+    } catch {
+      /* private mode or blocked storage — the toggle still works this session */
+    }
+  }, [drawerOpen]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(BADGES_KEY, String(showBadges));
+    } catch {
+      /* as above */
+    }
+  }, [showBadges]);
+
+  const bindings = useMemo<ShortcutBinding[]>(
+    () =>
+      MODULES.map((m) => ({
+        id: m.id,
+        ...m.shortcut,
+        run: () => setScreen(m.target),
+      })),
+    []
+  );
+
+  useEffect(() => attachShortcuts(bindings), [bindings]);
 
   return (
-    <main className="health">
-      <h1>نظام إدارة الصيدلية</h1>
+    <div className="shell">
+      <Toolbar
+        activeScreen={screen}
+        showBadges={showBadges}
+        onNavigate={setScreen}
+        onToggleDrawer={() => setDrawerOpen((v) => !v)}
+        onToggleBadges={() => setShowBadges((v) => !v)}
+      />
 
-      {state.status === 'loading' && <p className="muted">جارٍ الاتصال بقاعدة البيانات…</p>}
+      <div className="shell__body">
+        <Drawer open={drawerOpen} activeScreen={screen} onNavigate={setScreen} />
 
-      {state.status === 'error' && (
-        <div className="card error">
-          <h2>فشل الاتصال</h2>
-          <pre>{state.message}</pre>
-        </div>
-      )}
-
-      {state.status === 'ok' && (
-        <div className="card">
-          <h2>الاتصال سليم</h2>
-          <dl>
-            <dt>إصدار SQLite</dt>
-            <dd dir="ltr">{state.result.sqliteVersion}</dd>
-
-            <dt>الترحيلات المطبقة</dt>
-            <dd dir="ltr">{state.result.migrations.join(', ') || '—'}</dd>
-
-            <dt>وضع السجل</dt>
-            <dd dir="ltr">{state.result.journalMode}</dd>
-
-            <dt>المفاتيح الخارجية</dt>
-            <dd>{state.result.foreignKeys ? 'مفعّلة' : 'معطّلة'}</dd>
-
-            <dt>مسار قاعدة البيانات</dt>
-            <dd dir="ltr" className="path">
-              {state.result.databasePath}
-            </dd>
-          </dl>
-        </div>
-      )}
-    </main>
+        <main className="shell__content">
+          <h1 className="shell__heading">{SCREEN_LABELS[screen]}</h1>
+          {screen === 'health' ? <HealthCheck /> : <Placeholder screen={screen} />}
+        </main>
+      </div>
+    </div>
   );
 }
