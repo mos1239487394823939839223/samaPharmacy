@@ -16,7 +16,7 @@ import type {
 import type { WarehouseInput, WarehouseRow } from './warehouses';
 import type { SupplierInput, SupplierRow } from './suppliers';
 import type { PurchaseInvoiceInput, PurchaseInvoiceRow, PurchaseLineRow } from './purchases';
-import type { ItemStockRow, BatchRow, StockMoveRow } from './stock';
+import type { ItemStockRow, BatchRow, StockMoveRow, ExpiryReport } from './stock';
 import type {
   SalesInvoiceInput,
   SalesInvoiceRow,
@@ -82,6 +82,7 @@ export type DbRequest =
   | { kind: 'stock.sellableBatches'; itemId: number; warehouseId?: number }
   | { kind: 'stock.batchMoves'; batchId: number }
   | { kind: 'stock.lowStock'; limit?: number }
+  | { kind: 'stock.expiryReport'; asOf: string }
   | { kind: 'sales.create'; input: SalesInvoiceInput }
   | { kind: 'sales.get'; id: number }
   | { kind: 'sales.list'; limit?: number; offset?: number }
@@ -209,6 +210,7 @@ export interface RendererApi {
     sellableBatches(itemId: number, warehouseId?: number): Promise<BatchRow[]>;
     batchMoves(batchId: number): Promise<StockMoveRow[]>;
     lowStock(limit?: number): Promise<ItemStockRow[]>;
+    expiryReport(asOf: string): Promise<ExpiryReport>;
   };
   sales: {
     create(input: SalesInvoiceInput): Promise<number>;

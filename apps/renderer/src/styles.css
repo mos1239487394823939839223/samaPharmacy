@@ -618,8 +618,30 @@
 
   .stats {
     display: flex;
+    flex-wrap: wrap;
     gap: 1rem;
     margin-block: 0.75rem 0.25rem;
+  }
+
+  .stat-btn {
+    display: block;
+    background: none;
+    border: none;
+    padding: 0;
+    margin: 0;
+    cursor: pointer;
+    text-align: inherit;
+    font: inherit;
+    color: inherit;
+  }
+
+  .stat-btn .stat {
+    transition: border-color 0.1s ease;
+  }
+
+  .stat-btn--active .stat {
+    border-color: var(--accent, #2563eb);
+    border-width: 2px;
   }
 
   .stat {

@@ -53,6 +53,7 @@ import {
   getSellableBatches,
   getBatchMoves,
   getLowStockItems,
+  getExpiryReport,
   createSalesInvoice,
   getSalesInvoice,
   getSalesLines,
@@ -324,6 +325,9 @@ function dispatch(envelope: DbRequestEnvelope): DbResponseEnvelope {
 
       case 'stock.lowStock':
         return ok(getLowStockItems(requireDb(), req.limit));
+
+      case 'stock.expiryReport':
+        return ok(getExpiryReport(requireDb(), req.asOf));
 
       case 'sales.create':
         return ok(createSalesInvoice(requireDb(), salesInvoiceInputSchema.parse(req.input)));

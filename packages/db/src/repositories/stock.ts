@@ -126,6 +126,100 @@ export function verifyBatchLedger(db: Db, batchId: number): { qtyOnHand: number;
   return { qtyOnHand: batch.qtyOnHand, ledgerSum: row.s, matches: batch.qtyOnHand === row.s };
 }
 
+export type ExpiryBucket = 'expired' | 'd30' | 'd60' | 'd90' | 'd180' | 'over180';
+
+export interface ExpiryBatchRow {
+  batchId: number;
+  itemId: number;
+  code: number;
+  nameAr: string;
+  warehouseId: number;
+  batchNumber: string | null;
+  expiryDate: string;
+  qtyOnHand: number;
+  unitCost: number;
+  value: number;
+  bucket: ExpiryBucket;
+}
+
+export interface ExpiryBucketSummary {
+  bucket: ExpiryBucket;
+  batchCount: number;
+  qtyOnHand: number;
+  value: number;
+}
+
+/**
+ * Spec's expiry dashboard (docs/pharmacy-system-spec.md line 110): every
+ * non-quarantined batch with stock on hand and a known expiry date, bucketed
+ * by days remaining as of `asOf`, valued at cost (unit_cost * qty_on_hand --
+ * the same valuation basis as searchItemStock/getLowStockItems). Batches
+ * with a NULL expiry_date are open stock (raw materials, non-expiring goods)
+ * and are deliberately excluded -- they have nothing to bucket into, and
+ * silently dropping them into "over180" would misstate that bucket's value.
+ */
+export function getExpiryReport(db: Db, asOf: string): { rows: ExpiryBatchRow[]; summary: ExpiryBucketSummary[] } {
+  const raw = db
+    .prepare(
+      `SELECT b.id AS batchId, b.item_id AS itemId, i.code, i.name_ar AS nameAr,
+              b.warehouse_id AS warehouseId, b.batch_number AS batchNumber,
+              b.expiry_date AS expiryDate, b.qty_on_hand AS qtyOnHand, b.unit_cost AS unitCost,
+              CAST(julianday(b.expiry_date) - julianday(?) AS INTEGER) AS daysLeft
+       FROM batches b
+       JOIN items i ON i.id = b.item_id
+       WHERE b.is_quarantined = 0 AND b.qty_on_hand > 0 AND b.expiry_date IS NOT NULL
+       ORDER BY b.expiry_date ASC, b.id ASC`
+    )
+    .all(asOf) as Array<{
+      batchId: number;
+      itemId: number;
+      code: number;
+      nameAr: string;
+      warehouseId: number;
+      batchNumber: string | null;
+      expiryDate: string;
+      qtyOnHand: number;
+      unitCost: number;
+      daysLeft: number;
+    }>;
+
+  function bucketOf(daysLeft: number): ExpiryBucket {
+    if (daysLeft < 0) return 'expired';
+    if (daysLeft <= 30) return 'd30';
+    if (daysLeft <= 60) return 'd60';
+    if (daysLeft <= 90) return 'd90';
+    if (daysLeft <= 180) return 'd180';
+    return 'over180';
+  }
+
+  const rows: ExpiryBatchRow[] = raw.map((r) => ({
+    batchId: r.batchId,
+    itemId: r.itemId,
+    code: r.code,
+    nameAr: r.nameAr,
+    warehouseId: r.warehouseId,
+    batchNumber: r.batchNumber,
+    expiryDate: r.expiryDate,
+    qtyOnHand: r.qtyOnHand,
+    unitCost: r.unitCost,
+    value: r.qtyOnHand * r.unitCost,
+    bucket: bucketOf(r.daysLeft),
+  }));
+
+  const order: ExpiryBucket[] = ['expired', 'd30', 'd60', 'd90', 'd180', 'over180'];
+  const summary: ExpiryBucketSummary[] = order.map((bucket) => {
+    const inBucket = rows.filter((r) => r.bucket === bucket);
+    return {
+      bucket,
+      batchCount: inBucket.length,
+      qtyOnHand: inBucket.reduce((s, r) => s + r.qtyOnHand, 0),
+      value: inBucket.reduce((s, r) => s + r.value, 0),
+    };
+  });
+
+  return { rows, summary };
+}
+
 /** Items at or below their configured minimum stock — for a reorder view. */
 export function getLowStockItems(db: Db, limit = 200): ItemStockRow[] {
   return db

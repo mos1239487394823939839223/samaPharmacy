@@ -28,6 +28,7 @@ import { PurchaseReturnByInvoiceScreen } from './modules/purchase-returns/Purcha
 import { PurchaseReturnGeneralScreen } from './modules/purchase-returns/PurchaseReturnGeneralScreen';
 import { CashInOutScreen } from './modules/cash/CashInOutScreen';
 import { SalesReportScreen } from './modules/sales-report/SalesReportScreen';
+import { ExpiryReportScreen } from './modules/stock/ExpiryReportScreen';
 import { MODULES, SCREEN_LABELS, type ScreenId } from './lib/navigation';
 import { attachShortcuts, type ShortcutBinding } from './lib/shortcuts';
 
@@ -134,6 +135,8 @@ export function App() {
             <CashInOutScreen />
           ) : screen === 'sales.reports' ? (
             <SalesReportScreen />
+          ) : screen === 'items.expiry' ? (
+            <ExpiryReportScreen />
           ) : (
             <Placeholder screen={screen} />
           )}

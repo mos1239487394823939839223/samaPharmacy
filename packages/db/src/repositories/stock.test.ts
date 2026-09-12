@@ -15,6 +15,7 @@ import {
   getBatchMoves,
   verifyBatchLedger,
   getLowStockItems,
+  getExpiryReport,
 } from './stock';
 
 let db: Db;
@@ -237,5 +238,100 @@ describe('getLowStockItems', () => {
   it('flags an unstocked item whose minimum was explicitly set above zero', () => {
     const itemId = createItem(db, { nameAr: 'صنف يجب تخزينه', minStock: 10 });
     expect(getLowStockItems(db).some((r) => r.itemId === itemId)).toBe(true);
+  });
+});
+
+describe('getExpiryReport', () => {
+  const ASOF = '2026-06-01';
+
+  function daysFromAsOf(days: number): string {
+    const d = new Date(`${ASOF}T00:00:00Z`);
+    d.setUTCDate(d.getUTCDate() + days);
+    return d.toISOString().slice(0, 10);
+  }
+
+  it('buckets a batch that expired before asOf as expired', () => {
+    const itemId = createItem(db, { nameAr: 'صنف منتهي' });
+    purchaseAndConfirm(itemId, 10, 100, { expiryDate: daysFromAsOf(-5), batchNumber: 'EXP' });
+    const { rows } = getExpiryReport(db, ASOF);
+    const row = rows.find((r) => r.itemId === itemId);
+    expect(row?.bucket).toBe('expired');
+  });
+
+  it('buckets a batch expiring in 10 days as d30, not expired', () => {
+    const itemId = createItem(db, { nameAr: 'صنف قريب الصلاحية' });
+    purchaseAndConfirm(itemId, 10, 100, { expiryDate: daysFromAsOf(10), batchNumber: 'SOON' });
+    const { rows } = getExpiryReport(db, ASOF);
+    expect(rows.find((r) => r.itemId === itemId)?.bucket).toBe('d30');
+  });
+
+  it('places a batch exactly on the 30/60 day boundary in the lower bucket (d30, not d60)', () => {
+    const itemId = createItem(db, { nameAr: 'صنف حدي' });
+    purchaseAndConfirm(itemId, 10, 100, { expiryDate: daysFromAsOf(30), batchNumber: 'EDGE30' });
+    const { rows } = getExpiryReport(db, ASOF);
+    expect(rows.find((r) => r.itemId === itemId)?.bucket).toBe('d30');
+  });
+
+  it('buckets a batch far in the future as over180', () => {
+    const itemId = createItem(db, { nameAr: 'صنف بعيد الصلاحية' });
+    purchaseAndConfirm(itemId, 10, 100, { expiryDate: daysFromAsOf(400), batchNumber: 'FAR' });
+    const { rows } = getExpiryReport(db, ASOF);
+    expect(rows.find((r) => r.itemId === itemId)?.bucket).toBe('over180');
+  });
+
+  it('values each row at qty_on_hand * unit_cost', () => {
+    const itemId = createItem(db, { nameAr: 'صنف قيمة' });
+    purchaseAndConfirm(itemId, 20, 300, { expiryDate: daysFromAsOf(10), batchNumber: 'VAL' });
+    const { rows } = getExpiryReport(db, ASOF);
+    const row = rows.find((r) => r.itemId === itemId)!;
+    expect(row.value).toBe(row.qtyOnHand * row.unitCost);
+  });
+
+  it('excludes a batch with no expiry date (open stock)', () => {
+    const itemId = createItem(db, { nameAr: 'صنف بدون صلاحية' });
+    purchaseAndConfirm(itemId, 10, 100);
+    const { rows } = getExpiryReport(db, ASOF);
+    expect(rows.some((r) => r.itemId === itemId)).toBe(false);
+  });
+
+  it('excludes a quarantined batch even if it would otherwise be near expiry', () => {
+    const itemId = createItem(db, { nameAr: 'صنف حجر منتهي' });
+    purchaseAndConfirm(itemId, 10, 100, { expiryDate: daysFromAsOf(5), batchNumber: 'QTN' });
+    const [batch] = getItemBatches(db, itemId);
+    db.prepare('UPDATE batches SET is_quarantined = 1 WHERE id = ?').run(batch!.id);
+    const { rows } = getExpiryReport(db, ASOF);
+    expect(rows.some((r) => r.itemId === itemId)).toBe(false);
+  });
+
+  it('excludes a batch fully consumed to zero qty_on_hand', () => {
+    const itemId = createItem(db, { nameAr: 'صنف مستنفد' });
+    purchaseAndConfirm(itemId, 10, 100, { expiryDate: daysFromAsOf(5), batchNumber: 'ZERO' });
+    const [batch] = getItemBatches(db, itemId);
+    db.prepare('UPDATE batches SET qty_on_hand = 0 WHERE id = ?').run(batch!.id);
+    const { rows } = getExpiryReport(db, ASOF);
+    expect(rows.some((r) => r.itemId === itemId)).toBe(false);
+  });
+
+  it('summary counts and values match the rows actually in each bucket', () => {
+    const a = createItem(db, { nameAr: 'صنف ملخص أ' });
+    const b = createItem(db, { nameAr: 'صنف ملخص ب' });
+    purchaseAndConfirm(a, 10, 100, { expiryDate: daysFromAsOf(-1), batchNumber: 'S-EXP' });
+    purchaseAndConfirm(b, 5, 200, { expiryDate: daysFromAsOf(-2), batchNumber: 'S-EXP2' });
+    const { summary, rows } = getExpiryReport(db, ASOF);
+    const expiredSummary = summary.find((s) => s.bucket === 'expired')!;
+    const expiredRows = rows.filter((r) => r.bucket === 'expired');
+    expect(expiredSummary.batchCount).toBe(expiredRows.length);
+    expect(expiredSummary.qtyOnHand).toBe(expiredRows.reduce((s, r) => s + r.qtyOnHand, 0));
+    expect(expiredSummary.value).toBe(expiredRows.reduce((s, r) => s + r.value, 0));
+  });
+
+  it('orders rows by soonest expiry first', () => {
+    const itemId = createItem(db, { nameAr: 'صنف ترتيب' });
+    purchaseAndConfirm(itemId, 10, 100, { expiryDate: daysFromAsOf(60), batchNumber: 'LATER' });
+    purchaseAndConfirm(itemId, 10, 100, { expiryDate: daysFromAsOf(5), batchNumber: 'SOONER' });
+    const { rows } = getExpiryReport(db, ASOF);
+    const own = rows.filter((r) => r.itemId === itemId);
+    expect(own[0]!.batchNumber).toBe('SOONER');
+    expect(own[1]!.batchNumber).toBe('LATER');
   });
 });

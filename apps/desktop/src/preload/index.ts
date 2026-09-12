@@ -29,6 +29,7 @@ import {
   type ItemStockRow,
   type BatchRow,
   type StockMoveRow,
+  type ExpiryReport,
   type SalesInvoiceInput,
   type SalesInvoiceRow,
   type SalesLineRow,
@@ -127,6 +128,7 @@ const api: RendererApi = {
       send<BatchRow[]>({ kind: 'stock.sellableBatches', itemId, warehouseId }),
     batchMoves: (batchId) => send<StockMoveRow[]>({ kind: 'stock.batchMoves', batchId }),
     lowStock: (limit) => send<ItemStockRow[]>({ kind: 'stock.lowStock', limit }),
+    expiryReport: (asOf) => send<ExpiryReport>({ kind: 'stock.expiryReport', asOf }),
   },
 
   sales: {

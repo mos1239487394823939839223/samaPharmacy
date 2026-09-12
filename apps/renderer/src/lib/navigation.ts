@@ -21,6 +21,7 @@ export type ScreenId =
   | 'items.list'
   | 'items.ibnSina'
   | 'items.stock'
+  | 'items.expiry'
   | 'customers.list'
   | 'customers.reports'
   | 'warehouses'
@@ -99,6 +100,7 @@ export const DRAWER_TREE: DrawerNode[] = [
     children: [
       { label: ar.drawer.itemsList, screen: 'items.list' },
       { label: ar.drawer.itemsStock, screen: 'items.stock' },
+      { label: ar.drawer.itemsExpiry, screen: 'items.expiry' },
       { label: ar.drawer.itemsIbnSina, screen: 'items.ibnSina' },
     ],
   },
@@ -142,6 +144,7 @@ export const SCREEN_LABELS: Record<ScreenId, string> = {
   'items.stock': ar.drawer.itemsStock,
   'items.list': ar.drawer.itemsList,
   'items.ibnSina': ar.drawer.itemsIbnSina,
+  'items.expiry': ar.drawer.itemsExpiry,
   'customers.list': ar.drawer.customersList,
   'customers.reports': ar.drawer.customersReports,
   warehouses: ar.drawer.warehouses,
