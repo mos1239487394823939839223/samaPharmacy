@@ -18,7 +18,12 @@ import { attachShortcuts, type ShortcutBinding } from './lib/shortcuts';
 
 declare global {
   interface Window {
-    api: RendererApi;
+    /**
+     * Injected by the preload script, so it is present only inside Electron.
+     * Optional on purpose: opening the Vite dev URL in a browser leaves it
+     * undefined, and the type should force callers to handle that.
+     */
+    api?: RendererApi;
   }
 }
 

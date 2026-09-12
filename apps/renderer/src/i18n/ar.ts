@@ -60,6 +60,8 @@ export const ar = {
     enabled: 'مفعّلة',
     disabled: 'معطّلة',
     databasePath: 'مسار قاعدة البيانات',
+    noBridge:
+      'لا يمكن الوصول إلى قاعدة البيانات من المتصفح. افتح التطبيق عبر Electron باستخدام npm run dev.',
   },
 } as const;
 

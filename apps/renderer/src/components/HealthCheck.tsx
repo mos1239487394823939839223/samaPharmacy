@@ -12,6 +12,15 @@ export function HealthCheck() {
   const [state, setState] = useState<State>({ status: 'loading' });
 
   useEffect(() => {
+    // window.api is injected by the preload script, which only runs inside
+    // Electron. Opening the Vite dev URL in an ordinary browser leaves it
+    // undefined; report that instead of throwing out of the effect and taking
+    // the whole React tree down with it.
+    if (!window.api) {
+      setState({ status: 'error', message: ar.status.noBridge });
+      return;
+    }
+
     window.api
       .ping()
       .then((result) => setState({ status: 'ok', result }))
