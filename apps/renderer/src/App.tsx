@@ -22,6 +22,8 @@ import { SalesScreen } from './modules/sales/SalesScreen';
 import { ShiftHandoverScreen } from './modules/shifts/ShiftHandoverScreen';
 import { CustomersScreen } from './modules/customers/CustomersScreen';
 import { CustomerReportsScreen } from './modules/customers/CustomerReportsScreen';
+import { SalesReturnByInvoiceScreen } from './modules/sales-returns/SalesReturnByInvoiceScreen';
+import { SalesReturnGeneralScreen } from './modules/sales-returns/SalesReturnGeneralScreen';
 import { MODULES, SCREEN_LABELS, type ScreenId } from './lib/navigation';
 import { attachShortcuts, type ShortcutBinding } from './lib/shortcuts';
 
@@ -116,6 +118,10 @@ export function App() {
             <CustomersScreen />
           ) : screen === 'customers.reports' ? (
             <CustomerReportsScreen />
+          ) : screen === 'sales.returnByInvoice' ? (
+            <SalesReturnByInvoiceScreen />
+          ) : screen === 'sales.returnGeneral' ? (
+            <SalesReturnGeneralScreen />
           ) : (
             <Placeholder screen={screen} />
           )}

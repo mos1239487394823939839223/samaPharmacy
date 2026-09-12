@@ -81,6 +81,11 @@ import {
   getCustomerBalance,
   getCustomerLedger,
   recordCustomerPayment,
+  createSalesReturn,
+  getSalesReturn,
+  getSalesReturnLines,
+  listSalesReturns,
+  getReturnableLines,
   type Db,
 } from '@pharmacy/db';
 import { guessMapping, validateRows, type ImportField } from '@pharmacy/core';
@@ -91,6 +96,7 @@ import {
   purchaseInvoiceInputSchema,
   salesInvoiceInputSchema,
   customerInputSchema,
+  salesReturnInputSchema,
 } from '@pharmacy/shared';
 import type {
   DbRequestEnvelope,
@@ -407,6 +413,22 @@ function dispatch(envelope: DbRequestEnvelope): DbResponseEnvelope {
       case 'customers.recordPayment':
         recordCustomerPayment(requireDb(), req.id, req.amount, req.note);
         return ok(undefined);
+
+      case 'salesReturns.create':
+        return ok(createSalesReturn(requireDb(), salesReturnInputSchema.parse(req.input)));
+
+      case 'salesReturns.get': {
+        const conn = requireDb();
+        const ret = getSalesReturn(conn, req.id);
+        if (!ret) return ok(null);
+        return ok({ ...ret, lines: getSalesReturnLines(conn, req.id) });
+      }
+
+      case 'salesReturns.list':
+        return ok(listSalesReturns(requireDb(), req.limit, req.offset));
+
+      case 'salesReturns.returnableLines':
+        return ok(getReturnableLines(requireDb(), req.invoiceId));
 
       // Handled in the main process, which owns the window and the filesystem.
       // Listed so the exhaustiveness check below stays meaningful.

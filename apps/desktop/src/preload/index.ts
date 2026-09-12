@@ -40,6 +40,10 @@ import {
   type CustomerRow,
   type CustomerDetail,
   type CustomerLedgerRow,
+  type SalesReturnInput,
+  type SalesReturnRow,
+  type SalesReturnLineRow,
+  type ReturnableLine,
 } from '@pharmacy/shared';
 
 function send<T>(request: DbRequest): Promise<T> {
@@ -157,6 +161,16 @@ const api: RendererApi = {
     ledger: (id, limit) => send<CustomerLedgerRow[]>({ kind: 'customers.ledger', id, limit }),
     recordPayment: (id, amount, note) =>
       send<void>({ kind: 'customers.recordPayment', id, amount, note }),
+  },
+
+  salesReturns: {
+    create: (input: SalesReturnInput) => send<number>({ kind: 'salesReturns.create', input }),
+    get: (id) =>
+      send<(SalesReturnRow & { lines: SalesReturnLineRow[] }) | null>({ kind: 'salesReturns.get', id }),
+    list: (opts) =>
+      send<SalesReturnRow[]>({ kind: 'salesReturns.list', limit: opts?.limit, offset: opts?.offset }),
+    returnableLines: (invoiceId) =>
+      send<ReturnableLine[]>({ kind: 'salesReturns.returnableLines', invoiceId }),
   },
 };
 

@@ -25,6 +25,12 @@ import type {
   CustomerDetail,
   CustomerLedgerRow,
 } from './customers';
+import type {
+  SalesReturnInput,
+  SalesReturnRow,
+  SalesReturnLineRow,
+  ReturnableLine,
+} from './sales-returns';
 
 /** Requests the main process forwards to the database utilityProcess. */
 export type DbRequest =
@@ -88,7 +94,11 @@ export type DbRequest =
   | { kind: 'customers.deactivate'; id: number }
   | { kind: 'customers.balance'; id: number }
   | { kind: 'customers.ledger'; id: number; limit?: number }
-  | { kind: 'customers.recordPayment'; id: number; amount: number; note?: string | null };
+  | { kind: 'customers.recordPayment'; id: number; amount: number; note?: string | null }
+  | { kind: 'salesReturns.create'; input: SalesReturnInput }
+  | { kind: 'salesReturns.get'; id: number }
+  | { kind: 'salesReturns.list'; limit?: number; offset?: number }
+  | { kind: 'salesReturns.returnableLines'; invoiceId: number };
 
 export interface PingResult {
   sqliteVersion: string;
@@ -220,6 +230,12 @@ export interface RendererApi {
     balance(id: number): Promise<number>;
     ledger(id: number, limit?: number): Promise<CustomerLedgerRow[]>;
     recordPayment(id: number, amount: number, note?: string | null): Promise<void>;
+  };
+  salesReturns: {
+    create(input: SalesReturnInput): Promise<number>;
+    get(id: number): Promise<(SalesReturnRow & { lines: SalesReturnLineRow[] }) | null>;
+    list(opts?: { limit?: number; offset?: number }): Promise<SalesReturnRow[]>;
+    returnableLines(invoiceId: number): Promise<ReturnableLine[]>;
   };
 }
 
