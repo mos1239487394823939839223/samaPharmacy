@@ -94,6 +94,8 @@ import {
   getReturnablePurchaseLines,
   getSalesReport,
   getSalesReportInvoices,
+  getSettings,
+  updateSettings,
   type Db,
 } from '@pharmacy/db';
 import { guessMapping, validateRows, type ImportField } from '@pharmacy/core';
@@ -106,6 +108,7 @@ import {
   customerInputSchema,
   salesReturnInputSchema,
   purchaseReturnInputSchema,
+  pharmacySettingsInputSchema,
 } from '@pharmacy/shared';
 import type {
   DbRequestEnvelope,
@@ -463,6 +466,12 @@ function dispatch(envelope: DbRequestEnvelope): DbResponseEnvelope {
 
       case 'sales.reportInvoices':
         return ok(getSalesReportInvoices(requireDb(), req.from, req.to, req.limit));
+
+      case 'settings.get':
+        return ok(getSettings(requireDb()));
+
+      case 'settings.update':
+        return ok(updateSettings(requireDb(), pharmacySettingsInputSchema.parse(req.input)));
 
       // Handled in the main process, which owns the window and the filesystem.
       // Listed so the exhaustiveness check below stays meaningful.

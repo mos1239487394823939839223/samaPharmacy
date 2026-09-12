@@ -7,6 +7,7 @@
 
 import { normalizeName } from '@pharmacy/core';
 import type { Db } from '../connection';
+import { getExpiryBucketDays, type ExpiryBucketDays } from './settings';
 
 export interface ItemStockRow {
   itemId: number;
@@ -157,8 +158,16 @@ export interface ExpiryBucketSummary {
  * with a NULL expiry_date are open stock (raw materials, non-expiring goods)
  * and are deliberately excluded -- they have nothing to bucket into, and
  * silently dropping them into "over180" would misstate that bucket's value.
+ *
+ * Bucket cutoffs come from settings (Settings screen → expiry thresholds),
+ * not a literal 30/60/90/180 — a pharmacist may want a wider or narrower
+ * near-expiry warning window than the shipped default.
  */
-export function getExpiryReport(db: Db, asOf: string): { rows: ExpiryBatchRow[]; summary: ExpiryBucketSummary[] } {
+export function getExpiryReport(
+  db: Db,
+  asOf: string,
+  bucketDays: ExpiryBucketDays = getExpiryBucketDays(db)
+): { rows: ExpiryBatchRow[]; summary: ExpiryBucketSummary[] } {
   const raw = db
     .prepare(
       `SELECT b.id AS batchId, b.item_id AS itemId, i.code, i.name_ar AS nameAr,
@@ -185,10 +194,10 @@ export function getExpiryReport(db: Db, asOf: string): { rows: ExpiryBatchRow[];
 
   function bucketOf(daysLeft: number): ExpiryBucket {
     if (daysLeft < 0) return 'expired';
-    if (daysLeft <= 30) return 'd30';
-    if (daysLeft <= 60) return 'd60';
-    if (daysLeft <= 90) return 'd90';
-    if (daysLeft <= 180) return 'd180';
+    if (daysLeft <= bucketDays.d30) return 'd30';
+    if (daysLeft <= bucketDays.d60) return 'd60';
+    if (daysLeft <= bucketDays.d90) return 'd90';
+    if (daysLeft <= bucketDays.d180) return 'd180';
     return 'over180';
   }
 

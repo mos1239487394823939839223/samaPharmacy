@@ -27,6 +27,7 @@ import { SalesReturnGeneralScreen } from './modules/sales-returns/SalesReturnGen
 import { PurchaseReturnByInvoiceScreen } from './modules/purchase-returns/PurchaseReturnByInvoiceScreen';
 import { PurchaseReturnGeneralScreen } from './modules/purchase-returns/PurchaseReturnGeneralScreen';
 import { CashInOutScreen } from './modules/cash/CashInOutScreen';
+import { SettingsScreen } from './modules/settings/SettingsScreen';
 import { SalesReportScreen } from './modules/sales-report/SalesReportScreen';
 import { ExpiryReportScreen } from './modules/stock/ExpiryReportScreen';
 import { MODULES, SCREEN_LABELS, type ScreenId } from './lib/navigation';
@@ -137,6 +138,8 @@ export function App() {
             <SalesReportScreen />
           ) : screen === 'items.expiry' ? (
             <ExpiryReportScreen />
+          ) : screen === 'settings.general' ? (
+            <SettingsScreen />
           ) : (
             <Placeholder screen={screen} />
           )}

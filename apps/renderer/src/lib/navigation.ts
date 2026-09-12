@@ -26,6 +26,7 @@ export type ScreenId =
   | 'customers.reports'
   | 'warehouses'
   | 'accounts.cashInOut'
+  | 'settings.general'
   | 'log'
   | 'health';
 
@@ -128,6 +129,10 @@ export const DRAWER_TREE: DrawerNode[] = [
     label: ar.drawer.accounts,
     children: [{ label: ar.drawer.cashInOut, screen: 'accounts.cashInOut' }],
   },
+  {
+    label: ar.drawer.settings,
+    children: [{ label: ar.drawer.settingsGeneral, screen: 'settings.general' }],
+  },
 ];
 
 /** Flat lookup of every screen's display label. */
@@ -149,6 +154,7 @@ export const SCREEN_LABELS: Record<ScreenId, string> = {
   'customers.reports': ar.drawer.customersReports,
   warehouses: ar.drawer.warehouses,
   'accounts.cashInOut': ar.drawer.cashInOut,
+  'settings.general': ar.drawer.settingsGeneral,
   log: ar.modules.log,
   health: ar.status.connectionOk,
 };

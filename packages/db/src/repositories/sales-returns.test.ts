@@ -11,6 +11,7 @@ import { createPurchaseInvoice, confirmPurchaseInvoice } from './purchases';
 import { createSalesInvoice, confirmSalesInvoice, getSalesLines } from './sales';
 import { getItemBatches, getBatchMoves } from './stock';
 import { createSalesReturn, getSalesReturn, getSalesReturnLines, getReturnableLines } from './sales-returns';
+import { updateSettings } from './settings';
 
 let db: Db;
 let unitId: number;
@@ -316,6 +317,148 @@ describe('BR-12: refrigerated stock quarantine', () => {
     const quarantineBatches = getItemBatches(db, itemId).filter((b) => b.isQuarantined === 1);
     expect(quarantineBatches).toHaveLength(1);
     expect(quarantineBatches[0]!.qtyOnHand).toBe(2);
+  });
+});
+
+describe('return window (Settings → sales return window)', () => {
+  function backdateConfirmedAt(invoiceId: number, daysAgo: number) {
+    db.prepare(
+      `UPDATE sales_invoices SET confirmed_at = datetime('now', ?) WHERE id = ?`
+    ).run(`-${daysAgo} days`, invoiceId);
+  }
+
+  it('allows a return within the default 14-day window', () => {
+    const { itemId, unitId: uId } = makeItem('صنف داخل المهلة');
+    stockUp(itemId, uId, 100, 50);
+    const invoiceId = sell(itemId, uId, 10, 200);
+    backdateConfirmedAt(invoiceId, 10);
+    const [saleLine] = getSalesLines(db, invoiceId);
+
+    expect(() =>
+      createSalesReturn(db, {
+        sourceInvoiceId: invoiceId,
+        warehouseId,
+        refundMethod: 'cash',
+        lines: [{ itemId, batchId: saleLine!.batchId, unitId: uId, qtyInUnit: 1, qtyBase: 1, unitPrice: 200, sourceLineId: saleLine!.id }],
+      })
+    ).not.toThrow();
+  });
+
+  it('rejects a return past the default 14-day window', () => {
+    const { itemId, unitId: uId } = makeItem('صنف بعد المهلة');
+    stockUp(itemId, uId, 100, 50);
+    const invoiceId = sell(itemId, uId, 10, 200);
+    backdateConfirmedAt(invoiceId, 20);
+    const [saleLine] = getSalesLines(db, invoiceId);
+
+    expect(() =>
+      createSalesReturn(db, {
+        sourceInvoiceId: invoiceId,
+        warehouseId,
+        refundMethod: 'cash',
+        lines: [{ itemId, batchId: saleLine!.batchId, unitId: uId, qtyInUnit: 1, qtyBase: 1, unitPrice: 200, sourceLineId: saleLine!.id }],
+      })
+    ).toThrow(/[Rr]eturn window/);
+  });
+
+  it('allows a return exactly on the last day of the window (boundary is inclusive)', () => {
+    updateSettings(db, { salesReturnWindowDays: 5 });
+    const { itemId, unitId: uId } = makeItem('صنف حد المهلة تماماً');
+    stockUp(itemId, uId, 100, 50);
+    const invoiceId = sell(itemId, uId, 10, 200);
+    backdateConfirmedAt(invoiceId, 5);
+    const [saleLine] = getSalesLines(db, invoiceId);
+
+    expect(() =>
+      createSalesReturn(db, {
+        sourceInvoiceId: invoiceId,
+        warehouseId,
+        refundMethod: 'cash',
+        lines: [{ itemId, batchId: saleLine!.batchId, unitId: uId, qtyInUnit: 1, qtyBase: 1, unitPrice: 200, sourceLineId: saleLine!.id }],
+      })
+    ).not.toThrow();
+  });
+
+  it('rejects a return exactly one day past the window boundary', () => {
+    updateSettings(db, { salesReturnWindowDays: 5 });
+    const { itemId, unitId: uId } = makeItem('صنف تجاوز يوم واحد');
+    stockUp(itemId, uId, 100, 50);
+    const invoiceId = sell(itemId, uId, 10, 200);
+    backdateConfirmedAt(invoiceId, 6);
+    const [saleLine] = getSalesLines(db, invoiceId);
+
+    expect(() =>
+      createSalesReturn(db, {
+        sourceInvoiceId: invoiceId,
+        warehouseId,
+        refundMethod: 'cash',
+        lines: [{ itemId, batchId: saleLine!.batchId, unitId: uId, qtyInUnit: 1, qtyBase: 1, unitPrice: 200, sourceLineId: saleLine!.id }],
+      })
+    ).toThrow(/[Rr]eturn window/);
+  });
+
+  it('honors a configured window shorter than 14 days', () => {
+    updateSettings(db, { salesReturnWindowDays: 3 });
+    const { itemId, unitId: uId } = makeItem('صنف مهلة قصيرة');
+    stockUp(itemId, uId, 100, 50);
+    const invoiceId = sell(itemId, uId, 10, 200);
+    backdateConfirmedAt(invoiceId, 5);
+    const [saleLine] = getSalesLines(db, invoiceId);
+
+    expect(() =>
+      createSalesReturn(db, {
+        sourceInvoiceId: invoiceId,
+        warehouseId,
+        refundMethod: 'cash',
+        lines: [{ itemId, batchId: saleLine!.batchId, unitId: uId, qtyInUnit: 1, qtyBase: 1, unitPrice: 200, sourceLineId: saleLine!.id }],
+      })
+    ).toThrow(/[Rr]eturn window/);
+  });
+
+  it('honors a configured window longer than 14 days', () => {
+    updateSettings(db, { salesReturnWindowDays: 30 });
+    const { itemId, unitId: uId } = makeItem('صنف مهلة طويلة');
+    stockUp(itemId, uId, 100, 50);
+    const invoiceId = sell(itemId, uId, 10, 200);
+    backdateConfirmedAt(invoiceId, 20);
+    const [saleLine] = getSalesLines(db, invoiceId);
+
+    expect(() =>
+      createSalesReturn(db, {
+        sourceInvoiceId: invoiceId,
+        warehouseId,
+        refundMethod: 'cash',
+        lines: [{ itemId, batchId: saleLine!.batchId, unitId: uId, qtyInUnit: 1, qtyBase: 1, unitPrice: 200, sourceLineId: saleLine!.id }],
+      })
+    ).not.toThrow();
+  });
+
+  it('does not apply the window to a general return with no source invoice', () => {
+    const { itemId, unitId: uId } = makeItem('صنف بدون فاتورة للمهلة', 'room', 5000);
+    stockUp(itemId, uId, 10, 50);
+    const [batch] = getItemBatches(db, itemId);
+
+    expect(() =>
+      createSalesReturn(db, {
+        warehouseId,
+        approvedBy: 1,
+        refundMethod: 'cash',
+        lines: [{ itemId, batchId: batch!.id, unitId: uId, qtyInUnit: 1, qtyBase: 1, unitPrice: 4000 }],
+      })
+    ).not.toThrow();
+  });
+
+  it('throws a clear error for a nonexistent source invoice rather than a generic failure', () => {
+    const { itemId, unitId: uId } = makeItem('صنف فاتورة غير موجودة');
+    stockUp(itemId, uId, 100, 50);
+    expect(() =>
+      createSalesReturn(db, {
+        sourceInvoiceId: 999999,
+        warehouseId,
+        refundMethod: 'cash',
+        lines: [{ itemId, batchId: 1, unitId: uId, qtyInUnit: 1, qtyBase: 1, unitPrice: 200 }],
+      })
+    ).toThrow(/not found/);
   });
 });
 

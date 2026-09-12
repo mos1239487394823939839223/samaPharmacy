@@ -8,6 +8,7 @@ import { createItem } from './items';
 import { createSupplier } from './suppliers';
 import { getDefaultWarehouse, createWarehouse } from './warehouses';
 import { createPurchaseInvoice, confirmPurchaseInvoice } from './purchases';
+import { updateSettings } from './settings';
 import {
   searchItemStock,
   getItemBatches,
@@ -333,5 +334,22 @@ describe('getExpiryReport', () => {
     const own = rows.filter((r) => r.itemId === itemId);
     expect(own[0]!.batchNumber).toBe('SOONER');
     expect(own[1]!.batchNumber).toBe('LATER');
+  });
+
+  it('uses the settings-configured bucket days instead of the 30/60/90/180 default when provided', () => {
+    const itemId = createItem(db, { nameAr: 'صنف حد مخصص' });
+    // 20 days out: falls in the default d30 bucket, but a narrower configured
+    // d30 of 10 should push it into d60 instead.
+    purchaseAndConfirm(itemId, 10, 100, { expiryDate: daysFromAsOf(20), batchNumber: 'CUSTOM' });
+    const { rows } = getExpiryReport(db, ASOF, { d30: 10, d60: 40, d90: 90, d180: 180 });
+    expect(rows.find((r) => r.itemId === itemId)?.bucket).toBe('d60');
+  });
+
+  it('reads bucket days from settings when no override is passed', () => {
+    updateSettings(db, { expiryBucketDays: { d30: 10, d60: 40, d90: 90, d180: 180 } });
+    const itemId = createItem(db, { nameAr: 'صنف من الإعدادات' });
+    purchaseAndConfirm(itemId, 10, 100, { expiryDate: daysFromAsOf(20), batchNumber: 'FROM-SETTINGS' });
+    const { rows } = getExpiryReport(db, ASOF);
+    expect(rows.find((r) => r.itemId === itemId)?.bucket).toBe('d60');
   });
 });

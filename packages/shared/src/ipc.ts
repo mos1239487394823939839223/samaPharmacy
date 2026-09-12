@@ -43,6 +43,7 @@ import type {
   PurchaseReturnLineRow,
   ReturnablePurchaseLine,
 } from './purchase-returns';
+import type { PharmacySettings, PharmacySettingsInput } from './settings';
 
 /** Requests the main process forwards to the database utilityProcess. */
 export type DbRequest =
@@ -117,7 +118,9 @@ export type DbRequest =
   | { kind: 'purchaseReturns.list'; limit?: number; offset?: number }
   | { kind: 'purchaseReturns.returnableLines'; invoiceId: number }
   | { kind: 'sales.report'; from: string; to: string }
-  | { kind: 'sales.reportInvoices'; from: string; to: string; limit?: number };
+  | { kind: 'sales.reportInvoices'; from: string; to: string; limit?: number }
+  | { kind: 'settings.get' }
+  | { kind: 'settings.update'; input: PharmacySettingsInput };
 
 export interface PingResult {
   sqliteVersion: string;
@@ -266,6 +269,10 @@ export interface RendererApi {
   salesReport: {
     summary(from: string, to: string): Promise<SalesReportRow>;
     invoices(from: string, to: string, limit?: number): Promise<SalesReportInvoiceRow[]>;
+  };
+  settings: {
+    get(): Promise<PharmacySettings>;
+    update(input: PharmacySettingsInput): Promise<PharmacySettings>;
   };
 }
 

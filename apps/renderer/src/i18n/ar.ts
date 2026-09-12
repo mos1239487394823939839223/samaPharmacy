@@ -43,6 +43,8 @@ export const ar = {
     purchaseReturnGeneral: 'مرتجعات شراء عام',
     accounts: 'الحسابات',
     cashInOut: 'صرف وتوريد نقدية',
+    settings: 'الإعدادات',
+    settingsGeneral: 'الإعدادات العامة',
   },
 
   shell: {
@@ -372,6 +374,7 @@ export const ar = {
     note: 'ملاحظة',
     addTransaction: 'إضافة حركة',
     transactionsTitle: 'حركات نقدية خلال الوردية',
+    transactionsLog: 'سجل الحركات النقدية',
     expectedCash: 'الرصيد المتوقع',
     countedCash: 'الرصيد الفعلي (بالعد)',
     variance: 'الفرق',
@@ -602,6 +605,42 @@ export const ar = {
     unitCost: 'تكلفة الوحدة',
     warehouseId: 'المخزن',
     empty: 'لا توجد دفعات في هذه الفئة',
+  },
+
+  settings: {
+    title: 'الإعدادات العامة',
+    save: 'حفظ الإعدادات',
+    saved: 'تم حفظ الإعدادات',
+    loadFailed: 'تعذّر تحميل الإعدادات',
+    saveFailed: 'تعذّر حفظ الإعدادات',
+
+    expirySection: 'حدود لوحة الصلاحية (بالأيام)',
+    expiryHint: 'تُستخدم هذه الحدود في تقسيم لوحة الصلاحية إلى فئات. يجب أن تكون متصاعدة.',
+    expiryD30: 'الفئة الأولى (خلال)',
+    expiryD60: 'الفئة الثانية (خلال)',
+    expiryD90: 'الفئة الثالثة (خلال)',
+    expiryD180: 'الفئة الرابعة (خلال)',
+    expiryOrderError: 'يجب أن تكون الحدود متصاعدة: الفئة الأولى < الثانية < الثالثة < الرابعة',
+
+    returnsSection: 'سياسة المرتجعات',
+    returnWindowDays: 'مهلة مرتجع فواتير البيع (بالأيام)',
+    returnWindowHint: 'أقصى عدد أيام بعد تأكيد فاتورة البيع يمكن خلالها عمل مرتجع بفاتورة. لا ينطبق على المرتجع العام.',
+
+    scannerSection: 'إعدادات قارئ الباركود',
+    scannerHint: 'هذه الإعدادات خاصة بهذا الجهاز ولا تتم مزامنتها مع الأجهزة الأخرى.',
+    scannerTerminator: 'نهاية القراءة',
+    scannerTerminatorEnter: 'Enter',
+    scannerTerminatorTab: 'Tab',
+    scannerTerminatorNone: 'بدون (وضع التوقيت)',
+    scannerMinLength: 'أقل طول للباركود',
+    scannerMaxLength: 'أقصى طول للباركود',
+    scannerMaxIntervalMs: 'أقصى فاصل بين الأحرف (مللي ثانية)',
+    scannerDebounceMs: 'مهلة تجاهل التكرار (مللي ثانية)',
+    scannerTest: 'اختبار القارئ',
+    scannerTestWaiting: 'امسح أي باركود الآن…',
+    scannerTestOk: 'تم استقبال الباركود بنجاح',
+    scannerTestFailed: 'لم يتم استقبال أي باركود',
+    scannerReset: 'إعادة تعيين إعدادات القارئ',
   },
 
   status: {

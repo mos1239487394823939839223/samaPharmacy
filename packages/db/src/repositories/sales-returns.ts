@@ -13,6 +13,7 @@
 import type { Db } from '../connection';
 import { nextSequence } from './items';
 import { recordCustomerPayment } from './customers';
+import { getSalesReturnWindowDays } from './settings';
 
 export interface SalesReturnLineInput {
   itemId: number;
@@ -140,6 +141,29 @@ export function createSalesReturn(db: Db, input: SalesReturnInput): number {
       throw new Error('مرتجع بيع عام requires approvedBy — a general return with no source invoice must be authorized');
     }
     if (data.lines.length === 0) throw new Error('Cannot create a return with no lines');
+
+    // A return against a specific invoice is time-boxed by the configured
+    // return window (Settings → return window); a general return has no
+    // invoice to measure age against and is left to the approvedBy gate
+    // above instead.
+    if (data.sourceInvoiceId) {
+      const invoice = db
+        .prepare(
+          `SELECT CAST(julianday('now') - julianday(confirmed_at) AS INTEGER) AS daysSinceConfirmed
+           FROM sales_invoices WHERE id = ?`
+        )
+        .get(data.sourceInvoiceId) as { daysSinceConfirmed: number | null } | undefined;
+
+      if (!invoice) throw new Error(`Sales invoice ${data.sourceInvoiceId} not found`);
+
+      const windowDays = getSalesReturnWindowDays(db);
+      if (invoice.daysSinceConfirmed !== null && invoice.daysSinceConfirmed > windowDays) {
+        throw new Error(
+          `Return window of ${windowDays} day(s) has passed for invoice ${data.sourceInvoiceId} ` +
+            `(confirmed ${invoice.daysSinceConfirmed} day(s) ago)`
+        );
+      }
+    }
 
     const serial = nextSequence(db, 'sales_return');
     let total = 0;
