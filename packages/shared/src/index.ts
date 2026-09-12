@@ -6,3 +6,4 @@ export * from './purchases';
 export * from './stock';
 export * from './sales';
 export * from './shifts';
+export * from './customers';

@@ -5,6 +5,7 @@ import type { Db } from '../connection';
 import { migrate } from '../migrate';
 import { createItem } from './items';
 import { createSupplier } from './suppliers';
+import { createCustomer } from './customers';
 import { getDefaultWarehouse } from './warehouses';
 import { createPurchaseInvoice, confirmPurchaseInvoice } from './purchases';
 import { createSalesInvoice, confirmSalesInvoice } from './sales';
@@ -107,9 +108,11 @@ describe('computeExpectedCash', () => {
     // that drops the invoice_type filter (but keeps the status filter) pass
     // unnoticed. This isolates invoice_type as the property under test.
     stockUp(100, 50);
+    const customerId = createCustomer(db, { name: 'عميل آجل للوردية', mobile1: '0100000001' });
     const id = openShift(db, warehouseId, 30000);
     const creditId = createSalesInvoice(db, {
       warehouseId,
+      customerId,
       invoiceType: 'credit',
       paidCash: 1000, // even with a stray paid_cash value on a credit sale
       lines: [{ lineNo: 1, itemId, unitId, unitFactor: 1, qtyInUnit: 5, unitPrice: 200 }],
@@ -236,8 +239,10 @@ describe('getShiftSalesSummary', () => {
     const id = openShift(db, warehouseId, 0);
     makeCashSale(warehouseId, 10, 200); // 2000 cash
 
+    const creditCustomerId = createCustomer(db, { name: 'عميل ملخص الوردية', mobile1: '0100000002' });
     const creditId = createSalesInvoice(db, {
       warehouseId,
+      customerId: creditCustomerId,
       invoiceType: 'credit',
       lines: [{ lineNo: 1, itemId, unitId, unitFactor: 1, qtyInUnit: 5, unitPrice: 300 }],
     });

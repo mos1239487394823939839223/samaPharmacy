@@ -68,6 +68,19 @@ import {
   recordCashTransaction,
   getShiftCashTransactions,
   getShiftSalesSummary,
+  listCustomers,
+  searchCustomers,
+  getCustomer,
+  getCustomerAddresses,
+  getCustomerTags,
+  createCustomer,
+  updateCustomer,
+  suspendCustomer,
+  unsuspendCustomer,
+  deactivateCustomer,
+  getCustomerBalance,
+  getCustomerLedger,
+  recordCustomerPayment,
   type Db,
 } from '@pharmacy/db';
 import { guessMapping, validateRows, type ImportField } from '@pharmacy/core';
@@ -77,6 +90,7 @@ import {
   supplierInputSchema,
   purchaseInvoiceInputSchema,
   salesInvoiceInputSchema,
+  customerInputSchema,
 } from '@pharmacy/shared';
 import type {
   DbRequestEnvelope,
@@ -347,6 +361,52 @@ function dispatch(envelope: DbRequestEnvelope): DbResponseEnvelope {
 
       case 'shifts.salesSummary':
         return ok(getShiftSalesSummary(requireDb(), req.shiftId));
+
+      case 'customers.list':
+        return ok(listCustomers(requireDb(), req.limit));
+
+      case 'customers.search':
+        return ok(searchCustomers(requireDb(), req.query, req.limit));
+
+      case 'customers.get': {
+        const conn = requireDb();
+        const customer = getCustomer(conn, req.id);
+        if (!customer) return ok(null);
+        return ok({
+          ...customer,
+          addresses: getCustomerAddresses(conn, req.id),
+          tags: getCustomerTags(conn, req.id),
+        });
+      }
+
+      case 'customers.create':
+        return ok(createCustomer(requireDb(), customerInputSchema.parse(req.input)));
+
+      case 'customers.update':
+        updateCustomer(requireDb(), req.id, customerInputSchema.parse(req.input));
+        return ok(undefined);
+
+      case 'customers.suspend':
+        suspendCustomer(requireDb(), req.id);
+        return ok(undefined);
+
+      case 'customers.unsuspend':
+        unsuspendCustomer(requireDb(), req.id);
+        return ok(undefined);
+
+      case 'customers.deactivate':
+        deactivateCustomer(requireDb(), req.id);
+        return ok(undefined);
+
+      case 'customers.balance':
+        return ok(getCustomerBalance(requireDb(), req.id));
+
+      case 'customers.ledger':
+        return ok(getCustomerLedger(requireDb(), req.id, req.limit));
+
+      case 'customers.recordPayment':
+        recordCustomerPayment(requireDb(), req.id, req.amount, req.note);
+        return ok(undefined);
 
       // Handled in the main process, which owns the window and the filesystem.
       // Listed so the exhaustiveness check below stays meaningful.

@@ -19,6 +19,12 @@ import type { PurchaseInvoiceInput, PurchaseInvoiceRow, PurchaseLineRow } from '
 import type { ItemStockRow, BatchRow, StockMoveRow } from './stock';
 import type { SalesInvoiceInput, SalesInvoiceRow, SalesLineRow } from './sales';
 import type { ShiftRow, CashTransactionRow, CloseShiftInput, ShiftSalesSummary } from './shifts';
+import type {
+  CustomerInput,
+  CustomerRow,
+  CustomerDetail,
+  CustomerLedgerRow,
+} from './customers';
 
 /** Requests the main process forwards to the database utilityProcess. */
 export type DbRequest =
@@ -71,7 +77,18 @@ export type DbRequest =
   | { kind: 'shifts.computeExpectedCash'; id: number }
   | { kind: 'shifts.recordCash'; shiftId: number; direction: 'in' | 'out'; amount: number; category?: string | null; note?: string | null }
   | { kind: 'shifts.cashTransactions'; shiftId: number }
-  | { kind: 'shifts.salesSummary'; shiftId: number };
+  | { kind: 'shifts.salesSummary'; shiftId: number }
+  | { kind: 'customers.list'; limit?: number }
+  | { kind: 'customers.search'; query: string; limit?: number }
+  | { kind: 'customers.get'; id: number }
+  | { kind: 'customers.create'; input: CustomerInput }
+  | { kind: 'customers.update'; id: number; input: CustomerInput }
+  | { kind: 'customers.suspend'; id: number }
+  | { kind: 'customers.unsuspend'; id: number }
+  | { kind: 'customers.deactivate'; id: number }
+  | { kind: 'customers.balance'; id: number }
+  | { kind: 'customers.ledger'; id: number; limit?: number }
+  | { kind: 'customers.recordPayment'; id: number; amount: number; note?: string | null };
 
 export interface PingResult {
   sqliteVersion: string;
@@ -190,6 +207,19 @@ export interface RendererApi {
     ): Promise<number>;
     cashTransactions(shiftId: number): Promise<CashTransactionRow[]>;
     salesSummary(shiftId: number): Promise<ShiftSalesSummary>;
+  };
+  customers: {
+    list(limit?: number): Promise<CustomerRow[]>;
+    search(query: string, limit?: number): Promise<CustomerRow[]>;
+    get(id: number): Promise<CustomerDetail | null>;
+    create(input: CustomerInput): Promise<number>;
+    update(id: number, input: CustomerInput): Promise<void>;
+    suspend(id: number): Promise<void>;
+    unsuspend(id: number): Promise<void>;
+    deactivate(id: number): Promise<void>;
+    balance(id: number): Promise<number>;
+    ledger(id: number, limit?: number): Promise<CustomerLedgerRow[]>;
+    recordPayment(id: number, amount: number, note?: string | null): Promise<void>;
   };
 }
 

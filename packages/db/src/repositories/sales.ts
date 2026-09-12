@@ -18,6 +18,7 @@ import type { Db } from '../connection';
 import { nextSequence } from './items';
 import { getSellableBatches } from './stock';
 import { getOpenShift } from './shifts';
+import { postCreditSale } from './customers';
 
 export interface SalesLineInput {
   lineNo: number;
@@ -292,6 +293,13 @@ export function confirmSalesInvoice(db: Db, invoiceId: number, userId = 1): void
       throw new Error(`Cannot confirm invoice in status "${invoice.status}"`);
     }
 
+    // A credit invoice with no customer would extend debt to nobody's
+    // account -- reject it here rather than silently letting it through
+    // with an unrecoverable balance.
+    if (invoice.invoiceType === 'credit' && !invoice.customerId) {
+      throw new Error('A credit invoice must have a customer');
+    }
+
     const lines = getSalesLines(db, invoiceId);
     if (lines.length === 0) throw new Error('Cannot confirm an invoice with no lines');
 
@@ -324,6 +332,12 @@ export function confirmSalesInvoice(db: Db, invoiceId: number, userId = 1): void
         line.id,
         userId
       );
+    }
+
+    // Credit exposure becomes real at confirm, same moment stock actually
+    // leaves — not at draft time, when the sale might still be abandoned.
+    if (invoice.invoiceType === 'credit' && invoice.customerId) {
+      postCreditSale(db, invoice.customerId, invoice.total, invoiceId);
     }
 
     db.prepare(

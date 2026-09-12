@@ -36,6 +36,10 @@ import {
   type CashTransactionRow,
   type CloseShiftInput,
   type ShiftSalesSummary,
+  type CustomerInput,
+  type CustomerRow,
+  type CustomerDetail,
+  type CustomerLedgerRow,
 } from '@pharmacy/shared';
 
 function send<T>(request: DbRequest): Promise<T> {
@@ -138,6 +142,21 @@ const api: RendererApi = {
     cashTransactions: (shiftId) =>
       send<CashTransactionRow[]>({ kind: 'shifts.cashTransactions', shiftId }),
     salesSummary: (shiftId) => send<ShiftSalesSummary>({ kind: 'shifts.salesSummary', shiftId }),
+  },
+
+  customers: {
+    list: (limit) => send<CustomerRow[]>({ kind: 'customers.list', limit }),
+    search: (query, limit) => send<CustomerRow[]>({ kind: 'customers.search', query, limit }),
+    get: (id) => send<CustomerDetail | null>({ kind: 'customers.get', id }),
+    create: (input: CustomerInput) => send<number>({ kind: 'customers.create', input }),
+    update: (id, input: CustomerInput) => send<void>({ kind: 'customers.update', id, input }),
+    suspend: (id) => send<void>({ kind: 'customers.suspend', id }),
+    unsuspend: (id) => send<void>({ kind: 'customers.unsuspend', id }),
+    deactivate: (id) => send<void>({ kind: 'customers.deactivate', id }),
+    balance: (id) => send<number>({ kind: 'customers.balance', id }),
+    ledger: (id, limit) => send<CustomerLedgerRow[]>({ kind: 'customers.ledger', id, limit }),
+    recordPayment: (id, amount, note) =>
+      send<void>({ kind: 'customers.recordPayment', id, amount, note }),
   },
 };
 
