@@ -59,6 +59,15 @@ import {
   listSalesInvoices,
   confirmSalesInvoice,
   voidSalesInvoice,
+  getOpenShift,
+  getShift,
+  listShifts,
+  openShift,
+  closeShift,
+  computeExpectedCash,
+  recordCashTransaction,
+  getShiftCashTransactions,
+  getShiftSalesSummary,
   type Db,
 } from '@pharmacy/db';
 import { guessMapping, validateRows, type ImportField } from '@pharmacy/core';
@@ -308,6 +317,36 @@ function dispatch(envelope: DbRequestEnvelope): DbResponseEnvelope {
       case 'sales.void':
         voidSalesInvoice(requireDb(), req.id);
         return ok(undefined);
+
+      case 'shifts.getOpen':
+        return ok(getOpenShift(requireDb(), req.warehouseId) ?? null);
+
+      case 'shifts.get':
+        return ok(getShift(requireDb(), req.id) ?? null);
+
+      case 'shifts.list':
+        return ok(listShifts(requireDb(), req.limit));
+
+      case 'shifts.open':
+        return ok(openShift(requireDb(), req.warehouseId, req.openingFloat));
+
+      case 'shifts.close':
+        closeShift(requireDb(), req.id, req.input);
+        return ok(undefined);
+
+      case 'shifts.computeExpectedCash':
+        return ok(computeExpectedCash(requireDb(), req.id));
+
+      case 'shifts.recordCash':
+        return ok(
+          recordCashTransaction(requireDb(), req.shiftId, req.direction, req.amount, req.category, req.note)
+        );
+
+      case 'shifts.cashTransactions':
+        return ok(getShiftCashTransactions(requireDb(), req.shiftId));
+
+      case 'shifts.salesSummary':
+        return ok(getShiftSalesSummary(requireDb(), req.shiftId));
 
       // Handled in the main process, which owns the window and the filesystem.
       // Listed so the exhaustiveness check below stays meaningful.

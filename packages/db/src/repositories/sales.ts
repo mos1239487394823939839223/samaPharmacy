@@ -17,6 +17,7 @@ import { allocateFefo, allocationUnitCost, type FefoBatch } from '@pharmacy/core
 import type { Db } from '../connection';
 import { nextSequence } from './items';
 import { getSellableBatches } from './stock';
+import { getOpenShift } from './shifts';
 
 export interface SalesLineInput {
   lineNo: number;
@@ -124,6 +125,13 @@ export function createSalesInvoice(db: Db, input: SalesInvoiceInput): number {
   const run = db.transaction((data: SalesInvoiceInput) => {
     const serial = nextSequence(db, 'sales_invoice');
 
+    // Attach the warehouse's currently open shift automatically, if one
+    // exists. Nullable by design: a sale can still be recorded with no shift
+    // system in use (or before any shift is opened), but once shifts are in
+    // play this is what lets close-shift sum "my" cash sales rather than
+    // every cash sale ever made in the warehouse.
+    const openShift = getOpenShift(db, data.warehouseId);
+
     let subtotal = 0;
     let lineDiscountTotal = 0;
     let total = 0;
@@ -160,16 +168,17 @@ export function createSalesInvoice(db: Db, input: SalesInvoiceInput): number {
     const result = db
       .prepare(
         `INSERT INTO sales_invoices (
-           serial, warehouse_id, customer_id, user_id, invoice_type,
+           serial, warehouse_id, customer_id, shift_id, user_id, invoice_type,
            is_home_delivery, delivery_address, subtotal, line_discount_total,
            extra_discount_amt, extra_discount_pct, extra_charge, total,
            paid_cash, cost_total, notes
-         ) VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+         ) VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         serial,
         data.warehouseId,
         data.customerId ?? null,
+        openShift?.id ?? null,
         data.invoiceType,
         data.isHomeDelivery ? 1 : 0,
         data.deliveryAddress ?? null,

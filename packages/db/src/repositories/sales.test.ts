@@ -195,6 +195,28 @@ describe('createSalesInvoice', () => {
     expect(getSalesInvoice(db, id)!.costTotal).toBe(600); // 10 * 60
   });
 
+  it('attaches the currently open shift to a new sale automatically', () => {
+    stockUp(100, 50);
+    const shiftId = Number(
+      db.prepare('INSERT INTO shifts (user_id, warehouse_id, opening_float) VALUES (1, ?, 0)')
+        .run(warehouseId).lastInsertRowid
+    );
+    const id = createSalesInvoice(db, { warehouseId, invoiceType: 'cash', lines: [baseSaleLine()] });
+    const row = db.prepare('SELECT shift_id AS shiftId FROM sales_invoices WHERE id = ?').get(id) as {
+      shiftId: number;
+    };
+    expect(row.shiftId).toBe(shiftId);
+  });
+
+  it('leaves shift_id NULL when no shift is open', () => {
+    stockUp(100, 50);
+    const id = createSalesInvoice(db, { warehouseId, invoiceType: 'cash', lines: [baseSaleLine()] });
+    const row = db.prepare('SELECT shift_id AS shiftId FROM sales_invoices WHERE id = ?').get(id) as {
+      shiftId: number | null;
+    };
+    expect(row.shiftId).toBeNull();
+  });
+
   it('assigns a sequential serial', () => {
     stockUp(100, 50);
     const a = createSalesInvoice(db, { warehouseId, invoiceType: 'cash', lines: [baseSaleLine()] });

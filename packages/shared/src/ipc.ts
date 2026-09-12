@@ -18,6 +18,7 @@ import type { SupplierInput, SupplierRow } from './suppliers';
 import type { PurchaseInvoiceInput, PurchaseInvoiceRow, PurchaseLineRow } from './purchases';
 import type { ItemStockRow, BatchRow, StockMoveRow } from './stock';
 import type { SalesInvoiceInput, SalesInvoiceRow, SalesLineRow } from './sales';
+import type { ShiftRow, CashTransactionRow, CloseShiftInput, ShiftSalesSummary } from './shifts';
 
 /** Requests the main process forwards to the database utilityProcess. */
 export type DbRequest =
@@ -61,7 +62,16 @@ export type DbRequest =
   | { kind: 'sales.get'; id: number }
   | { kind: 'sales.list'; limit?: number; offset?: number }
   | { kind: 'sales.confirm'; id: number }
-  | { kind: 'sales.void'; id: number };
+  | { kind: 'sales.void'; id: number }
+  | { kind: 'shifts.getOpen'; warehouseId: number }
+  | { kind: 'shifts.get'; id: number }
+  | { kind: 'shifts.list'; limit?: number }
+  | { kind: 'shifts.open'; warehouseId: number; openingFloat: number }
+  | { kind: 'shifts.close'; id: number; input: CloseShiftInput }
+  | { kind: 'shifts.computeExpectedCash'; id: number }
+  | { kind: 'shifts.recordCash'; shiftId: number; direction: 'in' | 'out'; amount: number; category?: string | null; note?: string | null }
+  | { kind: 'shifts.cashTransactions'; shiftId: number }
+  | { kind: 'shifts.salesSummary'; shiftId: number };
 
 export interface PingResult {
   sqliteVersion: string;
@@ -162,6 +172,24 @@ export interface RendererApi {
     /** Decrements stock, writes stock_moves. Only place a sale actually leaves the pharmacy. */
     confirm(id: number): Promise<void>;
     voidInvoice(id: number): Promise<void>;
+  };
+  shifts: {
+    getOpen(warehouseId: number): Promise<ShiftRow | null>;
+    get(id: number): Promise<ShiftRow | null>;
+    list(limit?: number): Promise<ShiftRow[]>;
+    open(warehouseId: number, openingFloat: number): Promise<number>;
+    /** BR-10: irreversible. Computes expected cash, records variance, marks closed. */
+    close(id: number, input: CloseShiftInput): Promise<void>;
+    computeExpectedCash(id: number): Promise<number>;
+    recordCash(
+      shiftId: number,
+      direction: 'in' | 'out',
+      amount: number,
+      category?: string | null,
+      note?: string | null
+    ): Promise<number>;
+    cashTransactions(shiftId: number): Promise<CashTransactionRow[]>;
+    salesSummary(shiftId: number): Promise<ShiftSalesSummary>;
   };
 }
 

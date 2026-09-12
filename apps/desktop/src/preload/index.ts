@@ -32,6 +32,10 @@ import {
   type SalesInvoiceInput,
   type SalesInvoiceRow,
   type SalesLineRow,
+  type ShiftRow,
+  type CashTransactionRow,
+  type CloseShiftInput,
+  type ShiftSalesSummary,
 } from '@pharmacy/shared';
 
 function send<T>(request: DbRequest): Promise<T> {
@@ -119,6 +123,21 @@ const api: RendererApi = {
       send<SalesInvoiceRow[]>({ kind: 'sales.list', limit: opts?.limit, offset: opts?.offset }),
     confirm: (id) => send<void>({ kind: 'sales.confirm', id }),
     voidInvoice: (id) => send<void>({ kind: 'sales.void', id }),
+  },
+
+  shifts: {
+    getOpen: (warehouseId) => send<ShiftRow | null>({ kind: 'shifts.getOpen', warehouseId }),
+    get: (id) => send<ShiftRow | null>({ kind: 'shifts.get', id }),
+    list: (limit) => send<ShiftRow[]>({ kind: 'shifts.list', limit }),
+    open: (warehouseId, openingFloat) =>
+      send<number>({ kind: 'shifts.open', warehouseId, openingFloat }),
+    close: (id, input: CloseShiftInput) => send<void>({ kind: 'shifts.close', id, input }),
+    computeExpectedCash: (id) => send<number>({ kind: 'shifts.computeExpectedCash', id }),
+    recordCash: (shiftId, direction, amount, category, note) =>
+      send<number>({ kind: 'shifts.recordCash', shiftId, direction, amount, category, note }),
+    cashTransactions: (shiftId) =>
+      send<CashTransactionRow[]>({ kind: 'shifts.cashTransactions', shiftId }),
+    salesSummary: (shiftId) => send<ShiftSalesSummary>({ kind: 'shifts.salesSummary', shiftId }),
   },
 };
 

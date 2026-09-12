@@ -19,6 +19,7 @@ import { SuppliersScreen } from './modules/suppliers/SuppliersScreen';
 import { PurchasesScreen } from './modules/purchases/PurchasesScreen';
 import { StockScreen } from './modules/stock/StockScreen';
 import { SalesScreen } from './modules/sales/SalesScreen';
+import { ShiftHandoverScreen } from './modules/shifts/ShiftHandoverScreen';
 import { MODULES, SCREEN_LABELS, type ScreenId } from './lib/navigation';
 import { attachShortcuts, type ShortcutBinding } from './lib/shortcuts';
 
@@ -107,6 +108,8 @@ export function App() {
             <StockScreen />
           ) : screen === 'sales.invoices' ? (
             <SalesScreen />
+          ) : screen === 'sales.shiftHandover' ? (
+            <ShiftHandoverScreen />
           ) : (
             <Placeholder screen={screen} />
           )}

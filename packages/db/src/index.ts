@@ -7,3 +7,4 @@ export * from './repositories/suppliers';
 export * from './repositories/purchases';
 export * from './repositories/stock';
 export * from './repositories/sales';
+export * from './repositories/shifts';
