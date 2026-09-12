@@ -16,6 +16,7 @@ import type {
 import type { WarehouseInput, WarehouseRow } from './warehouses';
 import type { SupplierInput, SupplierRow } from './suppliers';
 import type { PurchaseInvoiceInput, PurchaseInvoiceRow, PurchaseLineRow } from './purchases';
+import type { ItemStockRow, BatchRow, StockMoveRow } from './stock';
 
 /** Requests the main process forwards to the database utilityProcess. */
 export type DbRequest =
@@ -49,7 +50,12 @@ export type DbRequest =
   | { kind: 'purchases.get'; id: number }
   | { kind: 'purchases.list'; limit?: number; offset?: number }
   | { kind: 'purchases.confirm'; id: number }
-  | { kind: 'purchases.void'; id: number };
+  | { kind: 'purchases.void'; id: number }
+  | { kind: 'stock.search'; query: string; limit?: number }
+  | { kind: 'stock.batches'; itemId: number }
+  | { kind: 'stock.sellableBatches'; itemId: number; warehouseId?: number }
+  | { kind: 'stock.batchMoves'; batchId: number }
+  | { kind: 'stock.lowStock'; limit?: number };
 
 export interface PingResult {
   sqliteVersion: string;
@@ -135,6 +141,13 @@ export interface RendererApi {
     /** Creates batches, writes stock_moves, posts the supplier ledger. */
     confirm(id: number): Promise<void>;
     voidInvoice(id: number): Promise<void>;
+  };
+  stock: {
+    search(query: string, limit?: number): Promise<ItemStockRow[]>;
+    batches(itemId: number): Promise<BatchRow[]>;
+    sellableBatches(itemId: number, warehouseId?: number): Promise<BatchRow[]>;
+    batchMoves(batchId: number): Promise<StockMoveRow[]>;
+    lowStock(limit?: number): Promise<ItemStockRow[]>;
   };
 }
 

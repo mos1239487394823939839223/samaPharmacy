@@ -27,7 +27,12 @@ describe('migration 0002', () => {
     const db = new Database(':memory:') as Db;
     db.pragma('foreign_keys = ON');
     const { applied } = migrate(db, join(__dirname, '../migrations'));
-    expect(applied).toEqual([1, 2]);
+    // Applied versions are ascending and include 1 and 2 at minimum; do not
+    // hardcode the exact set, since new migrations are added over time and
+    // this test's job is order and presence, not a frozen count.
+    expect(applied).toEqual([...applied].sort((a, b) => a - b));
+    expect(applied).toContain(1);
+    expect(applied).toContain(2);
     const user = db.prepare('SELECT id FROM users WHERE id = 1').get();
     expect(user).toBeDefined();
     db.close();

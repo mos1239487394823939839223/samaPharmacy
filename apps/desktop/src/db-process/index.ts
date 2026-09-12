@@ -48,6 +48,11 @@ import {
   listPurchaseInvoices,
   confirmPurchaseInvoice,
   voidPurchaseInvoice,
+  searchItemStock,
+  getItemBatches,
+  getSellableBatches,
+  getBatchMoves,
+  getLowStockItems,
   type Db,
 } from '@pharmacy/db';
 import { guessMapping, validateRows, type ImportField } from '@pharmacy/core';
@@ -260,6 +265,21 @@ function dispatch(envelope: DbRequestEnvelope): DbResponseEnvelope {
       case 'purchases.void':
         voidPurchaseInvoice(requireDb(), req.id);
         return ok(undefined);
+
+      case 'stock.search':
+        return ok(searchItemStock(requireDb(), req.query, req.limit));
+
+      case 'stock.batches':
+        return ok(getItemBatches(requireDb(), req.itemId));
+
+      case 'stock.sellableBatches':
+        return ok(getSellableBatches(requireDb(), req.itemId, req.warehouseId));
+
+      case 'stock.batchMoves':
+        return ok(getBatchMoves(requireDb(), req.batchId));
+
+      case 'stock.lowStock':
+        return ok(getLowStockItems(requireDb(), req.limit));
 
       // Handled in the main process, which owns the window and the filesystem.
       // Listed so the exhaustiveness check below stays meaningful.

@@ -20,6 +20,7 @@ export type ScreenId =
   | 'suppliers.list'
   | 'items.list'
   | 'items.ibnSina'
+  | 'items.stock'
   | 'customers.list'
   | 'customers.reports'
   | 'warehouses'
@@ -97,6 +98,7 @@ export const DRAWER_TREE: DrawerNode[] = [
     label: ar.drawer.items,
     children: [
       { label: ar.drawer.itemsList, screen: 'items.list' },
+      { label: ar.drawer.itemsStock, screen: 'items.stock' },
       { label: ar.drawer.itemsIbnSina, screen: 'items.ibnSina' },
     ],
   },
@@ -137,6 +139,7 @@ export const SCREEN_LABELS: Record<ScreenId, string> = {
   'purchases.returnByInvoice': ar.drawer.purchaseReturnByInvoice,
   'purchases.returnGeneral': ar.drawer.purchaseReturnGeneral,
   'suppliers.list': ar.drawer.suppliersList,
+  'items.stock': ar.drawer.itemsStock,
   'items.list': ar.drawer.itemsList,
   'items.ibnSina': ar.drawer.itemsIbnSina,
   'customers.list': ar.drawer.customersList,

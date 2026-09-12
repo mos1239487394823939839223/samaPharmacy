@@ -139,7 +139,11 @@ export function getLowStockItems(db: Db, limit = 200): ItemStockRow[] {
        LEFT JOIN batches b ON b.item_id = i.id AND b.is_quarantined = 0
        WHERE i.is_active = 1
        GROUP BY i.id
-       HAVING COALESCE(SUM(b.qty_on_hand), 0) <= i.min_stock
+       -- min_stock = 0 means the item is not stock-tracked (the schema
+       -- default), not that any quantity above zero is acceptable. Without
+       -- excluding it, every never-purchased item trips 0 <= 0 and the
+       -- reorder list fills with items nobody meant to track.
+       HAVING i.min_stock > 0 AND COALESCE(SUM(b.qty_on_hand), 0) <= i.min_stock
        ORDER BY i.name_ar
        LIMIT ?`
     )

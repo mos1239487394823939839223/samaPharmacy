@@ -26,6 +26,9 @@ import {
   type PurchaseInvoiceInput,
   type PurchaseInvoiceRow,
   type PurchaseLineRow,
+  type ItemStockRow,
+  type BatchRow,
+  type StockMoveRow,
 } from '@pharmacy/shared';
 
 function send<T>(request: DbRequest): Promise<T> {
@@ -94,6 +97,15 @@ const api: RendererApi = {
       send<PurchaseInvoiceRow[]>({ kind: 'purchases.list', limit: opts?.limit, offset: opts?.offset }),
     confirm: (id) => send<void>({ kind: 'purchases.confirm', id }),
     voidInvoice: (id) => send<void>({ kind: 'purchases.void', id }),
+  },
+
+  stock: {
+    search: (query, limit) => send<ItemStockRow[]>({ kind: 'stock.search', query, limit }),
+    batches: (itemId) => send<BatchRow[]>({ kind: 'stock.batches', itemId }),
+    sellableBatches: (itemId, warehouseId) =>
+      send<BatchRow[]>({ kind: 'stock.sellableBatches', itemId, warehouseId }),
+    batchMoves: (batchId) => send<StockMoveRow[]>({ kind: 'stock.batchMoves', batchId }),
+    lowStock: (limit) => send<ItemStockRow[]>({ kind: 'stock.lowStock', limit }),
   },
 };
 
