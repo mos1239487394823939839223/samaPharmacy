@@ -42,10 +42,21 @@ import {
   createSupplier,
   updateSupplier,
   deactivateSupplier,
+  createPurchaseInvoice,
+  getPurchaseInvoice,
+  getPurchaseLines,
+  listPurchaseInvoices,
+  confirmPurchaseInvoice,
+  voidPurchaseInvoice,
   type Db,
 } from '@pharmacy/db';
 import { guessMapping, validateRows, type ImportField } from '@pharmacy/core';
-import { itemInputSchema, warehouseInputSchema, supplierInputSchema } from '@pharmacy/shared';
+import {
+  itemInputSchema,
+  warehouseInputSchema,
+  supplierInputSchema,
+  purchaseInvoiceInputSchema,
+} from '@pharmacy/shared';
 import type {
   DbRequestEnvelope,
   DbResponseEnvelope,
@@ -225,6 +236,29 @@ function dispatch(envelope: DbRequestEnvelope): DbResponseEnvelope {
 
       case 'suppliers.deactivate':
         deactivateSupplier(requireDb(), req.id);
+        return ok(undefined);
+
+      case 'purchases.create':
+        return ok(
+          createPurchaseInvoice(requireDb(), purchaseInvoiceInputSchema.parse(req.input))
+        );
+
+      case 'purchases.get': {
+        const conn = requireDb();
+        const invoice = getPurchaseInvoice(conn, req.id);
+        if (!invoice) return ok(null);
+        return ok({ ...invoice, lines: getPurchaseLines(conn, req.id) });
+      }
+
+      case 'purchases.list':
+        return ok(listPurchaseInvoices(requireDb(), req.limit, req.offset));
+
+      case 'purchases.confirm':
+        confirmPurchaseInvoice(requireDb(), req.id);
+        return ok(undefined);
+
+      case 'purchases.void':
+        voidPurchaseInvoice(requireDb(), req.id);
         return ok(undefined);
 
       // Handled in the main process, which owns the window and the filesystem.

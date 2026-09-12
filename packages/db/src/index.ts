@@ -4,3 +4,4 @@ export * from './repositories/items';
 export * from './repositories/import';
 export * from './repositories/warehouses';
 export * from './repositories/suppliers';
+export * from './repositories/purchases';

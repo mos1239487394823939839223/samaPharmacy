@@ -23,6 +23,9 @@ import {
   type WarehouseRow,
   type SupplierInput,
   type SupplierRow,
+  type PurchaseInvoiceInput,
+  type PurchaseInvoiceRow,
+  type PurchaseLineRow,
 } from '@pharmacy/shared';
 
 function send<T>(request: DbRequest): Promise<T> {
@@ -78,6 +81,19 @@ const api: RendererApi = {
     create: (input: SupplierInput) => send<number>({ kind: 'suppliers.create', input }),
     update: (id, input: SupplierInput) => send<void>({ kind: 'suppliers.update', id, input }),
     deactivate: (id) => send<void>({ kind: 'suppliers.deactivate', id }),
+  },
+
+  purchases: {
+    create: (input: PurchaseInvoiceInput) => send<number>({ kind: 'purchases.create', input }),
+    get: (id) =>
+      send<(PurchaseInvoiceRow & { lines: PurchaseLineRow[] }) | null>({
+        kind: 'purchases.get',
+        id,
+      }),
+    list: (opts) =>
+      send<PurchaseInvoiceRow[]>({ kind: 'purchases.list', limit: opts?.limit, offset: opts?.offset }),
+    confirm: (id) => send<void>({ kind: 'purchases.confirm', id }),
+    voidInvoice: (id) => send<void>({ kind: 'purchases.void', id }),
   },
 };
 

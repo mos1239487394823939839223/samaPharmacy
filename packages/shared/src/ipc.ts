@@ -15,6 +15,7 @@ import type {
 } from './items';
 import type { WarehouseInput, WarehouseRow } from './warehouses';
 import type { SupplierInput, SupplierRow } from './suppliers';
+import type { PurchaseInvoiceInput, PurchaseInvoiceRow, PurchaseLineRow } from './purchases';
 
 /** Requests the main process forwards to the database utilityProcess. */
 export type DbRequest =
@@ -43,7 +44,12 @@ export type DbRequest =
   | { kind: 'suppliers.balance'; id: number }
   | { kind: 'suppliers.create'; input: SupplierInput }
   | { kind: 'suppliers.update'; id: number; input: SupplierInput }
-  | { kind: 'suppliers.deactivate'; id: number };
+  | { kind: 'suppliers.deactivate'; id: number }
+  | { kind: 'purchases.create'; input: PurchaseInvoiceInput }
+  | { kind: 'purchases.get'; id: number }
+  | { kind: 'purchases.list'; limit?: number; offset?: number }
+  | { kind: 'purchases.confirm'; id: number }
+  | { kind: 'purchases.void'; id: number };
 
 export interface PingResult {
   sqliteVersion: string;
@@ -121,6 +127,14 @@ export interface RendererApi {
     create(input: SupplierInput): Promise<number>;
     update(id: number, input: SupplierInput): Promise<void>;
     deactivate(id: number): Promise<void>;
+  };
+  purchases: {
+    create(input: PurchaseInvoiceInput): Promise<number>;
+    get(id: number): Promise<(PurchaseInvoiceRow & { lines: PurchaseLineRow[] }) | null>;
+    list(opts?: { limit?: number; offset?: number }): Promise<PurchaseInvoiceRow[]>;
+    /** Creates batches, writes stock_moves, posts the supplier ledger. */
+    confirm(id: number): Promise<void>;
+    voidInvoice(id: number): Promise<void>;
   };
 }
 
