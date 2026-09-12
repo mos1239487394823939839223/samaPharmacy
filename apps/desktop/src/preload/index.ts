@@ -44,6 +44,10 @@ import {
   type SalesReturnRow,
   type SalesReturnLineRow,
   type ReturnableLine,
+  type PurchaseReturnInput,
+  type PurchaseReturnRow,
+  type PurchaseReturnLineRow,
+  type ReturnablePurchaseLine,
 } from '@pharmacy/shared';
 
 function send<T>(request: DbRequest): Promise<T> {
@@ -171,6 +175,23 @@ const api: RendererApi = {
       send<SalesReturnRow[]>({ kind: 'salesReturns.list', limit: opts?.limit, offset: opts?.offset }),
     returnableLines: (invoiceId) =>
       send<ReturnableLine[]>({ kind: 'salesReturns.returnableLines', invoiceId }),
+  },
+
+  purchaseReturns: {
+    create: (input: PurchaseReturnInput) => send<number>({ kind: 'purchaseReturns.create', input }),
+    get: (id) =>
+      send<(PurchaseReturnRow & { lines: PurchaseReturnLineRow[] }) | null>({
+        kind: 'purchaseReturns.get',
+        id,
+      }),
+    list: (opts) =>
+      send<PurchaseReturnRow[]>({
+        kind: 'purchaseReturns.list',
+        limit: opts?.limit,
+        offset: opts?.offset,
+      }),
+    returnableLines: (invoiceId) =>
+      send<ReturnablePurchaseLine[]>({ kind: 'purchaseReturns.returnableLines', invoiceId }),
   },
 };
 

@@ -86,6 +86,11 @@ import {
   getSalesReturnLines,
   listSalesReturns,
   getReturnableLines,
+  createPurchaseReturn,
+  getPurchaseReturn,
+  getPurchaseReturnLines,
+  listPurchaseReturns,
+  getReturnablePurchaseLines,
   type Db,
 } from '@pharmacy/db';
 import { guessMapping, validateRows, type ImportField } from '@pharmacy/core';
@@ -97,6 +102,7 @@ import {
   salesInvoiceInputSchema,
   customerInputSchema,
   salesReturnInputSchema,
+  purchaseReturnInputSchema,
 } from '@pharmacy/shared';
 import type {
   DbRequestEnvelope,
@@ -429,6 +435,22 @@ function dispatch(envelope: DbRequestEnvelope): DbResponseEnvelope {
 
       case 'salesReturns.returnableLines':
         return ok(getReturnableLines(requireDb(), req.invoiceId));
+
+      case 'purchaseReturns.create':
+        return ok(createPurchaseReturn(requireDb(), purchaseReturnInputSchema.parse(req.input)));
+
+      case 'purchaseReturns.get': {
+        const conn = requireDb();
+        const ret = getPurchaseReturn(conn, req.id);
+        if (!ret) return ok(null);
+        return ok({ ...ret, lines: getPurchaseReturnLines(conn, req.id) });
+      }
+
+      case 'purchaseReturns.list':
+        return ok(listPurchaseReturns(requireDb(), req.limit, req.offset));
+
+      case 'purchaseReturns.returnableLines':
+        return ok(getReturnablePurchaseLines(requireDb(), req.invoiceId));
 
       // Handled in the main process, which owns the window and the filesystem.
       // Listed so the exhaustiveness check below stays meaningful.

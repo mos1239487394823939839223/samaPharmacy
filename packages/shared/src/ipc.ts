@@ -31,6 +31,12 @@ import type {
   SalesReturnLineRow,
   ReturnableLine,
 } from './sales-returns';
+import type {
+  PurchaseReturnInput,
+  PurchaseReturnRow,
+  PurchaseReturnLineRow,
+  ReturnablePurchaseLine,
+} from './purchase-returns';
 
 /** Requests the main process forwards to the database utilityProcess. */
 export type DbRequest =
@@ -98,7 +104,11 @@ export type DbRequest =
   | { kind: 'salesReturns.create'; input: SalesReturnInput }
   | { kind: 'salesReturns.get'; id: number }
   | { kind: 'salesReturns.list'; limit?: number; offset?: number }
-  | { kind: 'salesReturns.returnableLines'; invoiceId: number };
+  | { kind: 'salesReturns.returnableLines'; invoiceId: number }
+  | { kind: 'purchaseReturns.create'; input: PurchaseReturnInput }
+  | { kind: 'purchaseReturns.get'; id: number }
+  | { kind: 'purchaseReturns.list'; limit?: number; offset?: number }
+  | { kind: 'purchaseReturns.returnableLines'; invoiceId: number };
 
 export interface PingResult {
   sqliteVersion: string;
@@ -236,6 +246,12 @@ export interface RendererApi {
     get(id: number): Promise<(SalesReturnRow & { lines: SalesReturnLineRow[] }) | null>;
     list(opts?: { limit?: number; offset?: number }): Promise<SalesReturnRow[]>;
     returnableLines(invoiceId: number): Promise<ReturnableLine[]>;
+  };
+  purchaseReturns: {
+    create(input: PurchaseReturnInput): Promise<number>;
+    get(id: number): Promise<(PurchaseReturnRow & { lines: PurchaseReturnLineRow[] }) | null>;
+    list(opts?: { limit?: number; offset?: number }): Promise<PurchaseReturnRow[]>;
+    returnableLines(invoiceId: number): Promise<ReturnablePurchaseLine[]>;
   };
 }
 

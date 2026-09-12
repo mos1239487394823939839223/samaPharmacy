@@ -10,3 +10,4 @@ export * from './repositories/sales';
 export * from './repositories/shifts';
 export * from './repositories/customers';
 export * from './repositories/sales-returns';
+export * from './repositories/purchase-returns';

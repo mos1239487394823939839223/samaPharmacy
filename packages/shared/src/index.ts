@@ -8,3 +8,4 @@ export * from './sales';
 export * from './shifts';
 export * from './customers';
 export * from './sales-returns';
+export * from './purchase-returns';
