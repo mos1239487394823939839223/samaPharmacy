@@ -13,6 +13,7 @@ import { Toolbar } from './components/Toolbar';
 import { Drawer } from './components/Drawer';
 import { Placeholder } from './components/Placeholder';
 import { HealthCheck } from './components/HealthCheck';
+import { ItemsScreen } from './modules/items/ItemsScreen';
 import { MODULES, SCREEN_LABELS, type ScreenId } from './lib/navigation';
 import { attachShortcuts, type ShortcutBinding } from './lib/shortcuts';
 
@@ -87,7 +88,13 @@ export function App() {
 
         <main className="shell__content">
           <h1 className="shell__heading">{SCREEN_LABELS[screen]}</h1>
-          {screen === 'health' ? <HealthCheck /> : <Placeholder screen={screen} />}
+          {screen === 'health' ? (
+            <HealthCheck />
+          ) : screen === 'items.list' ? (
+            <ItemsScreen showBadges={showBadges} />
+          ) : (
+            <Placeholder screen={screen} />
+          )}
         </main>
       </div>
     </div>

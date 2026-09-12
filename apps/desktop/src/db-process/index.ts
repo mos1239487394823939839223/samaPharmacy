@@ -12,7 +12,24 @@
  */
 
 import path from 'node:path';
-import { openDatabase, migrate, appliedVersions, sqliteVersion, type Db } from '@pharmacy/db';
+import {
+  openDatabase,
+  migrate,
+  appliedVersions,
+  sqliteVersion,
+  createItem,
+  updateItem,
+  getItem,
+  getItemBarcodes,
+  getItemUnits,
+  findByBarcode,
+  searchItems,
+  listItems,
+  countItems,
+  deactivateItem,
+  type Db,
+} from '@pharmacy/db';
+import { itemInputSchema } from '@pharmacy/shared';
 import type {
   DbRequestEnvelope,
   DbResponseEnvelope,
@@ -62,15 +79,63 @@ function handleMigrate(): MigrateResult {
   return { applied, alreadyCurrent: applied.length === 0 };
 }
 
+function requireDb(): Db {
+  if (!db) throw new Error('Database not initialized');
+  return db;
+}
+
 function dispatch(envelope: DbRequestEnvelope): DbResponseEnvelope {
+  const ok = (data: unknown): DbResponseEnvelope => ({ id: envelope.id, ok: true, data });
+
   try {
-    switch (envelope.request.kind) {
+    const req = envelope.request;
+
+    switch (req.kind) {
       case 'ping':
-        return { id: envelope.id, ok: true, data: handlePing() };
+        return ok(handlePing());
       case 'migrate':
-        return { id: envelope.id, ok: true, data: handleMigrate() };
+        return ok(handleMigrate());
+
+      case 'items.list':
+        return ok(listItems(requireDb(), { limit: req.limit, offset: req.offset }));
+
+      case 'items.search':
+        return ok(searchItems(requireDb(), req.query, req.limit));
+
+      case 'items.get': {
+        const conn = requireDb();
+        const item = getItem(conn, req.id);
+        if (!item) return ok(null);
+        return ok({
+          ...item,
+          barcodes: getItemBarcodes(conn, req.id),
+          units: getItemUnits(conn, req.id),
+        });
+      }
+
+      case 'items.create':
+        // Validate at the process boundary, not in the renderer — the renderer
+        // is untrusted for this purpose even though we wrote it.
+        return ok(createItem(requireDb(), itemInputSchema.parse(req.input)));
+
+      case 'items.update': {
+        updateItem(requireDb(), req.id, itemInputSchema.parse(req.input));
+        return ok(undefined);
+      }
+
+      case 'items.deactivate': {
+        deactivateItem(requireDb(), req.id);
+        return ok(undefined);
+      }
+
+      case 'items.count':
+        return ok(countItems(requireDb()));
+
+      case 'items.findByBarcode':
+        return ok(findByBarcode(requireDb(), req.barcode) ?? null);
+
       default: {
-        const exhaustive: never = envelope.request;
+        const exhaustive: never = req;
         return {
           id: envelope.id,
           ok: false,

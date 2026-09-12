@@ -5,10 +5,20 @@
  * Renderer imports the types only; it never imports anything that touches I/O.
  */
 
+import type { ItemInput, ItemListRow, ItemDetail } from './items';
+
 /** Requests the main process forwards to the database utilityProcess. */
 export type DbRequest =
   | { kind: 'ping' }
-  | { kind: 'migrate' };
+  | { kind: 'migrate' }
+  | { kind: 'items.list'; limit?: number; offset?: number }
+  | { kind: 'items.search'; query: string; limit?: number }
+  | { kind: 'items.get'; id: number }
+  | { kind: 'items.create'; input: ItemInput }
+  | { kind: 'items.update'; id: number; input: ItemInput }
+  | { kind: 'items.deactivate'; id: number }
+  | { kind: 'items.count' }
+  | { kind: 'items.findByBarcode'; barcode: string };
 
 export interface PingResult {
   sqliteVersion: string;
@@ -52,4 +62,14 @@ export const IPC = {
  */
 export interface RendererApi {
   ping(): Promise<PingResult>;
+  items: {
+    list(opts?: { limit?: number; offset?: number }): Promise<ItemListRow[]>;
+    search(query: string, limit?: number): Promise<ItemListRow[]>;
+    get(id: number): Promise<ItemDetail | null>;
+    create(input: ItemInput): Promise<number>;
+    update(id: number, input: ItemInput): Promise<void>;
+    deactivate(id: number): Promise<void>;
+    count(): Promise<number>;
+    findByBarcode(barcode: string): Promise<ItemListRow | null>;
+  };
 }
