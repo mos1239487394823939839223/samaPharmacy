@@ -36,3 +36,11 @@ export {
 } from './import';
 
 export { landedCost, type LandedCostLine, type LandedCostResult } from './landed-cost';
+
+export {
+  allocateFefo,
+  allocationUnitCost,
+  InsufficientStockError,
+  type FefoBatch,
+  type FefoAllocation,
+} from './fefo';
