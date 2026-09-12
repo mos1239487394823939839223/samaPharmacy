@@ -79,6 +79,23 @@
     border-block-end: 1px solid var(--border);
   }
 
+  /*
+   * The drawer button and the badges toggle have different widths, so
+   * centring the module group inside the middle flex child alone would leave
+   * it visually off-centre. Giving both side items the same flex basis makes
+   * the centre true relative to the window.
+   */
+  .toolbar__side {
+    display: flex;
+    align-items: center;
+    flex: 1 1 0;
+    min-inline-size: 0;
+  }
+
+  .toolbar__side--end {
+    justify-content: flex-end;
+  }
+
   .toolbar__icon {
     border: 1px solid var(--border);
     background: var(--surface);
@@ -87,6 +104,7 @@
     block-size: 2.25rem;
     font-size: 1rem;
     line-height: 1;
+    flex-shrink: 0;
   }
 
   .toolbar__icon:hover {
@@ -96,8 +114,9 @@
   .toolbar__modules {
     display: flex;
     gap: 0.4rem;
-    flex: 1;
+    flex: 0 1 auto;
     flex-wrap: wrap;
+    justify-content: center;
   }
 
   .module {

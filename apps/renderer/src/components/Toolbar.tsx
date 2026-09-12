@@ -25,15 +25,17 @@ export function Toolbar({
 }: Props) {
   return (
     <header className="toolbar">
-      <button
-        type="button"
-        className="toolbar__icon"
-        onClick={onToggleDrawer}
-        title={ar.shell.toggleDrawer}
-        aria-label={ar.shell.toggleDrawer}
-      >
-        ☰
-      </button>
+      <div className="toolbar__side">
+        <button
+          type="button"
+          className="toolbar__icon"
+          onClick={onToggleDrawer}
+          title={ar.shell.toggleDrawer}
+          aria-label={ar.shell.toggleDrawer}
+        >
+          ☰
+        </button>
+      </div>
 
       <nav className="toolbar__modules">
         {MODULES.map((m) => {
@@ -56,10 +58,12 @@ export function Toolbar({
         })}
       </nav>
 
-      <label className="toolbar__toggle">
-        <input type="checkbox" checked={showBadges} onChange={onToggleBadges} />
-        <span>{ar.shell.showShortcutBadges}</span>
-      </label>
+      <div className="toolbar__side toolbar__side--end">
+        <label className="toolbar__toggle">
+          <input type="checkbox" checked={showBadges} onChange={onToggleBadges} />
+          <span>{ar.shell.showShortcutBadges}</span>
+        </label>
+      </div>
     </header>
   );
 }
