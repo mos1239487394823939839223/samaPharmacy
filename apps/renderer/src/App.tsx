@@ -26,6 +26,7 @@ import { SalesReturnByInvoiceScreen } from './modules/sales-returns/SalesReturnB
 import { SalesReturnGeneralScreen } from './modules/sales-returns/SalesReturnGeneralScreen';
 import { PurchaseReturnByInvoiceScreen } from './modules/purchase-returns/PurchaseReturnByInvoiceScreen';
 import { PurchaseReturnGeneralScreen } from './modules/purchase-returns/PurchaseReturnGeneralScreen';
+import { CashInOutScreen } from './modules/cash/CashInOutScreen';
 import { MODULES, SCREEN_LABELS, type ScreenId } from './lib/navigation';
 import { attachShortcuts, type ShortcutBinding } from './lib/shortcuts';
 
@@ -128,6 +129,8 @@ export function App() {
             <PurchaseReturnByInvoiceScreen />
           ) : screen === 'purchases.returnGeneral' ? (
             <PurchaseReturnGeneralScreen />
+          ) : screen === 'accounts.cashInOut' ? (
+            <CashInOutScreen />
           ) : (
             <Placeholder screen={screen} />
           )}

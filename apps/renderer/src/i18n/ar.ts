@@ -522,6 +522,36 @@ export const ar = {
     },
   },
 
+  cashInOut: {
+    title: 'صرف وتوريد نقدية',
+    noOpenShift: 'لا توجد وردية مفتوحة. افتح وردية من شاشة تسليم الدرج أولاً.',
+    goToShift: 'الذهاب لشاشة تسليم الدرج',
+    warehouse: 'المخزن',
+    currentShift: 'الوردية الحالية',
+    openedAt: 'وقت الفتح',
+    expectedCash: 'الرصيد المتوقع الحالي',
+    direction: 'نوع الحركة',
+    cashIn: 'توريد نقدية',
+    cashOut: 'صرف نقدية',
+    amount: 'المبلغ',
+    category: 'الفئة',
+    categories: {
+      pettyCash: 'مصاريف نثرية',
+      safeTransfer: 'تحويل للخزنة',
+      safeTopup: 'تغذية من الخزنة',
+      refund: 'استرداد',
+      other: 'أخرى',
+    },
+    note: 'ملاحظة',
+    submit: 'تسجيل الحركة',
+    history: 'سجل الحركات اليوم',
+    empty: 'لا توجد حركات نقدية بعد',
+    errors: {
+      invalidAmount: 'يجب إدخال مبلغ أكبر من صفر',
+      submitFailed: 'فشل تسجيل الحركة',
+    },
+  },
+
   status: {
     connectionOk: 'الاتصال سليم',
     connectionFailed: 'فشل الاتصال',

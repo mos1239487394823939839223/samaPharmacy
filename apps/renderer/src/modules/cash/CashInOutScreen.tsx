@@ -1,0 +1,197 @@
+/**
+ * صرف وتوريد نقدية — record a manual cash movement (petty expense, safe
+ * transfer, refund) against the currently open shift.
+ *
+ * This does not open or close a shift itself — that is ShiftHandoverScreen's
+ * job — it only records movements against whatever shift is already open,
+ * the same recordCashTransaction the shift screen uses. Kept as its own
+ * screen under الحسابات per the drawer tree, since a petty-cash disbursement
+ * is conceptually an accounts operation even though it happens to affect the
+ * same shift total.
+ */
+
+import { useEffect, useState } from 'react';
+import type { ShiftRow, CashTransactionRow } from '@pharmacy/shared';
+import { fromPiastres } from '@pharmacy/core';
+import { ar } from '../../i18n/ar';
+import { MoneyInput } from '../../components/MoneyInput';
+
+const CATEGORIES = [
+  { value: 'petty_cash', label: ar.cashInOut.categories.pettyCash },
+  { value: 'safe_transfer', label: ar.cashInOut.categories.safeTransfer },
+  { value: 'safe_topup', label: ar.cashInOut.categories.safeTopup },
+  { value: 'refund', label: ar.cashInOut.categories.refund },
+  { value: 'other', label: ar.cashInOut.categories.other },
+];
+
+export function CashInOutScreen() {
+  const [shift, setShift] = useState<ShiftRow | null>(null);
+  const [warehouseName, setWarehouseName] = useState('');
+  const [expectedCash, setExpectedCash] = useState<number | null>(null);
+  const [transactions, setTransactions] = useState<CashTransactionRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  const [direction, setDirection] = useState<'in' | 'out'>('out');
+  const [amount, setAmount] = useState<number | null>(null);
+  const [category, setCategory] = useState(CATEGORIES[0]!.value);
+  const [note, setNote] = useState('');
+
+  async function load() {
+    if (!window.api) {
+      setError(ar.status.noBridge);
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    try {
+      const warehouses = await window.api.warehouses.list();
+      const def = warehouses.find((w) => w.isDefault) ?? warehouses[0];
+      if (!def) return;
+      setWarehouseName(def.nameAr);
+
+      const open = await window.api.shifts.getOpen(def.id);
+      setShift(open);
+      if (open) {
+        const [expected, tx] = await Promise.all([
+          window.api.shifts.computeExpectedCash(open.id),
+          window.api.shifts.cashTransactions(open.id),
+        ]);
+        setExpectedCash(expected);
+        setTransactions(tx);
+      }
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void load();
+  }, []);
+
+  async function submit() {
+    if (!window.api || !shift) return;
+    setError(null);
+    if (amount === null || amount <= 0) return setError(ar.cashInOut.errors.invalidAmount);
+
+    try {
+      await window.api.shifts.recordCash(shift.id, direction, amount, category, note.trim() || null);
+      setNotice(direction === 'in' ? ar.cashInOut.cashIn : ar.cashInOut.cashOut);
+      setAmount(null);
+      setNote('');
+      await load();
+    } catch (err) {
+      setError(`${ar.cashInOut.errors.submitFailed}: ${(err as Error).message}`);
+    }
+  }
+
+  if (loading) return <p className="muted">{ar.items.loading}</p>;
+
+  if (!shift) {
+    return (
+      <div className="items">
+        {error && <div className="alert alert--error">{error}</div>}
+        <p className="muted">{ar.cashInOut.noOpenShift}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="items">
+      {error && <div className="alert alert--error">{error}</div>}
+      {notice && (
+        <div className="alert alert--info">
+          {notice}
+          <button type="button" className="alert__close" onClick={() => setNotice(null)}>
+            ×
+          </button>
+        </div>
+      )}
+
+      <div className="panel">
+        <div className="stats">
+          <Stat label={ar.cashInOut.warehouse} value={warehouseName} />
+          <Stat label={ar.cashInOut.expectedCash} value={fromPiastres(expectedCash ?? 0)} good />
+        </div>
+      </div>
+
+      <fieldset className="fieldset">
+        <legend>{ar.cashInOut.title}</legend>
+        <div className="grid2">
+          <label className="formfield">
+            <span className="formfield__label">{ar.cashInOut.direction}</span>
+            <select className="field" value={direction} onChange={(e) => setDirection(e.target.value as 'in' | 'out')}>
+              <option value="out">{ar.cashInOut.cashOut}</option>
+              <option value="in">{ar.cashInOut.cashIn}</option>
+            </select>
+          </label>
+          <label className="formfield">
+            <span className="formfield__label">{ar.cashInOut.amount}</span>
+            <MoneyInput value={amount} onChange={setAmount} />
+          </label>
+          <label className="formfield">
+            <span className="formfield__label">{ar.cashInOut.category}</span>
+            <select className="field" value={category} onChange={(e) => setCategory(e.target.value)}>
+              {CATEGORIES.map((c) => (
+                <option key={c.value} value={c.value}>
+                  {c.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="formfield">
+            <span className="formfield__label">{ar.cashInOut.note}</span>
+            <input className="field" value={note} onChange={(e) => setNote(e.target.value)} />
+          </label>
+        </div>
+        <button type="button" className="btn btn--primary" style={{ marginBlockStart: '0.75rem' }} onClick={() => void submit()}>
+          {ar.cashInOut.submit}
+        </button>
+      </fieldset>
+
+      <fieldset className="fieldset">
+        <legend>{ar.cashInOut.history}</legend>
+        {transactions.length === 0 ? (
+          <p className="muted">{ar.cashInOut.empty}</p>
+        ) : (
+          <table className="subtable">
+            <thead>
+              <tr>
+                <th>{ar.purchases.invoiceDate}</th>
+                <th>{ar.cashInOut.direction}</th>
+                <th>{ar.cashInOut.amount}</th>
+                <th>{ar.cashInOut.category}</th>
+                <th>{ar.cashInOut.note}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {transactions.map((t) => (
+                <tr key={t.id}>
+                  <td dir="ltr">{t.at.slice(0, 16)}</td>
+                  <td>{t.direction === 'in' ? ar.cashInOut.cashIn : ar.cashInOut.cashOut}</td>
+                  <td dir="ltr">{fromPiastres(t.amount)}</td>
+                  <td>{t.category ?? '—'}</td>
+                  <td>{t.note ?? '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </fieldset>
+    </div>
+  );
+}
+
+function Stat({ label, value, good }: { label: string; value: string; good?: boolean }) {
+  return (
+    <div className={good ? 'stat stat--good' : 'stat'}>
+      <span className="stat__value" dir="ltr">
+        {value}
+      </span>
+      <span className="stat__label">{label}</span>
+    </div>
+  );
+}
