@@ -64,3 +64,24 @@ export interface SalesLineRow {
   unitCost: number;
   expiryDate: string | null;
 }
+
+export interface SalesReportRow {
+  invoiceCount: number;
+  cashTotal: number;
+  creditTotal: number;
+  subtotal: number;
+  discountTotal: number;
+  grandTotal: number;
+  costTotal: number;
+  grossProfit: number;
+}
+
+export interface SalesReportInvoiceRow {
+  id: number;
+  serial: number;
+  invoiceType: string;
+  total: number;
+  costTotal: number;
+  confirmedAt: string | null;
+  customerId: number | null;
+}

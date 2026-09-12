@@ -91,6 +91,8 @@ import {
   getPurchaseReturnLines,
   listPurchaseReturns,
   getReturnablePurchaseLines,
+  getSalesReport,
+  getSalesReportInvoices,
   type Db,
 } from '@pharmacy/db';
 import { guessMapping, validateRows, type ImportField } from '@pharmacy/core';
@@ -451,6 +453,12 @@ function dispatch(envelope: DbRequestEnvelope): DbResponseEnvelope {
 
       case 'purchaseReturns.returnableLines':
         return ok(getReturnablePurchaseLines(requireDb(), req.invoiceId));
+
+      case 'sales.report':
+        return ok(getSalesReport(requireDb(), req.from, req.to));
+
+      case 'sales.reportInvoices':
+        return ok(getSalesReportInvoices(requireDb(), req.from, req.to, req.limit));
 
       // Handled in the main process, which owns the window and the filesystem.
       // Listed so the exhaustiveness check below stays meaningful.

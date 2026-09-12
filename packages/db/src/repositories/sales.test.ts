@@ -8,12 +8,15 @@ import { createSupplier } from './suppliers';
 import { getDefaultWarehouse, createWarehouse } from './warehouses';
 import { createPurchaseInvoice, confirmPurchaseInvoice } from './purchases';
 import { getItemBatches, getBatchMoves } from './stock';
+import { createCustomer } from './customers';
 import {
   createSalesInvoice,
   confirmSalesInvoice,
   voidSalesInvoice,
   getSalesInvoice,
   getSalesLines,
+  getSalesReport,
+  getSalesReportInvoices,
 } from './sales';
 
 let db: Db;
@@ -318,5 +321,121 @@ describe('voidSalesInvoice', () => {
     const id = createSalesInvoice(db, { warehouseId, invoiceType: 'cash', lines: [baseSaleLine()] });
     confirmSalesInvoice(db, id);
     expect(() => voidSalesInvoice(db, id)).toThrow(/sales return/);
+  });
+});
+
+
+
+describe('getSalesReport / getSalesReportInvoices', () => {
+  function todayStr(): string {
+    return new Date().toISOString().slice(0, 10);
+  }
+
+  it('sums confirmed cash and credit invoices separately for today', () => {
+    stockUp(100, 50);
+    const customerId = createCustomer(db, { name: 'عميل تقرير', mobile1: '0130000001' });
+
+    const cashId = createSalesInvoice(db, {
+      warehouseId,
+      invoiceType: 'cash',
+      paidCash: 1000,
+      lines: [baseSaleLine({ qtyInUnit: 10, unitPrice: 100 })], // 1000
+    });
+    confirmSalesInvoice(db, cashId);
+
+    const creditId = createSalesInvoice(db, {
+      warehouseId,
+      customerId,
+      invoiceType: 'credit',
+      lines: [baseSaleLine({ qtyInUnit: 5, unitPrice: 100 })], // 500
+    });
+    confirmSalesInvoice(db, creditId);
+
+    const report = getSalesReport(db, todayStr(), todayStr());
+    expect(report.invoiceCount).toBe(2);
+    expect(report.cashTotal).toBe(1000);
+    expect(report.creditTotal).toBe(500);
+    expect(report.grandTotal).toBe(1500);
+  });
+
+  it('computes gross profit as grandTotal minus costTotal', () => {
+    stockUp(100, 60); // cost 60/unit
+    const id = createSalesInvoice(db, {
+      warehouseId,
+      invoiceType: 'cash',
+      paidCash: 1000,
+      lines: [baseSaleLine({ qtyInUnit: 10, unitPrice: 100 })], // sells at 100/unit
+    });
+    confirmSalesInvoice(db, id);
+
+    const report = getSalesReport(db, todayStr(), todayStr());
+    expect(report.grandTotal).toBe(1000); // 10 * 100
+    expect(report.costTotal).toBe(600); // 10 * 60
+    expect(report.grossProfit).toBe(400); // 1000 - 600
+  });
+
+  it('excludes a draft invoice — only confirmed sales count', () => {
+    stockUp(100, 50);
+    createSalesInvoice(db, {
+      warehouseId,
+      invoiceType: 'cash',
+      paidCash: 1000,
+      lines: [baseSaleLine({ qtyInUnit: 10, unitPrice: 100 })],
+    });
+    // never confirmed
+
+    const report = getSalesReport(db, todayStr(), todayStr());
+    expect(report.invoiceCount).toBe(0);
+    expect(report.grandTotal).toBe(0);
+  });
+
+  it('excludes a voided invoice even if it was drafted today', () => {
+    stockUp(100, 50);
+    const id = createSalesInvoice(db, {
+      warehouseId,
+      invoiceType: 'cash',
+      lines: [baseSaleLine()],
+    });
+    voidSalesInvoice(db, id);
+
+    const report = getSalesReport(db, todayStr(), todayStr());
+    expect(report.invoiceCount).toBe(0);
+  });
+
+  it('excludes a sale confirmed outside the requested date range', () => {
+    stockUp(100, 50);
+    const id = createSalesInvoice(db, { warehouseId, invoiceType: 'cash', lines: [baseSaleLine()] });
+    confirmSalesInvoice(db, id);
+    // Force confirmed_at into the past, outside "today".
+    db.prepare("UPDATE sales_invoices SET confirmed_at = '2020-01-01T10:00:00' WHERE id = ?").run(id);
+
+    const report = getSalesReport(db, todayStr(), todayStr());
+    expect(report.invoiceCount).toBe(0);
+  });
+
+  it('includes a sale confirmed at the very end of the "to" day (date-boundary check)', () => {
+    stockUp(100, 50);
+    const id = createSalesInvoice(db, { warehouseId, invoiceType: 'cash', lines: [baseSaleLine()] });
+    confirmSalesInvoice(db, id);
+    const today = todayStr();
+    // 23:59:59 on the target day must still be included -- the naive bug this
+    // guards against is comparing confirmed_at against a bare date string,
+    // which in SQLite text comparison would exclude any time-of-day at all.
+    db.prepare("UPDATE sales_invoices SET confirmed_at = ? WHERE id = ?").run(`${today}T23:59:59`, id);
+
+    const report = getSalesReport(db, today, today);
+    expect(report.invoiceCount).toBe(1);
+  });
+
+  it('getSalesReportInvoices lists the drill-down rows newest first', () => {
+    stockUp(100, 50);
+    const id1 = createSalesInvoice(db, { warehouseId, invoiceType: 'cash', lines: [baseSaleLine()] });
+    confirmSalesInvoice(db, id1);
+    const id2 = createSalesInvoice(db, { warehouseId, invoiceType: 'cash', lines: [baseSaleLine()] });
+    confirmSalesInvoice(db, id2);
+
+    const rows = getSalesReportInvoices(db, todayStr(), todayStr());
+    expect(rows).toHaveLength(2);
+    expect(rows[0]!.id).toBe(id2);
   });
 });

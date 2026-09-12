@@ -48,6 +48,8 @@ import {
   type PurchaseReturnRow,
   type PurchaseReturnLineRow,
   type ReturnablePurchaseLine,
+  type SalesReportRow,
+  type SalesReportInvoiceRow,
 } from '@pharmacy/shared';
 
 function send<T>(request: DbRequest): Promise<T> {
@@ -192,6 +194,12 @@ const api: RendererApi = {
       }),
     returnableLines: (invoiceId) =>
       send<ReturnablePurchaseLine[]>({ kind: 'purchaseReturns.returnableLines', invoiceId }),
+  },
+
+  salesReport: {
+    summary: (from, to) => send<SalesReportRow>({ kind: 'sales.report', from, to }),
+    invoices: (from, to, limit) =>
+      send<SalesReportInvoiceRow[]>({ kind: 'sales.reportInvoices', from, to, limit }),
   },
 };
 

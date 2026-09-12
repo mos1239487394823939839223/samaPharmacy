@@ -356,3 +356,67 @@ export function voidSalesInvoice(db: Db, invoiceId: number): void {
   }
   db.prepare("UPDATE sales_invoices SET status = 'voided' WHERE id = ?").run(invoiceId);
 }
+
+export interface SalesReportRow {
+  invoiceCount: number;
+  cashTotal: number;
+  creditTotal: number;
+  subtotal: number;
+  discountTotal: number;
+  grandTotal: number;
+  costTotal: number;
+  grossProfit: number;
+}
+
+export interface SalesReportInvoiceRow {
+  id: number;
+  serial: number;
+  invoiceType: string;
+  total: number;
+  costTotal: number;
+  confirmedAt: string | null;
+  customerId: number | null;
+}
+
+/**
+ * Date-range sales summary — spec M9's first bullet ("daily summary... invoice
+ * list with drill-down"). Only confirmed invoices count: a draft or voided
+ * invoice never happened as far as revenue or profit are concerned.
+ *
+ * from/to are inclusive ISO date strings ('YYYY-MM-DD'); confirmed_at is a
+ * full timestamp, so `to` is compared against the start of the next day to
+ * include every confirmation on that calendar day.
+ */
+export function getSalesReport(db: Db, from: string, to: string): SalesReportRow {
+  const row = db
+    .prepare(
+      `SELECT
+         COUNT(*) AS invoiceCount,
+         COALESCE(SUM(CASE WHEN invoice_type = 'cash' THEN total ELSE 0 END), 0) AS cashTotal,
+         COALESCE(SUM(CASE WHEN invoice_type = 'credit' THEN total ELSE 0 END), 0) AS creditTotal,
+         COALESCE(SUM(subtotal), 0) AS subtotal,
+         COALESCE(SUM(line_discount_total + extra_discount_amt), 0) AS discountTotal,
+         COALESCE(SUM(total), 0) AS grandTotal,
+         COALESCE(SUM(cost_total), 0) AS costTotal
+       FROM sales_invoices
+       WHERE status = 'confirmed'
+         AND confirmed_at >= ? AND confirmed_at < datetime(?, '+1 day')`
+    )
+    .get(from, to) as Omit<SalesReportRow, 'grossProfit'>;
+
+  return { ...row, grossProfit: row.grandTotal - row.costTotal };
+}
+
+export function getSalesReportInvoices(db: Db, from: string, to: string, limit = 500): SalesReportInvoiceRow[] {
+  return db
+    .prepare(
+      `SELECT id, serial, invoice_type AS invoiceType, total, cost_total AS costTotal,
+              confirmed_at AS confirmedAt, customer_id AS customerId
+       FROM sales_invoices
+       WHERE status = 'confirmed'
+         AND confirmed_at >= ? AND confirmed_at < datetime(?, '+1 day')
+       ORDER BY confirmed_at DESC, id DESC
+       LIMIT ?`
+    )
+    .all(from, to, limit) as SalesReportInvoiceRow[];
+}
