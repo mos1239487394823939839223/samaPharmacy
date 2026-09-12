@@ -75,12 +75,32 @@ Code, comments, and commit messages are English.
 
 ## Environment notes
 
-`ELECTRON_RUN_AS_NODE=1` is set in this machine's shell. It makes the Electron binary
-run as a plain Node interpreter — no browser process, no `app`, and
-`require('electron')` returns the binary path string instead of the API object. Any
-script that launches Electron must strip it from the child environment. Verify with
-`$(node -e "console.log(require('electron'))") --version`: correct output is the
-Electron version, not the bundled Node version.
+`ELECTRON_RUN_AS_NODE=1` is set on this machine **via `launchctl`**, not a dotfile —
+so it applies to every process including GUI-launched apps, and survives shell and
+Node version changes. It makes the Electron binary run as a plain Node interpreter:
+no browser process, `app` is `undefined`, and the first `app.whenReady()` throws
+`Cannot read properties of undefined`.
+
+Diagnose:
+
+```bash
+$(node -e "console.log(require('electron'))") --version
+# correct:  v33.x.x   (Electron)
+# broken:   v20.x.x   (the bundled Node version)
+```
+
+`npm run dev`/`build`/`start` route through `scripts/dev.mjs`, which strips the
+variable before spawning electron-vite, so the project is immune. Anything launching
+Electron by hand must do the same (`env -u ELECTRON_RUN_AS_NODE ...`).
+
+To remove it machine-wide (recommended — it breaks every Electron app):
+
+```bash
+launchctl unsetenv ELECTRON_RUN_AS_NODE
+```
+
+Then log out and back in. If it returns, something re-sets it at login — check
+`~/Library/LaunchAgents` and any `launchctl setenv` line in a shell profile.
 
 The renderer must be bundled for the browser (esbuild/vite IIFE or ESM). `tsc`'s
 CommonJS output throws `exports is not defined` in a renderer with

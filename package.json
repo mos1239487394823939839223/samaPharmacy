@@ -9,9 +9,9 @@
     "apps/*"
   ],
   "scripts": {
-    "dev": "electron-vite dev",
-    "build": "electron-vite build",
-    "start": "electron-vite preview",
+    "dev": "node scripts/dev.mjs dev",
+    "build": "node scripts/dev.mjs build",
+    "start": "node scripts/dev.mjs preview",
     "package": "npm run build && electron-builder",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",

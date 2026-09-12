@@ -5,13 +5,42 @@
  * no database handle of its own.
  */
 
-import { app, BrowserWindow, Menu, ipcMain } from 'electron';
+import { app, BrowserWindow, Menu, ipcMain, session } from 'electron';
 import path from 'node:path';
 import { IPC, type DbRequest } from '@pharmacy/shared';
 import { DbClient } from './db-client';
 
 const db = new DbClient();
 let mainWindow: BrowserWindow | null = null;
+
+/**
+ * Set CSP from here rather than a meta tag in index.html.
+ *
+ * Vite's dev server injects an inline react-refresh script and opens an HMR
+ * websocket. A strict `default-src 'self'` blocks both, and the failure is
+ * silent: the window loads and renders nothing. Production keeps the strict
+ * policy because none of that machinery is present.
+ */
+function setResponseCsp(): void {
+  const devUrl = process.env.ELECTRON_RENDERER_URL;
+
+  const policy = devUrl
+    ? "default-src 'self' 'unsafe-inline' data:; " +
+      `script-src 'self' 'unsafe-inline' 'unsafe-eval' ${devUrl}; ` +
+      `connect-src 'self' ${devUrl} ws://localhost:* http://localhost:*; ` +
+      `style-src 'self' 'unsafe-inline'; font-src 'self' data: ${devUrl};`
+    : "default-src 'self'; script-src 'self'; " +
+      "style-src 'self' 'unsafe-inline'; font-src 'self' data:;";
+
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        'Content-Security-Policy': [policy],
+      },
+    });
+  });
+}
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -45,6 +74,7 @@ app.whenReady().then(async () => {
   // three of the app's own shortcuts (blueprint §2.7), so the default menu has
   // to go before any accelerator is registered.
   Menu.setApplicationMenu(null);
+  setResponseCsp();
 
   // Both entries are built under out/main/, so this is a sibling directory —
   // not '../db-process', which would resolve outside out/main entirely.

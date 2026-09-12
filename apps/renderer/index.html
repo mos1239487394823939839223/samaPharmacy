@@ -3,10 +3,14 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta
-      http-equiv="Content-Security-Policy"
-      content="default-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:;"
-    />
+    <!--
+      No CSP meta tag here. Vite's dev server injects an inline react-refresh
+      script and connects an HMR websocket, both of which a strict
+      `default-src 'self'` policy blocks — the window loads but renders nothing.
+      The policy is set from the main process instead (see setResponseCsp in
+      apps/desktop/src/main/index.ts), which can apply a strict production
+      policy and a dev policy that permits Vite's machinery.
+    -->
     <title>نظام إدارة الصيدلية</title>
   </head>
   <body>
