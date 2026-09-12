@@ -11,6 +11,8 @@ import { validateUnitSet } from '@pharmacy/core';
 import { ar } from '../../i18n/ar';
 import { MoneyInput } from '../../components/MoneyInput';
 import { attachShortcuts, formatShortcut } from '../../lib/shortcuts';
+import { useBarcodeScanner, isValidEan, classifyBarcode } from '../../hardware/scanner';
+import { loadScannerConfig } from '../../hardware/config';
 
 type Tab = 'basic' | 'pricing' | 'supplier' | 'settings';
 
@@ -74,6 +76,64 @@ export function ItemForm({ existing, showBadges, onSaved, onCancel }: Props) {
 
   const firstFieldRef = useRef<HTMLInputElement>(null);
   useEffect(() => firstFieldRef.current?.focus(), []);
+
+  const [scanNotice, setScanNotice] = useState<string | null>(null);
+
+  // Hardware doc §1.4 routing: on the item form, a scan fills the barcode
+  // table. Keep the latest barcode list visible to the handler without
+  // re-attaching the keyboard listener on every keystroke.
+  const barcodesRef = useRef(barcodes);
+  barcodesRef.current = barcodes;
+
+  useBarcodeScanner(
+    (event) => {
+      const code = event.code;
+      const current = barcodesRef.current;
+
+      if (current.some((b) => b.trim() === code)) {
+        setScanNotice(ar.items.scan.duplicate.replace('{code}', code));
+        return;
+      }
+
+      // Fill the first empty row, otherwise append one.
+      const emptyIndex = current.findIndex((b) => b.trim() === '');
+      const next =
+        emptyIndex >= 0
+          ? current.map((b, i) => (i === emptyIndex ? code : b))
+          : [...current, code];
+
+      setBarcodes(next);
+      setTab('basic');
+
+      // A failed EAN check digit usually means a misread, not a missing item
+      // (hardware doc §1.5). Warn rather than reject — internal codes and
+      // Code128 are legitimately not EAN.
+      const kind = classifyBarcode(code);
+      if ((kind === 'ean13' || kind === 'ean8') && !isValidEan(code)) {
+        setScanNotice(ar.items.scan.badCheckDigit.replace('{code}', code));
+      } else {
+        setScanNotice(ar.items.scan.added.replace('{code}', code));
+      }
+    },
+    {
+      config: loadScannerConfig(),
+      // Timing mode cannot tell a scan from fast typing in a text field, and a
+      // barcode landing in the drug-name field is worse than a missed scan.
+      // Suppress while a non-barcode text input holds focus.
+      shouldIgnore: () => {
+        const el = document.activeElement as HTMLElement | null;
+        if (!el) return false;
+        if (el.dataset?.scanTarget === 'barcode') return false;
+        const tag = el.tagName;
+        return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+      },
+      onGuard: (guard, detail) => {
+        // A non-zero contamination counter means event.key is leaking in
+        // somewhere upstream — surface it rather than relying on the repair.
+        console.warn(`[scanner:${guard}] ${detail}`);
+      },
+    }
+  );
 
   // Keep the latest state visible to the shortcut handler without re-attaching
   // the listener on every keystroke.
@@ -220,6 +280,19 @@ export function ItemForm({ existing, showBadges, onSaved, onCancel }: Props) {
       </div>
 
       {error && <div className="alert alert--error">{error}</div>}
+      {scanNotice && (
+        <div className="alert alert--info" role="status">
+          {scanNotice}
+          <button
+            type="button"
+            className="alert__close"
+            onClick={() => setScanNotice(null)}
+            aria-label={ar.items.actions.cancel}
+          >
+            ×
+          </button>
+        </div>
+      )}
 
       <div className="tabs" role="tablist">
         {tabs.map((t) => (
@@ -316,6 +389,7 @@ export function ItemForm({ existing, showBadges, onSaved, onCancel }: Props) {
 
             <RepeatingList
               legend={ar.items.fields.barcodes}
+              hint={ar.items.scan.hint}
               rows={barcodes}
               onAdd={() => setBarcodes([...barcodes, ''])}
               onRemove={(i) => setBarcodes(barcodes.filter((_, idx) => idx !== i))}
@@ -323,6 +397,9 @@ export function ItemForm({ existing, showBadges, onSaved, onCancel }: Props) {
                 <input
                   className="field"
                   dir="ltr"
+                  // Marks this input as a legitimate scan destination, so the
+                  // scanner is not suppressed while it holds focus.
+                  data-scan-target="barcode"
                   value={value}
                   placeholder={ar.items.fields.barcode}
                   onChange={(e) => {
@@ -535,12 +612,14 @@ function Field({
 
 function RepeatingList({
   legend,
+  hint,
   rows,
   onAdd,
   onRemove,
   render,
 }: {
   legend: string;
+  hint?: string;
   rows: string[];
   onAdd: () => void;
   onRemove: (index: number) => void;
@@ -549,6 +628,7 @@ function RepeatingList({
   return (
     <fieldset className="fieldset">
       <legend>{legend}</legend>
+      {hint && <p className="hint">{hint}</p>}
       {rows.map((row, i) => (
         <div className="repeat-row" key={i}>
           {render(row, i)}

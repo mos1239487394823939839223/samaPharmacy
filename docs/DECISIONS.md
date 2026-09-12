@@ -174,6 +174,39 @@ the application — the wrong trade.
 This is the **only** place `ELECTRON_RUN_AS_NODE` is wanted. Every other entry point
 strips it (see `scripts/dev.mjs` and CLAUDE.md § Environment notes).
 
+## D10 — Scanner brought forward from M6 to the item form
+
+The scanner integration was scheduled for M6. The item-form routing row
+(hardware doc §1.4, "fill the barcode field in the multi-barcode table") was
+brought forward on request, since entering barcodes by hand is the slowest part
+of adding an item.
+
+`docs/reference/scanner.ts` was **adapted, not rewritten**, per M6's instruction.
+All 15 guard references (G1–G5) are intact and no `event.key` read was
+introduced — verified by grep: 0 occurrences of `event.key`, 7 of `event.code`.
+
+Three changes were required:
+
+1. The React import sat mid-file in the reference; hoisted so the module is
+   valid ESM.
+2. Two genuine narrowing gaps that this project's `noUncheckedIndexedAccess`
+   catches and the reference's looser config did not: a median-interval array
+   index and the EAN weights array. Both fixed with `??` fallbacks, behaviour
+   unchanged.
+3. A `shouldIgnore` predicate suppresses scanning while a non-barcode text
+   input holds focus. In timing mode the heuristic cannot distinguish a scan
+   from fast typing, and a barcode landing in the drug-name field is worse
+   than a missed scan. Barcode inputs opt back in via `data-scan-target`.
+
+Config lives in `apps/renderer/src/hardware/config.ts` with `prefixCode: null`
+(timing mode), because no manual exists for the UP-770pro — see D7. When a
+configuration sheet is found, set `prefixCode: 'F9'` there and detection
+becomes exact.
+
+**Still outstanding for M6:** the per-screen routing table beyond the item form
+(POS, purchase, returns), the Settings → Hardware diagnostics tab, and the
+printer work in D6.
+
 ---
 
 ## Open, not yet decided

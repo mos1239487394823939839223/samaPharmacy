@@ -581,3 +581,30 @@
     color: var(--muted);
   }
 }
+
+@layer components {
+  .alert--info {
+    background: var(--accent-soft);
+    border: 1px solid #c7d7fe;
+    color: #1e40af;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .alert__close {
+    margin-inline-start: auto;
+    border: none;
+    background: transparent;
+    font-size: 1.1rem;
+    line-height: 1;
+    color: inherit;
+    padding: 0 0.25rem;
+  }
+
+  .hint {
+    font-size: 0.78rem;
+    color: var(--muted);
+    margin-block: 0 0.5rem;
+  }
+}
