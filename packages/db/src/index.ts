@@ -5,3 +5,4 @@ export * from './repositories/import';
 export * from './repositories/warehouses';
 export * from './repositories/suppliers';
 export * from './repositories/purchases';
+export * from './repositories/stock';
