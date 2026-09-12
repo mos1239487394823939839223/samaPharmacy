@@ -1,0 +1,102 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Logical properties only — no `left`/`right`/`margin-left`. Under dir="rtl"
+ * the inline axis flips automatically, so `padding-inline-start` is the start
+ * of the reading order in both directions. Physical properties would need a
+ * mirrored stylesheet per direction.
+ */
+
+@layer base {
+  :root {
+    color-scheme: light;
+  }
+
+  html,
+  body,
+  #root {
+    block-size: 100%;
+  }
+
+  body {
+    margin: 0;
+    font-family: Cairo, system-ui, sans-serif;
+    background: #f6f7f9;
+    color: #14181f;
+  }
+}
+
+@layer components {
+  .health {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-block-size: 100%;
+    padding-inline: 1.5rem;
+    padding-block: 2rem;
+    gap: 1.25rem;
+  }
+
+  .health h1 {
+    margin: 0;
+    font-size: 1.5rem;
+    font-weight: 700;
+  }
+
+  .muted {
+    color: #6b7280;
+  }
+
+  .card {
+    inline-size: min(34rem, 100%);
+    background: #fff;
+    border: 1px solid #e3e6ea;
+    border-radius: 0.75rem;
+    padding-inline: 1.25rem;
+    padding-block: 1.25rem;
+  }
+
+  .card h2 {
+    margin-block: 0 0.75rem;
+    font-size: 1.05rem;
+    font-weight: 600;
+  }
+
+  .card.error {
+    border-color: #f3c3c3;
+    background: #fdf5f5;
+  }
+
+  .card dl {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 0.5rem 1rem;
+    margin: 0;
+    font-size: 0.9rem;
+  }
+
+  .card dt {
+    color: #6b7280;
+  }
+
+  .card dd {
+    margin: 0;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .card dd.path {
+    word-break: break-all;
+    font-size: 0.8rem;
+  }
+
+  .card pre {
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-size: 0.85rem;
+    color: #a11b1b;
+  }
+}

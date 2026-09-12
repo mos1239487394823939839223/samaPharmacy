@@ -1,5 +1,7 @@
 node_modules/
+out/
 dist/
+release/
 *.db
 *.db-shm
 *.db-wal
@@ -7,11 +9,4 @@ print-queue.json
 .DS_Store
 .env
 .env.local
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-.idea/
-.vscode/
-*.swp
-*.swo
-*~
+*.log

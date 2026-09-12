@@ -91,6 +91,56 @@ and *Users, Roles and Audit* sections. Both exist. Read carefully when cross-ref
 
 ---
 
+## D6 — Reference printer needs four changes for the actual device (XP-233B)
+
+`docs/hardware-device-profile.md` specifies the real hardware. Checked against
+`docs/reference/escpos-printer.ts`. **The reference does not yet support this
+printer.** M6 must close these before the printer is wired up.
+
+**Already compatible — no change needed:**
+
+- `paperWidth: 58` maps to exactly **384 dots** (`PAPER_DOTS`, line 55), which is
+  the XP-233B's printable width. The profile's `widthDotsOverride: 384` is already
+  the correct value via the 58mm preset; no override mechanism is required.
+- `transport: 'share'` exists and writes to `\\localhost\<name>` (`sendShare`).
+- `drawerPin: 2` is supported directly.
+- P5 already returns `paperOut: null` on non-network transports and lets the queue
+  proceed — exactly the "unknown, don't block" behavior the profile describes.
+
+**Gaps that must be closed at M6:**
+
+| # | Gap | Consequence if missed |
+|---|---|---|
+| 1 | `DEVICE_PROFILES` does not exist | The profile's config snippet does not compile |
+| 2 | **`hasCutter` does not exist; `CUT_PARTIAL` is unconditional** (lines 533, 553) | **The XP-233B has no cutter.** A cut command on every sale leaves the last lines jammed in the mechanism. Highest-severity item. |
+| 3 | `receiptHtml()` is a fixed four-column table | Unreadable at 384 dots. Needs a narrow layout below ~450 dots: name on its own line, `qty × price` and total beneath. |
+| 4 | No ESC/POS-vs-TSPL mode detection | If the printer is left in TSPL mode, raster receipts print as garbage with no diagnostic. Surface in Settings → Hardware. |
+
+## D7 — Scanner config is unresolved until the device is tested
+
+`docs/hardware-device-profile.md` gives a **test procedure, not a specification** —
+no manual was found for the UP-770pro.
+
+Consequences for M6:
+
+- Ship with `prefixCode: null` (timing mode). Switch to `'F9'` only if a
+  configuration sheet is obtained and the prefix is actually programmed.
+- `terminator` cannot be fixed in advance; profile test 2 decides between `'Enter'`
+  and `'None'` (the latter relying on guard G3's idle flush).
+- Profile test 3 (scan under Arabic Windows layout) is the one that confirms whether
+  guard G1 does real work on this hardware. Run it before trusting the timing path.
+- Median interval must be read from `scanner.diagnostics()`. Under 20ms is
+  comfortable; approaching 35ms means the timing heuristic is unsafe and a prefix
+  becomes mandatory.
+
+**Interaction with D4.** This scanner is 1D-only and cannot read QR or DataMatrix. If
+ETA e-invoicing becomes applicable, the `eta_uuid`/`eta_status` columns added in D4
+will be populated by a device that cannot read the codes involved. Not a blocker —
+they are separate concerns — but the two decisions touch, and a 2D imager is the
+right choice for the next scanner purchased.
+
+---
+
 ## Open, not yet decided
 
 - **Concurrent tills.** Spec §6 targets 3. Blueprint §2.3 is emphatic that two tills

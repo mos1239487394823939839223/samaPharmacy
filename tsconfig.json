@@ -1,28 +1,37 @@
 {
   "compilerOptions": {
-    "target": "ES2020",
-    "module": "commonjs",
-    "lib": ["ES2020", "DOM"],
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "jsx": "react-jsx",
+
     "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+
     "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "resolveJsonModule": true,
-    "declaration": true,
-    "declarationMap": true,
-    "sourceMap": true,
-    "outDir": "./dist",
-    "rootDir": "./src",
-    "baseUrl": "./src",
+
+    "noEmit": true,
+
     "paths": {
-      "@/*": ["./*"],
-      "@main/*": ["./main/*"],
-      "@renderer/*": ["./renderer/*"]
-    },
-    "moduleResolution": "node",
-    "allowJs": true
+      "@pharmacy/shared": ["./packages/shared/src"],
+      "@pharmacy/core": ["./packages/core/src"],
+      "@pharmacy/db": ["./packages/db/src"],
+      "@pharmacy/api": ["./packages/api/src"]
+    }
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx"],
-  "exclude": ["node_modules", "dist", "scripts", "src/renderer"]
+  "include": [
+    "packages/*/src/**/*.ts",
+    "apps/desktop/src/**/*.ts",
+    "apps/renderer/src/**/*.ts",
+    "apps/renderer/src/**/*.tsx",
+    "electron.vite.config.ts"
+  ],
+  "exclude": ["node_modules", "out", "dist", "legacy"]
 }

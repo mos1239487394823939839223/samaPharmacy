@@ -1,31 +1,41 @@
 {
-  "name": "sama-pharmacy",
-  "version": "1.0.0",
-  "description": "Pharmacy POS System with Scanner & Printer Integration",
-  "main": "dist/main/index.js",
+  "name": "pharmacy",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Pharmacy management system for a single Egyptian pharmacy",
+  "main": "out/main/index.js",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
   "scripts": {
-    "dev": "node scripts/dev.js",
-    "build": "tsc && electron-builder",
-    "type-check": "tsc --noEmit",
-    "start": "electron .",
-    "compile": "tsc"
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "start": "electron-vite preview",
+    "package": "npm run build && electron-builder",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "postinstall": "electron-rebuild -f -w better-sqlite3"
   },
   "dependencies": {
-    "better-sqlite3": "^9.0.0",
-    "electron-store": "^8.1.0",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "zustand": "^4.4.0"
+    "better-sqlite3": "^11.5.0"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "^9.6.0",
-    "@types/electron": "^1.6.10",
-    "@types/node": "^20.0.0",
-    "@types/react": "^18.2.0",
-    "@types/react-dom": "^18.2.0",
-    "electron": "^27.0.0",
-    "electron-builder": "^24.6.0",
-    "esbuild": "^0.28.2",
-    "typescript": "^5.2.0"
+    "@electron/rebuild": "^3.7.0",
+    "@types/better-sqlite3": "^7.6.11",
+    "@types/node": "^22.9.0",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.3",
+    "autoprefixer": "^10.4.20",
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8",
+    "electron-vite": "^2.3.0",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.15",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.11",
+    "vitest": "^2.1.5"
   }
 }
