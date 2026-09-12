@@ -14,9 +14,11 @@
     "start": "node scripts/dev.mjs preview",
     "package": "npm run build && electron-builder",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "postinstall": "electron-rebuild -f -w better-sqlite3"
+    "test": "vitest run packages/core && node scripts/test-db.mjs packages/db",
+    "postinstall": "electron-rebuild -f -w better-sqlite3",
+    "test:core": "vitest run packages/core",
+    "test:db": "node scripts/test-db.mjs packages/db",
+    "test:watch": "vitest packages/core"
   },
   "dependencies": {
     "better-sqlite3": "^11.5.0"

@@ -51,8 +51,35 @@ const CMD = {
   STATUS_PAPER: Buffer.from([DLE, EOT, 0x04]),
 };
 
-/** Printable width in dots at 203 dpi. */
+/**
+ * Printable width in dots at 203 dpi (8 dots/mm).
+ * Note this is the PRINTABLE area, not the media width.
+ */
 export const PAPER_DOTS = { 58: 384, 80: 576 } as const;
+
+/**
+ * Verified device profiles. Add a profile rather than guessing at the call site.
+ *
+ * XP233B — Xprinter XP-233B, dual emulation (TSPL labels / ESC/POS receipts).
+ *   203 dpi, media 20–60mm, printable 56mm in label mode and 48mm in receipt
+ *   mode (48 × 8 = 384 dots). USB only, so no bidirectional status. One drawer
+ *   port on pin 2. Tear bar, no auto-cutter.
+ *   The printer must be in ESC/POS emulation and its paper sensor set to
+ *   continuous, or it will feed hunting for a label gap on every receipt.
+ */
+export const DEVICE_PROFILES = {
+  XP233B: {
+    paperWidth: 58,
+    widthDotsOverride: 384,
+    drawerPin: 2,
+    hasCutter: false,
+  },
+  GENERIC_80MM: {
+    paperWidth: 80,
+    drawerPin: 'auto',
+    hasCutter: true,
+  },
+} as const satisfies Record<string, Partial<BaseConfig>>;
 
 /** P2 — about 50cm of 80mm paper. Beyond this, something is wrong. */
 const MAX_RASTER_ROWS = 4000;
@@ -79,8 +106,14 @@ export class OversizeReceiptError extends RenderError {}
 
 interface BaseConfig {
   paperWidth: 58 | 80;
-  /** 'auto' pulses both pins — harmless on the unwired one. */
+  /** Overrides the paperWidth lookup. Use when the printable area is narrower
+   *  than the media — the XP-233B takes 58mm media but prints 48mm. */
+  widthDotsOverride?: number;
+  /** 'auto' pulses both pins. Set explicitly when the spec sheet says which. */
   drawerPin?: 2 | 5 | 'auto';
+  /** Label printers and cheap receipt printers have a tear bar, not a cutter.
+   *  With no cutter, feed past the bar instead of sending a cut nobody honours. */
+  hasCutter?: boolean;
   /** Path to a bundled Arabic TTF. Checked by P3. */
   arabicFontUrl?: string;
 }
@@ -515,12 +548,23 @@ export class PrinterService extends EventEmitter {
     return { ok: true, findings };
   }
 
+  private widthDots(): number {
+    return this.cfg.widthDotsOverride ?? PAPER_DOTS[this.cfg.paperWidth];
+  }
+
+  /** Cut if the device has a cutter; otherwise feed past the tear bar. */
+  private finish(): Buffer {
+    return this.cfg.hasCutter === false
+      ? CMD.FEED(6)
+      : Buffer.concat([CMD.FEED(3), CMD.CUT_PARTIAL]);
+  }
+
   async printTest(): Promise<void> {
-    await this.render(testReceiptHtml(PAPER_DOTS[this.cfg.paperWidth]), 1);
+    await this.render(testReceiptHtml(this.widthDots()), 1);
   }
 
   private async render(html: string, copies: number): Promise<void> {
-    const width = PAPER_DOTS[this.cfg.paperWidth];
+    const width = this.widthDots();
     const raster = await rasterizeHtml(html, width, {
       arabicFontFamily: this.cfg.arabicFontUrl ? 'Cairo' : undefined,
       onWarn: (message) => this.emitEvent({ type: 'warn', message }),
@@ -530,7 +574,7 @@ export class PrinterService extends EventEmitter {
     for (let i = 0; i < Math.max(1, Math.min(copies, 5)); i++) {
       await send(
         this.cfg,
-        Buffer.concat([CMD.INIT, CMD.ALIGN_LEFT, body, CMD.FEED(3), CMD.CUT_PARTIAL])
+        Buffer.concat([CMD.INIT, CMD.ALIGN_LEFT, body, this.finish()])
       );
     }
   }
@@ -549,8 +593,7 @@ export class PrinterService extends EventEmitter {
         CMD.ALIGN_LEFT,
         Buffer.from(safe + '\n', 'ascii'),
         Buffer.from('Ask staff for a full reprint.\n', 'ascii'),
-        CMD.FEED(3),
-        CMD.CUT_PARTIAL,
+        this.finish(),
       ])
     );
   }
@@ -703,16 +746,32 @@ export function fallbackText(d: ReceiptData): string {
 }
 
 export function receiptHtml(d: ReceiptData, widthDots: number, fontUrl?: string): string {
-  const rows = d.lines
-    .map(
-      (l) => `<tr>
-        <td class="n">${escapeHtml(l.name)}</td>
-        <td class="c">${l.qty}</td>
-        <td class="c">${egp(l.unitPrice)}</td>
-        <td class="c">${egp(l.total)}</td>
-      </tr>`
-    )
-    .join('');
+  // Below ~450 dots a four-column table cannot hold an Arabic drug name.
+  // Narrow paper stacks each item: name on its own line, figures beneath.
+  const narrow = widthDots < 450;
+
+  const items = narrow
+    ? d.lines
+        .map(
+          (l) => `<div class="it">
+            <div class="itn">${escapeHtml(l.name)}</div>
+            <div class="itf"><span>${l.qty} \u00D7 ${egp(l.unitPrice)}</span><span>${egp(l.total)}</span></div>
+          </div>`
+        )
+        .join('')
+    : `<table>
+        <thead><tr><th class="n">\u0627\u0644\u0635\u0646\u0641</th><th class="c">\u0643\u0645\u064A\u0629</th><th class="c">\u0633\u0639\u0631</th><th class="c">\u0625\u062C\u0645\u0627\u0644\u064A</th></tr></thead>
+        <tbody>${d.lines
+          .map(
+            (l) => `<tr>
+              <td class="n">${escapeHtml(l.name)}</td>
+              <td class="c">${l.qty}</td>
+              <td class="c">${egp(l.unitPrice)}</td>
+              <td class="c">${egp(l.total)}</td>
+            </tr>`
+          )
+          .join('')}</tbody>
+      </table>`;
 
   const face = fontUrl
     ? `@font-face { font-family:'Cairo'; src:url('${fontUrl}'); font-display:block; }`
@@ -723,8 +782,11 @@ export function receiptHtml(d: ReceiptData, widthDots: number, fontUrl?: string)
   ${face}
   * { margin:0; padding:0; box-sizing:border-box; }
   html, body { width:${widthDots}px; overflow-x:hidden; }
-  body { font-family:'Cairo','Segoe UI',sans-serif; font-size:19px;
+  body { font-family:'Cairo','Segoe UI',sans-serif; font-size:${narrow ? 16 : 19}px;
          color:#000; background:#fff; -webkit-font-smoothing:none; }
+  .it { padding:3px 0; border-bottom:1px dotted #999; }
+  .itn { font-weight:600; word-wrap:break-word; overflow-wrap:anywhere; }
+  .itf { display:flex; justify-content:space-between; font-size:${narrow ? 15 : 18}px; }
   .c { text-align:center; }
   .hd { text-align:center; padding:6px 0; }
   .hd .name { font-size:26px; font-weight:700; }
@@ -753,10 +815,7 @@ export function receiptHtml(d: ReceiptData, widthDots: number, fontUrl?: string)
     ${d.customerName ? `<div>العميل: ${escapeHtml(d.customerName)}</div>` : ''}
   </div>
   <hr>
-  <table>
-    <thead><tr><th class="n">الصنف</th><th class="c">كمية</th><th class="c">سعر</th><th class="c">إجمالي</th></tr></thead>
-    <tbody>${rows}</tbody>
-  </table>
+  ${items}
   <hr>
   <div class="row"><span>عدد الأصناف</span><span>${d.lines.length}</span></div>
   ${d.discount ? `<div class="row"><span>الخصم</span><span>${egp(d.discount)}</span></div>` : ''}

@@ -141,6 +141,41 @@ right choice for the next scanner purchased.
 
 ---
 
+## D8 — Three customer discount rates: cash / credit / invoice override
+
+**Was open.** Both `schema.sql` and blueprint §5.4 flagged the semantics as
+unconfirmed.
+
+**Resolved.**
+
+| Column | Applies |
+|---|---|
+| `discount_cash_pct` | cash sales |
+| `discount_credit_pct` | credit (آجل) sales |
+| `discount_invoice_pct` | whole-invoice override, takes precedence over the other two |
+
+Unblocks M8. Still worth confirming against the live PharmaSyst customer form
+before go-live, since this was inferred rather than observed.
+
+## D9 — `packages/db` tests run under Electron's Node
+
+`better-sqlite3` is rebuilt against Electron's ABI by the `postinstall` hook, so
+plain Node cannot load it: `NODE_MODULE_VERSION 130` vs `127`. Vitest runs under
+system Node and therefore cannot open a database.
+
+**Resolved.** `scripts/test-db.mjs` runs vitest under the Electron binary with
+`ELECTRON_RUN_AS_NODE=1`. Rebuilding for system Node would fix the tests and break
+the application — the wrong trade.
+
+- `npm run test:core` — pure logic, plain Node, fast
+- `npm run test:db` — repositories, Electron's Node
+- `npm test` — both
+
+This is the **only** place `ELECTRON_RUN_AS_NODE` is wanted. Every other entry point
+strips it (see `scripts/dev.mjs` and CLAUDE.md § Environment notes).
+
+---
+
 ## Open, not yet decided
 
 - **Concurrent tills.** Spec §6 targets 3. Blueprint §2.3 is emphatic that two tills
@@ -156,6 +191,4 @@ right choice for the next scanner purchased.
   `doctor_name`, `doctor_syndicate_no`, `patient_name`, `patient_id_no` inline.
   Adequate for the narcotics register; revisit if general prescription tracking is
   needed beyond controlled items.
-- **Three customer discount rates.** Blueprint §5.4 flags that the semantics are
-  unconfirmed; `schema.sql` comments say the same ("confirm semantics before use").
-  Must be settled before M8 credit work.
+- ~~**Three customer discount rates.**~~ Resolved — see D8 above.
