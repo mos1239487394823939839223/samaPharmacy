@@ -12,13 +12,44 @@
 @layer base {
   :root {
     color-scheme: light;
-    --bg: #f4f6f8;
+    --bg: #f6f7f9;
     --surface: #ffffff;
-    --border: #dfe3e8;
-    --text: #14181f;
+    --surface-sunken: #f9fafb;
+    --border: #e5e8ec;
+    --border-strong: #d3d8de;
+    --text: #171a21;
     --muted: #6b7280;
-    --accent: #1d4ed8;
-    --accent-soft: #eaf0ff;
+    --accent: #2554e0;
+    --accent-hover: #1f45c2;
+    --accent-soft: #ecf1ff;
+    --danger: #b91c1c;
+    --danger-border: #f0c8c8;
+    --danger-soft: #fdf0f0;
+    --success: #16794a;
+    --success-border: #bfe3d0;
+    --success-soft: #eefaf3;
+
+    /* Spacing scale — every screen's gaps/margins should come from here
+       rather than a one-off rem value chosen per instance. */
+    --space-1: 0.25rem;
+    --space-2: 0.5rem;
+    --space-3: 0.75rem;
+    --space-4: 1rem;
+    --space-5: 1.5rem;
+
+    /* Corner radius scale — replaces the ad-hoc 0.35rem/0.45rem/0.5rem/
+       0.6rem/0.75rem values components picked independently. */
+    --radius-sm: 0.5rem;
+    --radius-md: 0.75rem;
+    --radius-lg: 1rem;
+
+    /* Soft elevation — a modern flat surface separates from its background
+       with a diffuse shadow rather than a hard 1px border everywhere. */
+    --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.04), 0 1px 1px rgba(16, 24, 40, 0.03);
+    --shadow-md: 0 2px 8px rgba(16, 24, 40, 0.06), 0 1px 2px rgba(16, 24, 40, 0.04);
+    --shadow-lg: 0 8px 24px rgba(16, 24, 40, 0.10), 0 2px 6px rgba(16, 24, 40, 0.05);
+
+    --ease: cubic-bezier(0.4, 0, 0.2, 1);
   }
 
   html,
@@ -32,12 +63,20 @@
     font-family: Cairo, system-ui, sans-serif;
     background: var(--bg);
     color: var(--text);
+    font-size: 15px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
   }
 
   button {
     font-family: inherit;
     font-size: inherit;
     cursor: pointer;
+  }
+
+  ::selection {
+    background: var(--accent-soft);
+    color: var(--accent-hover);
   }
 }
 
@@ -62,9 +101,29 @@
   }
 
   .shell__heading {
-    margin-block: 0 1rem;
-    font-size: 1.25rem;
+    margin-block: 0 1.1rem;
+    font-size: 1.3rem;
     font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+
+  /*
+   * Secondary heading tier for a section inside a screen (e.g. "قائمة
+   * الفواتير" above a drill-down table). Sits between the shell's h1 and a
+   * fieldset legend in weight, so a screen with several sections reads as a
+   * hierarchy instead of a flat stack of same-weight boxes.
+   */
+  .section-heading {
+    margin-block: 0 0.6rem;
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--text);
+  }
+
+  /* In a horizontal bar (e.g. next to a "back" button) the heading has no
+     siblings below it to separate from, so it drops its own bottom margin. */
+  .section-heading--inline {
+    margin-block-end: 0;
   }
 
   /* ---- toolbar ---- */
@@ -74,9 +133,11 @@
     align-items: center;
     gap: 0.75rem;
     padding-inline: 0.75rem;
-    padding-block: 0.5rem;
+    padding-block: 0.6rem;
     background: var(--surface);
-    border-block-end: 1px solid var(--border);
+    box-shadow: var(--shadow-sm);
+    position: relative;
+    z-index: 1;
   }
 
   /*
@@ -99,16 +160,18 @@
   .toolbar__icon {
     border: 1px solid var(--border);
     background: var(--surface);
-    border-radius: 0.5rem;
+    border-radius: var(--radius-sm);
     inline-size: 2.25rem;
     block-size: 2.25rem;
     font-size: 1rem;
     line-height: 1;
     flex-shrink: 0;
+    transition: background-color 0.12s var(--ease), border-color 0.12s var(--ease);
   }
 
   .toolbar__icon:hover {
     background: var(--bg);
+    border-color: var(--border-strong);
   }
 
   .toolbar__modules {
@@ -123,13 +186,14 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 0.2rem;
+    gap: 0.25rem;
     border: 1px solid transparent;
     background: transparent;
-    border-radius: 0.5rem;
-    padding-inline: 0.85rem;
-    padding-block: 0.4rem;
+    border-radius: var(--radius-sm);
+    padding-inline: 0.9rem;
+    padding-block: 0.5rem;
     color: var(--text);
+    transition: background-color 0.12s var(--ease), color 0.12s var(--ease);
   }
 
   .module:hover {
@@ -138,24 +202,24 @@
 
   .module--active {
     background: var(--accent-soft);
-    border-color: #c7d7fe;
+    border-color: transparent;
     color: var(--accent);
   }
 
   .module__label {
-    font-size: 0.95rem;
+    font-size: 1.05rem;
     font-weight: 600;
   }
 
   .module__badge {
-    font-size: 0.65rem;
+    font-size: 0.72rem;
     font-weight: 600;
     letter-spacing: 0.02em;
     color: #fff;
     background: var(--accent);
-    border-radius: 0.3rem;
-    padding-inline: 0.35rem;
-    padding-block: 0.08rem;
+    border-radius: 999px;
+    padding-inline: 0.45rem;
+    padding-block: 0.1rem;
   }
 
   .module--active .module__badge {
@@ -166,27 +230,64 @@
     display: flex;
     align-items: center;
     gap: 0.4rem;
-    font-size: 0.78rem;
+    font-size: 0.86rem;
     color: var(--muted);
     white-space: nowrap;
   }
 
-  /* ---- drawer ---- */
+  /* ---- drawer ----
+   * Horizontal rhythm: the drawer has one outer inline padding (--space-3);
+   * every row (root, group label, leaf) shares that same start edge, and a
+   * leaf's extra inset comes only from --space-3 of .drawer__children
+   * padding — so the tree reads as one consistent indent step, not two
+   * independently-chosen values that happen to look close.
+   */
 
   .drawer {
-    inline-size: 15rem;
+    inline-size: 16.5rem;
     flex-shrink: 0;
     overflow-y: auto;
     background: var(--surface);
     border-inline-end: 1px solid var(--border);
-    padding-block: 0.75rem;
+    padding-inline: var(--space-3);
+    padding-block: var(--space-3);
   }
 
   .drawer__root {
-    padding-inline: 1rem;
-    padding-block: 0.25rem 0.6rem;
+    position: relative;
+    display: block;
+    inline-size: 100%;
+    text-align: start;
+    border: none;
+    border-block-end: 1px solid var(--border);
+    background: transparent;
+    padding-inline: var(--space-3);
+    padding-block: 0.55rem var(--space-3);
+    margin-block-end: var(--space-2);
     font-weight: 700;
     font-size: 0.95rem;
+    letter-spacing: -0.01em;
+    color: var(--text);
+    transition: background-color 0.12s var(--ease), color 0.12s var(--ease);
+  }
+
+  .drawer__root:hover {
+    background: var(--bg);
+  }
+
+  .drawer__root--active {
+    background: var(--accent-soft);
+    color: var(--accent);
+  }
+
+  .drawer__root--active::before {
+    content: '';
+    position: absolute;
+    inset-block: 0.4rem;
+    inset-inline-start: 0;
+    inline-size: 3px;
+    border-radius: 999px;
+    background: var(--accent);
   }
 
   .drawer__tree,
@@ -196,19 +297,84 @@
     padding: 0;
   }
 
+  .drawer__tree > li + li {
+    margin-block-start: var(--space-2);
+  }
+
   .drawer__group {
-    padding-inline: 1rem;
-    padding-block: 0.5rem 0.2rem;
-    font-size: 0.82rem;
-    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    inline-size: 100%;
+    padding-inline: var(--space-3);
+    padding-block: 0.4rem;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    font-size: 0.92rem;
+    font-weight: 800;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    color: var(--text);
+    cursor: pointer;
+    transition: background-color 0.12s var(--ease);
+  }
+
+  .drawer__group:hover {
+    background: var(--bg);
+  }
+
+  .drawer__group-chevron {
+    flex-shrink: 0;
+    display: inline-flex;
     color: var(--muted);
+    transition: transform 0.18s var(--ease);
+  }
+
+  .drawer__group-chevron svg {
+    display: block;
+    inline-size: 0.9rem;
+    block-size: 0.9rem;
+  }
+
+  /* Rest state points the chevron toward the content it discloses (down);
+     collapsed rotates it to point toward the reading direction's start,
+     the common "closed disclosure" convention. */
+  .drawer__group-chevron--collapsed {
+    transform: rotate(-90deg);
+  }
+
+  /*
+   * Smooth expand/collapse via the grid-rows trick: animating to `auto`
+   * height isn't natively transitionable, but a 0fr/1fr grid-template-rows
+   * change is — the row's content stays mounted (so no flash-of-remount)
+   * and its measured height drives the animation.
+   */
+  .drawer__children-wrap {
+    display: grid;
+    grid-template-rows: 1fr;
+    transition: grid-template-rows 0.18s var(--ease);
+  }
+
+  .drawer__children-wrap--collapsed {
+    grid-template-rows: 0fr;
+  }
+
+  .drawer__children-inner {
+    overflow: hidden;
   }
 
   .drawer__children {
-    padding-inline-start: 0.5rem;
+    padding-inline-start: var(--space-3);
+    padding-block-start: 1px;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
   }
 
   .drawer__leaf {
+    position: relative;
     display: block;
     inline-size: 100%;
     text-align: start;
@@ -216,9 +382,10 @@
     background: transparent;
     color: var(--text);
     font-size: 0.88rem;
-    padding-inline: 1.25rem;
-    padding-block: 0.4rem;
-    border-radius: 0.35rem;
+    padding-inline: var(--space-3);
+    padding-block: 0.5rem;
+    border-radius: var(--radius-sm);
+    transition: background-color 0.12s var(--ease), color 0.12s var(--ease);
   }
 
   .drawer__leaf:hover {
@@ -231,12 +398,25 @@
     font-weight: 600;
   }
 
+  /* Leading accent bar on the active item — a clearer "you are here" cue
+     than a background tint alone once the tree has ~20 leaves. */
+  .drawer__leaf--active::before {
+    content: '';
+    position: absolute;
+    inset-block: 0.3rem;
+    inset-inline-start: 0;
+    inline-size: 3px;
+    border-radius: 999px;
+    background: var(--accent);
+  }
+
   /* ---- content ---- */
 
   .placeholder {
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 0.75rem;
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
     padding-inline: 1.25rem;
     padding-block: 1.5rem;
     max-inline-size: 34rem;
@@ -268,11 +448,16 @@
     font-size: 0.82rem;
   }
 
+  .strong {
+    font-weight: 600;
+  }
+
   .card {
     inline-size: min(34rem, 100%);
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 0.75rem;
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
     padding-inline: 1.25rem;
     padding-block: 1.25rem;
   }
@@ -325,23 +510,46 @@
   .field {
     inline-size: 100%;
     border: 1px solid var(--border);
-    border-radius: 0.4rem;
-    padding-inline: 0.6rem;
-    padding-block: 0.4rem;
+    border-radius: var(--radius-sm);
+    padding-inline: 0.65rem;
+    padding-block: 0.45rem;
     font-family: inherit;
     font-size: 0.9rem;
     background: var(--surface);
     color: var(--text);
+    transition: border-color 0.12s var(--ease), box-shadow 0.12s var(--ease);
+  }
+
+  .field:hover:not(:disabled):not(:focus) {
+    border-color: var(--border-strong);
   }
 
   .field:focus {
-    outline: 2px solid var(--accent);
-    outline-offset: -1px;
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
   }
 
   .field--invalid {
     border-color: #d33;
     background: #fdf5f5;
+  }
+
+  .field--sm {
+    max-inline-size: 5rem;
+  }
+
+  .field--xs {
+    max-inline-size: 4rem;
+  }
+
+  .field--date {
+    max-inline-size: 12rem;
+  }
+
+  /* Wraps a field so an .autocomplete list can position against it. */
+  .field-wrap {
+    position: relative;
   }
 
   .formfield {
@@ -353,6 +561,12 @@
   .formfield__label {
     font-size: 0.8rem;
     color: var(--muted);
+  }
+
+  /* A single field that shouldn't stretch to the full content width (e.g. a
+     one-line "reason" note standing alone, not inside a .grid2). */
+  .formfield--narrow {
+    max-inline-size: 24rem;
   }
 
   .req {
@@ -369,17 +583,60 @@
     grid-column: 1 / -1;
   }
 
+  /* Vertical gap before/after a block that sits next to another one at the
+     same level without a fieldset boundary between them (e.g. a second
+     .grid2 row, or a trailing .formfield after a fieldset). */
+  .mt {
+    margin-block-start: var(--space-3);
+  }
+
+  .mb {
+    margin-block-end: var(--space-3);
+  }
+
+  .my {
+    margin-block: var(--space-3);
+  }
+
+  /* A row of action buttons — filters/presets/apply, or form save/cancel.
+     Replaces the `style={{ display: 'flex', gap: '0.5rem', ... }}` that was
+     repeated per screen. */
+  .btn-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+    margin-block-start: var(--space-3);
+  }
+
+  /*
+   * Vertical rhythm between stacked sections (panel, stats, fieldset...) on
+   * a screen, so spacing between blocks stops being chosen per screen.
+   * `.items` is every list screen's top-level wrapper and gets the same
+   * rhythm — the two names describe the same layout role (one predates the
+   * other) and are kept as aliases rather than forcing a rename across
+   * every list screen.
+   */
+  .stack,
+  .items,
+  .import {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+  }
+
   .fieldset {
     border: 1px solid var(--border);
-    border-radius: 0.5rem;
-    padding-inline: 1rem;
-    padding-block: 0.75rem 1rem;
+    border-radius: var(--radius-md);
+    padding-inline: 1.1rem;
+    padding-block: 0.85rem 1.1rem;
     margin-block-start: 1rem;
   }
 
   .fieldset legend {
-    font-size: 0.82rem;
-    font-weight: 600;
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
     color: var(--muted);
     padding-inline: 0.4rem;
   }
@@ -392,22 +649,51 @@
     margin-block-start: 0.6rem;
   }
 
+  /* Aligns a checkbox with the bottom of the text fields beside it in a
+     .grid2 row, where its own label line would otherwise sit higher. */
+  .check--end {
+    align-self: end;
+  }
+
+  .tag-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    margin-block-end: var(--space-2);
+  }
+
+  .tag-remove {
+    border: none;
+    background: none;
+    cursor: pointer;
+    color: inherit;
+    line-height: 1;
+    padding: 0;
+  }
+
   .btn {
     display: inline-flex;
     align-items: center;
     gap: 0.4rem;
     border: 1px solid var(--border);
     background: var(--surface);
-    border-radius: 0.45rem;
-    padding-inline: 0.85rem;
-    padding-block: 0.45rem;
+    border-radius: var(--radius-sm);
+    padding-inline: 0.9rem;
+    padding-block: 0.5rem;
     font-size: 0.88rem;
     font-weight: 600;
     color: var(--text);
+    transition: background-color 0.12s var(--ease), border-color 0.12s var(--ease), box-shadow 0.12s var(--ease);
   }
 
-  .btn:hover:not(:disabled) {
+  .btn:not(.btn--primary):hover:not(:disabled) {
     background: var(--bg);
+    border-color: var(--border-strong);
+  }
+
+  .btn--primary,
+  .btn:not(.btn--primary):hover:not(:disabled) {
+    box-shadow: var(--shadow-sm);
   }
 
   .btn:disabled {
@@ -422,12 +708,13 @@
   }
 
   .btn--primary:hover:not(:disabled) {
-    filter: brightness(1.08);
+    background: var(--accent-hover);
+    border-color: var(--accent-hover);
   }
 
   .btn--danger {
-    color: #b91c1c;
-    border-color: #f0c8c8;
+    color: var(--danger);
+    border-color: var(--danger-border);
   }
 
   .btn--sm {
@@ -460,11 +747,17 @@
     border: 1px solid transparent;
     border-block-end: none;
     background: transparent;
-    border-radius: 0.45rem 0.45rem 0 0;
+    border-radius: var(--radius-sm) var(--radius-sm) 0 0;
     padding-inline: 0.9rem;
-    padding-block: 0.45rem;
+    padding-block: 0.5rem;
     font-size: 0.88rem;
+    font-weight: 600;
     color: var(--muted);
+    transition: color 0.12s var(--ease), background-color 0.12s var(--ease);
+  }
+
+  .tab:hover {
+    color: var(--text);
   }
 
   .tab--active {
@@ -475,13 +768,30 @@
     margin-block-end: -1px;
   }
 
+  /*
+   * Standalone content surface — the default "this section matters" wrapper.
+   * Directly after .tabs it loses its own top border/radius so the two read
+   * as one continuous block instead of a visible seam.
+   */
   .panel {
     background: var(--surface);
     border: 1px solid var(--border);
-    border-block-start: none;
-    border-radius: 0 0 0.6rem 0.6rem;
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-sm);
     padding-inline: 1.25rem;
     padding-block: 1.25rem;
+  }
+
+  .tabs + .panel {
+    border-block-start: none;
+    border-start-start-radius: 0;
+    border-start-end-radius: 0;
+  }
+
+  .item-form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
   }
 
   .item-form__toolbar {
@@ -497,16 +807,16 @@
   }
 
   .alert {
-    border-radius: 0.5rem;
+    border-radius: var(--radius-sm);
     padding-inline: 0.9rem;
-    padding-block: 0.6rem;
+    padding-block: 0.65rem;
     font-size: 0.88rem;
     margin-block-start: 0.75rem;
   }
 
   .alert--error {
-    background: #fdf0f0;
-    border: 1px solid #f0c8c8;
+    background: var(--danger-soft);
+    border: 1px solid var(--danger-border);
     color: #a11b1b;
   }
 
@@ -528,30 +838,49 @@
   .subtable th,
   .datatable th {
     text-align: start;
-    font-weight: 600;
+    font-weight: 700;
     color: var(--muted);
-    font-size: 0.78rem;
-    padding-inline: 0.4rem;
-    padding-block: 0.35rem;
+    font-size: 0.74rem;
+    letter-spacing: 0.02em;
+    padding-inline: 0.6rem;
+    padding-block: 0.5rem;
     border-block-end: 1px solid var(--border);
   }
 
   .subtable td,
   .datatable td {
-    padding-inline: 0.4rem;
-    padding-block: 0.3rem;
+    text-align: start;
+    padding-inline: 0.6rem;
+    padding-block: 0.45rem;
     border-block-end: 1px solid var(--border);
+  }
+
+  /*
+   * A cell marked dir="ltr" (money, dates, codes) must still sit under its
+   * header the way every other column does. Without this, the browser
+   * aligns dir="ltr" content to its own start (the cell's left edge) while
+   * the RTL header above it aligns to the table's start (the right edge),
+   * so the value visibly drifts away from the column it belongs to.
+   */
+  .subtable td[dir='ltr'],
+  .datatable td[dir='ltr'] {
+    text-align: end;
   }
 
   .datatable {
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 0.6rem;
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-sm);
     overflow: hidden;
   }
 
+  .datatable tbody tr {
+    transition: background-color 0.1s var(--ease);
+  }
+
   .datatable tbody tr:hover {
-    background: var(--bg);
+    background: var(--surface-sunken);
   }
 
   .datatable__actions {
@@ -564,11 +893,17 @@
     text-align: center;
   }
 
+  /* A table column (usually the item/name column) that needs more room
+     than its header text alone implies, so an autocomplete input inside it
+     isn't cramped. */
+  .col--wide {
+    min-inline-size: 12rem;
+  }
+
   .items__bar {
     display: flex;
     gap: 0.6rem;
     align-items: center;
-    margin-block-end: 1rem;
   }
 
   .items__search {
@@ -613,14 +948,12 @@
   .import__bar {
     display: flex;
     gap: 0.6rem;
-    margin-block-end: 1rem;
   }
 
   .stats {
     display: flex;
     flex-wrap: wrap;
     gap: 1rem;
-    margin-block: 0.75rem 0.25rem;
   }
 
   .stat-btn {
@@ -636,29 +969,36 @@
   }
 
   .stat-btn .stat {
-    transition: border-color 0.1s ease;
+    transition: border-color 0.12s var(--ease), box-shadow 0.12s var(--ease);
+  }
+
+  .stat-btn:hover .stat {
+    box-shadow: var(--shadow-md);
   }
 
   .stat-btn--active .stat {
-    border-color: var(--accent, #2563eb);
-    border-width: 2px;
+    border-color: var(--accent);
+    border-width: 1.5px;
+    box-shadow: var(--shadow-md);
   }
 
   .stat {
     display: flex;
     flex-direction: column;
-    gap: 0.15rem;
+    gap: 0.2rem;
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 0.5rem;
-    padding-inline: 0.9rem;
-    padding-block: 0.6rem;
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-sm);
+    padding-inline: 1rem;
+    padding-block: 0.7rem;
     min-inline-size: 8rem;
   }
 
   .stat__value {
-    font-size: 1.3rem;
+    font-size: 1.35rem;
     font-weight: 700;
+    letter-spacing: -0.01em;
     font-variant-numeric: tabular-nums;
   }
 
@@ -667,19 +1007,40 @@
     color: var(--muted);
   }
 
+  .stat--good {
+    border-color: var(--success-border);
+    background: var(--success-soft);
+  }
+
   .stat--good .stat__value {
-    color: #16794a;
+    color: var(--success);
+  }
+
+  .stat--bad {
+    border-color: var(--danger-border);
+    background: var(--danger-soft);
   }
 
   .stat--bad .stat__value {
-    color: #b91c1c;
+    color: var(--danger);
+  }
+
+  /* Informational tile mixed among good/bad ones (e.g. invoice count,
+     warehouse name) — kept visually quiet so it doesn't compete with the
+     tiles that actually carry a verdict. */
+  .stat--neutral {
+    background: var(--bg);
+  }
+
+  .stat--neutral .stat__value {
+    color: var(--muted);
   }
 
   .progress {
     position: relative;
     background: var(--bg);
     border: 1px solid var(--border);
-    border-radius: 0.5rem;
+    border-radius: var(--radius-sm);
     block-size: 1.6rem;
     margin-block: 0.75rem;
     overflow: hidden;
@@ -712,9 +1073,9 @@
     font-weight: 600;
     color: var(--accent);
     background: var(--accent-soft);
-    border-radius: 0.3rem;
-    padding-inline: 0.4rem;
-    padding-block: 0.1rem;
+    border-radius: 999px;
+    padding-inline: 0.55rem;
+    padding-block: 0.15rem;
   }
 }
 
@@ -724,27 +1085,38 @@
     inset-inline: 0;
     top: 100%;
     z-index: 10;
-    margin-block-start: 0.2rem;
+    margin-block-start: 0.3rem;
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 0.5rem;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-lg);
     max-block-size: 12rem;
     overflow-y: auto;
     list-style: none;
-    padding: 0.25rem;
+    padding: 0.3rem;
+  }
+
+  /* When the field it belongs to sits in a row next to another control
+     (warehouse label, count, etc.) rather than filling its own line, the
+     list needs to clear that row's height instead of the field alone. */
+  .autocomplete--offset {
+    top: 2.6rem;
   }
 
   .autocomplete li button {
-    display: block;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
     inline-size: 100%;
     text-align: start;
     border: none;
     background: transparent;
-    padding-inline: 0.6rem;
-    padding-block: 0.4rem;
-    border-radius: 0.35rem;
+    padding-inline: 0.65rem;
+    padding-block: 0.45rem;
+    border-radius: var(--radius-sm);
     font-size: 0.85rem;
+    transition: background-color 0.1s var(--ease);
   }
 
   .autocomplete li button:hover {
@@ -786,11 +1158,103 @@
   .pos__footer {
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 0.6rem;
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-sm);
     padding-inline: 1.25rem;
     padding-block: 1rem;
     display: flex;
     flex-direction: column;
     gap: 0.75rem;
+  }
+}
+
+@layer components {
+  /*
+   * Fixed at the inline-start corner (top-right under RTL) below the
+   * toolbar, so a toast never sits over the module buttons. Stacks newest
+   * at the bottom, each one animating in independently.
+   */
+  .toast-host {
+    position: fixed;
+    inset-block-start: 4.5rem;
+    inset-inline-start: 1.25rem;
+    z-index: 100;
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    max-inline-size: 22rem;
+    pointer-events: none;
+  }
+
+  .toast {
+    pointer-events: auto;
+    display: flex;
+    align-items: flex-start;
+    gap: 0.6rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-lg);
+    padding-inline: 1rem;
+    padding-block: 0.75rem;
+    font-size: 0.88rem;
+    color: var(--text);
+    animation: toast-in 0.22s var(--ease);
+  }
+
+  @keyframes toast-in {
+    from {
+      opacity: 0;
+      transform: translateY(-0.5rem) scale(0.97);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+
+  .toast__icon {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: 1.4rem;
+    block-size: 1.4rem;
+    border-radius: 999px;
+    font-size: 0.8rem;
+    font-weight: 700;
+    background: var(--success-soft);
+    color: var(--success);
+  }
+
+  .toast--error .toast__icon {
+    background: var(--danger-soft);
+    color: var(--danger);
+  }
+
+  .toast--info .toast__icon {
+    background: var(--accent-soft);
+    color: var(--accent);
+  }
+
+  .toast__message {
+    flex: 1;
+    padding-block-start: 0.15rem;
+    line-height: 1.4;
+  }
+
+  .toast__close {
+    flex-shrink: 0;
+    border: none;
+    background: transparent;
+    color: var(--muted);
+    font-size: 1.1rem;
+    line-height: 1;
+    padding: 0 0.15rem;
+    cursor: pointer;
+  }
+
+  .toast__close:hover {
+    color: var(--text);
   }
 }

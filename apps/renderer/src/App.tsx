@@ -32,6 +32,7 @@ import { SalesReportScreen } from './modules/sales-report/SalesReportScreen';
 import { ExpiryReportScreen } from './modules/stock/ExpiryReportScreen';
 import { MODULES, SCREEN_LABELS, type ScreenId } from './lib/navigation';
 import { attachShortcuts, type ShortcutBinding } from './lib/shortcuts';
+import { ToastProvider } from './components/Toast';
 
 declare global {
   interface Window {
@@ -90,61 +91,63 @@ export function App() {
   useEffect(() => attachShortcuts(bindings), [bindings]);
 
   return (
-    <div className="shell">
-      <Toolbar
-        activeScreen={screen}
-        showBadges={showBadges}
-        onNavigate={setScreen}
-        onToggleDrawer={() => setDrawerOpen((v) => !v)}
-        onToggleBadges={() => setShowBadges((v) => !v)}
-      />
+    <ToastProvider>
+      <div className="shell">
+        <Toolbar
+          activeScreen={screen}
+          showBadges={showBadges}
+          onNavigate={setScreen}
+          onToggleDrawer={() => setDrawerOpen((v) => !v)}
+          onToggleBadges={() => setShowBadges((v) => !v)}
+        />
 
-      <div className="shell__body">
-        <Drawer open={drawerOpen} activeScreen={screen} onNavigate={setScreen} />
+        <div className="shell__body">
+          <Drawer open={drawerOpen} activeScreen={screen} onNavigate={setScreen} />
 
-        <main className="shell__content">
-          <h1 className="shell__heading">{SCREEN_LABELS[screen]}</h1>
-          {screen === 'health' ? (
-            <HealthCheck />
-          ) : screen === 'items.list' ? (
-            <ItemsScreen showBadges={showBadges} />
-          ) : screen === 'warehouses' ? (
-            <WarehousesScreen />
-          ) : screen === 'suppliers.list' ? (
-            <SuppliersScreen />
-          ) : screen === 'purchases.invoices' ? (
-            <PurchasesScreen />
-          ) : screen === 'items.stock' ? (
-            <StockScreen />
-          ) : screen === 'sales.invoices' ? (
-            <SalesScreen />
-          ) : screen === 'sales.shiftHandover' ? (
-            <ShiftHandoverScreen />
-          ) : screen === 'customers.list' ? (
-            <CustomersScreen />
-          ) : screen === 'customers.reports' ? (
-            <CustomerReportsScreen />
-          ) : screen === 'sales.returnByInvoice' ? (
-            <SalesReturnByInvoiceScreen />
-          ) : screen === 'sales.returnGeneral' ? (
-            <SalesReturnGeneralScreen />
-          ) : screen === 'purchases.returnByInvoice' ? (
-            <PurchaseReturnByInvoiceScreen />
-          ) : screen === 'purchases.returnGeneral' ? (
-            <PurchaseReturnGeneralScreen />
-          ) : screen === 'accounts.cashInOut' ? (
-            <CashInOutScreen />
-          ) : screen === 'sales.reports' ? (
-            <SalesReportScreen />
-          ) : screen === 'items.expiry' ? (
-            <ExpiryReportScreen />
-          ) : screen === 'settings.general' ? (
-            <SettingsScreen />
-          ) : (
-            <Placeholder screen={screen} />
-          )}
-        </main>
+          <main className="shell__content">
+            <h1 className="shell__heading">{SCREEN_LABELS[screen]}</h1>
+            {screen === 'health' ? (
+              <HealthCheck />
+            ) : screen === 'items.list' ? (
+              <ItemsScreen showBadges={showBadges} />
+            ) : screen === 'warehouses' ? (
+              <WarehousesScreen />
+            ) : screen === 'suppliers.list' ? (
+              <SuppliersScreen />
+            ) : screen === 'purchases.invoices' ? (
+              <PurchasesScreen />
+            ) : screen === 'items.stock' ? (
+              <StockScreen />
+            ) : screen === 'sales.invoices' ? (
+              <SalesScreen />
+            ) : screen === 'sales.shiftHandover' ? (
+              <ShiftHandoverScreen />
+            ) : screen === 'customers.list' ? (
+              <CustomersScreen />
+            ) : screen === 'customers.reports' ? (
+              <CustomerReportsScreen />
+            ) : screen === 'sales.returnByInvoice' ? (
+              <SalesReturnByInvoiceScreen />
+            ) : screen === 'sales.returnGeneral' ? (
+              <SalesReturnGeneralScreen />
+            ) : screen === 'purchases.returnByInvoice' ? (
+              <PurchaseReturnByInvoiceScreen />
+            ) : screen === 'purchases.returnGeneral' ? (
+              <PurchaseReturnGeneralScreen />
+            ) : screen === 'accounts.cashInOut' ? (
+              <CashInOutScreen />
+            ) : screen === 'sales.reports' ? (
+              <SalesReportScreen />
+            ) : screen === 'items.expiry' ? (
+              <ExpiryReportScreen />
+            ) : screen === 'settings.general' ? (
+              <SettingsScreen />
+            ) : (
+              <Placeholder screen={screen} />
+            )}
+          </main>
+        </div>
       </div>
-    </div>
+    </ToastProvider>
   );
 }

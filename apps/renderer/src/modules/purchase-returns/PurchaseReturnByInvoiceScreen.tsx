@@ -9,6 +9,7 @@ import { useState } from 'react';
 import type { ReturnablePurchaseLine } from '@pharmacy/shared';
 import { fromPiastres } from '@pharmacy/core';
 import { ar } from '../../i18n/ar';
+import { useToast } from '../../components/Toast';
 
 interface DraftLine extends ReturnablePurchaseLine {
   returnQty: string;
@@ -22,12 +23,11 @@ export function PurchaseReturnByInvoiceScreen() {
   const [lines, setLines] = useState<DraftLine[]>([]);
   const [reason, setReason] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const { showToast } = useToast();
 
   async function findInvoice() {
     if (!window.api || !serial.trim()) return;
     setError(null);
-    setNotice(null);
     try {
       const all = await window.api.purchases.list({ limit: 500 });
       const match = all.find((inv) => String(inv.serial) === serial.trim());
@@ -69,7 +69,7 @@ export function PurchaseReturnByInvoiceScreen() {
         })),
       });
       const created = await window.api.purchaseReturns.get(returnId);
-      setNotice(ar.purchaseReturns.confirmed.replace('{serial}', String(created?.serial ?? returnId)));
+      showToast(ar.purchaseReturns.confirmed.replace('{serial}', String(created?.serial ?? returnId)));
       setInvoiceId(null);
       setLines([]);
       setSerial('');
@@ -95,14 +95,6 @@ export function PurchaseReturnByInvoiceScreen() {
       </div>
 
       {error && <div className="alert alert--error">{error}</div>}
-      {notice && (
-        <div className="alert alert--info">
-          {notice}
-          <button type="button" className="alert__close" onClick={() => setNotice(null)}>
-            ×
-          </button>
-        </div>
-      )}
 
       {invoiceId && (
         <>
@@ -126,9 +118,8 @@ export function PurchaseReturnByInvoiceScreen() {
                   <td dir="ltr">{l.alreadyReturnedQtyBase}</td>
                   <td>
                     <input
-                      className="field"
+                      className="field field--sm"
                       dir="ltr"
-                      style={{ maxInlineSize: '5rem' }}
                       inputMode="numeric"
                       value={l.returnQty}
                       onChange={(e) => updateLine(l.batchId, { returnQty: e.target.value })}
@@ -140,14 +131,16 @@ export function PurchaseReturnByInvoiceScreen() {
             </tbody>
           </table>
 
-          <label className="formfield" style={{ marginBlockStart: '1rem', maxInlineSize: '24rem' }}>
+          <label className="formfield formfield--narrow mt">
             <span className="formfield__label">{ar.purchaseReturns.reason}</span>
             <input className="field" value={reason} onChange={(e) => setReason(e.target.value)} />
           </label>
 
-          <button type="button" className="btn btn--primary" style={{ marginBlockStart: '1rem' }} onClick={() => void submit()}>
-            {ar.purchaseReturns.confirm}
-          </button>
+          <div className="btn-row">
+            <button type="button" className="btn btn--primary" onClick={() => void submit()}>
+              {ar.purchaseReturns.confirm}
+            </button>
+          </div>
         </>
       )}
     </div>

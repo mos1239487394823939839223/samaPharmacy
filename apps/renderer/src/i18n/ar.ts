@@ -588,11 +588,12 @@ export const ar = {
     asOf: 'حتى تاريخ',
     apply: 'تطبيق',
     bucketExpired: 'منتهي الصلاحية',
-    bucketD30: 'خلال 30 يوم',
-    bucketD60: 'خلال 60 يوم',
-    bucketD90: 'خلال 90 يوم',
-    bucketD180: 'خلال 180 يوم',
-    bucketOver180: 'أكثر من 180 يوم',
+    /** {days}: the first bucket, from today through the configured d30 threshold. */
+    bucketWithin: 'خلال {days} يوم',
+    /** {from}/{to}: a middle bucket, the range strictly between two configured thresholds. */
+    bucketBetween: 'من {from} إلى {to} يوم',
+    /** {days}: the last bucket, beyond the configured d180 threshold. */
+    bucketOver: 'أكثر من {days} يوم',
     allBuckets: 'كل الفئات',
     batchCount: 'عدد الدفعات',
     qtyOnHand: 'الكمية',

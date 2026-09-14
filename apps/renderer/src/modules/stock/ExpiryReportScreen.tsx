@@ -7,20 +7,32 @@
  */
 
 import { useEffect, useState } from 'react';
-import type { ExpiryBucket, ExpiryReport } from '@pharmacy/shared';
+import type { ExpiryBucket, ExpiryReport, ExpiryBucketDays } from '@pharmacy/shared';
 import { fromPiastres } from '@pharmacy/core';
 import { ar } from '../../i18n/ar';
+import { Stat } from '../../components/Stat';
 
 const BUCKETS: ExpiryBucket[] = ['expired', 'd30', 'd60', 'd90', 'd180', 'over180'];
 
-const BUCKET_LABELS: Record<ExpiryBucket, string> = {
-  expired: ar.expiryReport.bucketExpired,
-  d30: ar.expiryReport.bucketD30,
-  d60: ar.expiryReport.bucketD60,
-  d90: ar.expiryReport.bucketD90,
-  d180: ar.expiryReport.bucketD180,
-  over180: ar.expiryReport.bucketOver180,
-};
+const fill = (template: string, vars: Record<string, string | number>) =>
+  Object.entries(vars).reduce((s, [k, v]) => s.replace(`{${k}}`, String(v)), template);
+
+/**
+ * Bucket tile text must track the configured thresholds (Settings → لوحة
+ * الصلاحية), not a fixed "30/60/90/180" string — a middle bucket is the
+ * range strictly between the previous and current threshold, so its label
+ * has to be built from both, not just the one number that names the bucket.
+ */
+function bucketLabels(bucketDays: ExpiryBucketDays): Record<ExpiryBucket, string> {
+  return {
+    expired: ar.expiryReport.bucketExpired,
+    d30: fill(ar.expiryReport.bucketWithin, { days: bucketDays.d30 }),
+    d60: fill(ar.expiryReport.bucketBetween, { from: bucketDays.d30 + 1, to: bucketDays.d60 }),
+    d90: fill(ar.expiryReport.bucketBetween, { from: bucketDays.d60 + 1, to: bucketDays.d90 }),
+    d180: fill(ar.expiryReport.bucketBetween, { from: bucketDays.d90 + 1, to: bucketDays.d180 }),
+    over180: fill(ar.expiryReport.bucketOver, { days: bucketDays.d180 }),
+  };
+}
 
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
@@ -58,15 +70,21 @@ export function ExpiryReportScreen() {
   const rows = report ? (bucketFilter ? report.rows.filter((r) => r.bucket === bucketFilter) : report.rows) : [];
 
   return (
-    <div className="items">
+    <div className="stack">
       <div className="panel">
         <div className="grid2">
           <label className="formfield">
             <span className="formfield__label">{ar.expiryReport.asOf}</span>
-            <input className="field" type="date" dir="ltr" value={asOf} onChange={(e) => setAsOf(e.target.value)} />
+            <input
+              className="field field--date"
+              type="date"
+              dir="ltr"
+              value={asOf}
+              onChange={(e) => setAsOf(e.target.value)}
+            />
           </label>
         </div>
-        <div style={{ display: 'flex', gap: '0.5rem', marginBlockStart: '0.75rem' }}>
+        <div className="btn-row">
           <button type="button" className="btn btn--primary btn--sm" onClick={() => void load()}>
             {ar.expiryReport.apply}
           </button>
@@ -79,7 +97,7 @@ export function ExpiryReportScreen() {
         <p className="muted">{ar.items.loading}</p>
       ) : report ? (
         <>
-          <div className="stats" style={{ marginBlockStart: '1rem' }}>
+          <div className="stats">
             <button
               type="button"
               className={`stat-btn${bucketFilter === null ? ' stat-btn--active' : ''}`}
@@ -88,10 +106,12 @@ export function ExpiryReportScreen() {
               <Stat
                 label={ar.expiryReport.allBuckets}
                 value={String(report.summary.reduce((s, b) => s + b.batchCount, 0))}
+                neutral
               />
             </button>
             {BUCKETS.map((bucket) => {
               const s = report.summary.find((x) => x.bucket === bucket)!;
+              const labels = bucketLabels(report.bucketDays);
               return (
                 <button
                   key={bucket}
@@ -100,7 +120,7 @@ export function ExpiryReportScreen() {
                   onClick={() => setBucketFilter(bucket)}
                 >
                   <Stat
-                    label={BUCKET_LABELS[bucket]}
+                    label={labels[bucket]}
                     value={`${s.batchCount} / ${fromPiastres(s.value)}`}
                     good={bucket === 'over180' || bucket === 'd180'}
                     bad={bucket === 'expired'}
@@ -110,12 +130,12 @@ export function ExpiryReportScreen() {
             })}
           </div>
 
-          <fieldset className="fieldset" style={{ marginBlockStart: '1rem' }}>
-            <legend>{ar.expiryReport.tableTitle}</legend>
+          <div className="panel">
+            <h2 className="section-heading">{ar.expiryReport.tableTitle}</h2>
             {rows.length === 0 ? (
               <p className="muted">{ar.expiryReport.empty}</p>
             ) : (
-              <table className="subtable">
+              <table className="datatable">
                 <thead>
                   <tr>
                     <th>{ar.expiryReport.code}</th>
@@ -142,20 +162,9 @@ export function ExpiryReportScreen() {
                 </tbody>
               </table>
             )}
-          </fieldset>
+          </div>
         </>
       ) : null}
-    </div>
-  );
-}
-
-function Stat({ label, value, good, bad }: { label: string; value: string; good?: boolean; bad?: boolean }) {
-  return (
-    <div className={bad ? 'stat stat--bad' : good ? 'stat stat--good' : 'stat'}>
-      <span className="stat__value" dir="ltr">
-        {value}
-      </span>
-      <span className="stat__label">{label}</span>
     </div>
   );
 }

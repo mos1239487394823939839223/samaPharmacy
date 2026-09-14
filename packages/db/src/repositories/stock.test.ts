@@ -352,4 +352,21 @@ describe('getExpiryReport', () => {
     const { rows } = getExpiryReport(db, ASOF);
     expect(rows.find((r) => r.itemId === itemId)?.bucket).toBe('d60');
   });
+
+  it('echoes the default bucket days used back in the result, so the UI can label its tiles accurately', () => {
+    const { bucketDays } = getExpiryReport(db, ASOF);
+    expect(bucketDays).toEqual({ d30: 30, d60: 60, d90: 90, d180: 180 });
+  });
+
+  it('echoes the settings-configured bucket days back in the result, not the shipped default', () => {
+    updateSettings(db, { expiryBucketDays: { d30: 15, d60: 45, d90: 75, d180: 150 } });
+    const { bucketDays } = getExpiryReport(db, ASOF);
+    expect(bucketDays).toEqual({ d30: 15, d60: 45, d90: 75, d180: 150 });
+  });
+
+  it('echoes an explicit override rather than settings, when one is passed', () => {
+    updateSettings(db, { expiryBucketDays: { d30: 15, d60: 45, d90: 75, d180: 150 } });
+    const { bucketDays } = getExpiryReport(db, ASOF, { d30: 5, d60: 20, d90: 50, d180: 100 });
+    expect(bucketDays).toEqual({ d30: 5, d60: 20, d90: 50, d180: 100 });
+  });
 });

@@ -10,6 +10,8 @@ import type { ShiftRow, ShiftSalesSummary, CashTransactionRow } from '@pharmacy/
 import { fromPiastres, toPiastres } from '@pharmacy/core';
 import { ar } from '../../i18n/ar';
 import { MoneyInput } from '../../components/MoneyInput';
+import { Stat } from '../../components/Stat';
+import { useToast } from '../../components/Toast';
 
 export function ShiftHandoverScreen() {
   const [warehouseId, setWarehouseId] = useState<number | null>(null);
@@ -20,7 +22,7 @@ export function ShiftHandoverScreen() {
   const [expectedCash, setExpectedCash] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const { showToast } = useToast();
 
   const [openingFloat, setOpeningFloat] = useState<number | null>(null);
   const [txDirection, setTxDirection] = useState<'in' | 'out'>('out');
@@ -99,7 +101,7 @@ export function ShiftHandoverScreen() {
         countedCash,
         varianceNote: varianceNote.trim() || null,
       });
-      setNotice(ar.shifts.closed);
+      showToast(ar.shifts.closed);
       setCountedCash(null);
       setVarianceNote('');
       await load();
@@ -112,11 +114,11 @@ export function ShiftHandoverScreen() {
 
   if (!shift) {
     return (
-      <div className="items">
+      <div className="stack">
         {error && <div className="alert alert--error">{error}</div>}
-        <div className="panel">
+        <div className="panel stack">
           <p className="muted">{ar.shifts.noOpenShift}</p>
-          <div className="grid2" style={{ marginBlockStart: '1rem' }}>
+          <div className="grid2">
             <label className="formfield">
               <span className="formfield__label">{ar.shifts.warehouse}</span>
               <input className="field" value={warehouseName} disabled />
@@ -126,9 +128,11 @@ export function ShiftHandoverScreen() {
               <MoneyInput value={openingFloat} onChange={setOpeningFloat} />
             </label>
           </div>
-          <button type="button" className="btn btn--primary" style={{ marginBlockStart: '1rem' }} onClick={() => void handleOpen()}>
-            {ar.shifts.openShift}
-          </button>
+          <div className="btn-row" style={{ marginBlockStart: 0 }}>
+            <button type="button" className="btn btn--primary" onClick={() => void handleOpen()}>
+              {ar.shifts.openShift}
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -137,31 +141,23 @@ export function ShiftHandoverScreen() {
   const previewVariance = countedCash !== null && expectedCash !== null ? countedCash - expectedCash : null;
 
   return (
-    <div className="items">
+    <div className="stack">
       {error && <div className="alert alert--error">{error}</div>}
-      {notice && (
-        <div className="alert alert--info">
-          {notice}
-          <button type="button" className="alert__close" onClick={() => setNotice(null)}>
-            ×
-          </button>
-        </div>
-      )}
 
       <div className="panel">
         <div className="stats">
-          <Stat label={ar.shifts.openingFloat} value={fromPiastres(shift.openingFloat)} />
-          <Stat label={ar.shifts.cashSalesCount} value={String(summary?.count ?? 0)} />
+          <Stat label={ar.shifts.openingFloat} value={fromPiastres(shift.openingFloat)} neutral />
+          <Stat label={ar.shifts.cashSalesCount} value={String(summary?.count ?? 0)} neutral />
           <Stat label={ar.shifts.cashTotal} value={fromPiastres(summary?.cashTotal ?? 0)} good />
-          <Stat label={ar.shifts.creditTotal} value={fromPiastres(summary?.creditTotal ?? 0)} />
+          <Stat label={ar.shifts.creditTotal} value={fromPiastres(summary?.creditTotal ?? 0)} neutral />
           <Stat label={ar.shifts.expectedCash} value={fromPiastres(expectedCash ?? 0)} good />
         </div>
-        <p className="muted small" dir="ltr">
+        <p className="muted small" dir="ltr" style={{ marginBlockStart: 'var(--space-3)' }}>
           {ar.shifts.openedAt}: {shift.openedAt.slice(0, 16)}
         </p>
       </div>
 
-      <fieldset className="fieldset">
+      <fieldset className="fieldset" style={{ marginBlockStart: 0 }}>
         <legend>{ar.shifts.transactionsTitle}</legend>
         <div className="grid2">
           <label className="formfield">
@@ -180,12 +176,17 @@ export function ShiftHandoverScreen() {
             <input className="field" value={txCategory} onChange={(e) => setTxCategory(e.target.value)} />
           </label>
         </div>
-        <button type="button" className="btn btn--sm" style={{ marginBlockStart: '0.5rem' }} onClick={() => void handleAddCash()}>
-          {ar.shifts.addTransaction}
-        </button>
+        <div className="btn-row">
+          <button type="button" className="btn btn--sm" onClick={() => void handleAddCash()}>
+            {ar.shifts.addTransaction}
+          </button>
+        </div>
+      </fieldset>
 
-        {transactions.length > 0 && (
-          <table className="subtable" style={{ marginBlockStart: '0.75rem' }}>
+      {transactions.length > 0 && (
+        <div className="panel">
+          <h2 className="section-heading">{ar.shifts.transactionsLog}</h2>
+          <table className="datatable">
             <thead>
               <tr>
                 <th>{ar.purchases.invoiceDate}</th>
@@ -205,10 +206,10 @@ export function ShiftHandoverScreen() {
               ))}
             </tbody>
           </table>
-        )}
-      </fieldset>
+        </div>
+      )}
 
-      <fieldset className="fieldset">
+      <fieldset className="fieldset" style={{ marginBlockStart: 0 }}>
         <legend>{ar.shifts.closeShift}</legend>
         <div className="grid2">
           <label className="formfield">
@@ -225,27 +226,12 @@ export function ShiftHandoverScreen() {
             </label>
           )}
         </div>
-        <button
-          type="button"
-          className="btn btn--primary"
-          style={{ marginBlockStart: '0.75rem' }}
-          onClick={() => void handleClose()}
-          disabled={countedCash === null}
-        >
-          {ar.shifts.closeShift}
-        </button>
+        <div className="btn-row">
+          <button type="button" className="btn btn--primary" onClick={() => void handleClose()} disabled={countedCash === null}>
+            {ar.shifts.closeShift}
+          </button>
+        </div>
       </fieldset>
-    </div>
-  );
-}
-
-function Stat({ label, value, good }: { label: string; value: string; good?: boolean }) {
-  return (
-    <div className={good ? 'stat stat--good' : 'stat'}>
-      <span className="stat__value" dir="ltr">
-        {value}
-      </span>
-      <span className="stat__label">{label}</span>
     </div>
   );
 }

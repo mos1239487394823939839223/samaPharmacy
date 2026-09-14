@@ -20,6 +20,7 @@ import {
   INSTALLED_SCANNER_CONFIG,
 } from '../../hardware/config';
 import { createScanner, type ScannerConfig } from '../../hardware/scanner';
+import { useToast } from '../../components/Toast';
 
 export function SettingsScreen() {
   const [settings, setSettings] = useState<PharmacySettings | null>(null);
@@ -33,7 +34,7 @@ export function SettingsScreen() {
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const { showToast } = useToast();
   const [saving, setSaving] = useState(false);
 
   const [testState, setTestState] = useState<'idle' | 'waiting' | 'ok' | 'failed'>('idle');
@@ -70,7 +71,6 @@ export function SettingsScreen() {
   async function save() {
     if (!window.api) return;
     setError(null);
-    setNotice(null);
 
     const bucketDays = {
       d30: Number(d30),
@@ -96,7 +96,7 @@ export function SettingsScreen() {
       });
       setSettings(updated);
       saveScannerConfig(scanner);
-      setNotice(ar.settings.saved);
+      showToast(ar.settings.saved);
     } catch (err) {
       setError(`${ar.settings.saveFailed}: ${(err as Error).message}`);
     } finally {
@@ -129,14 +129,6 @@ export function SettingsScreen() {
   return (
     <div className="stack">
       {error && <div className="alert alert--error">{error}</div>}
-      {notice && (
-        <div className="alert alert--info">
-          {notice}
-          <button type="button" className="alert__close" onClick={() => setNotice(null)}>
-            ×
-          </button>
-        </div>
-      )}
 
       <fieldset className="fieldset" style={{ marginBlockStart: 0 }}>
         <legend>{ar.settings.expirySection}</legend>

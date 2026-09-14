@@ -15,6 +15,8 @@ import type { ShiftRow, CashTransactionRow } from '@pharmacy/shared';
 import { fromPiastres } from '@pharmacy/core';
 import { ar } from '../../i18n/ar';
 import { MoneyInput } from '../../components/MoneyInput';
+import { Stat } from '../../components/Stat';
+import { useToast } from '../../components/Toast';
 
 const CATEGORIES = [
   { value: 'petty_cash', label: ar.cashInOut.categories.pettyCash },
@@ -31,7 +33,7 @@ export function CashInOutScreen() {
   const [transactions, setTransactions] = useState<CashTransactionRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const { showToast } = useToast();
 
   const [direction, setDirection] = useState<'in' | 'out'>('out');
   const [amount, setAmount] = useState<number | null>(null);
@@ -79,7 +81,7 @@ export function CashInOutScreen() {
 
     try {
       await window.api.shifts.recordCash(shift.id, direction, amount, category, note.trim() || null);
-      setNotice(direction === 'in' ? ar.cashInOut.cashIn : ar.cashInOut.cashOut);
+      showToast(direction === 'in' ? ar.cashInOut.cashIn : ar.cashInOut.cashOut);
       setAmount(null);
       setNote('');
       await load();
@@ -92,7 +94,7 @@ export function CashInOutScreen() {
 
   if (!shift) {
     return (
-      <div className="items">
+      <div className="stack">
         {error && <div className="alert alert--error">{error}</div>}
         <p className="muted">{ar.cashInOut.noOpenShift}</p>
       </div>
@@ -100,25 +102,17 @@ export function CashInOutScreen() {
   }
 
   return (
-    <div className="items">
+    <div className="stack">
       {error && <div className="alert alert--error">{error}</div>}
-      {notice && (
-        <div className="alert alert--info">
-          {notice}
-          <button type="button" className="alert__close" onClick={() => setNotice(null)}>
-            ×
-          </button>
-        </div>
-      )}
 
       <div className="panel">
         <div className="stats">
-          <Stat label={ar.cashInOut.warehouse} value={warehouseName} />
+          <Stat label={ar.cashInOut.warehouse} value={warehouseName} neutral />
           <Stat label={ar.cashInOut.expectedCash} value={fromPiastres(expectedCash ?? 0)} good />
         </div>
       </div>
 
-      <fieldset className="fieldset">
+      <fieldset className="fieldset" style={{ marginBlockStart: 0 }}>
         <legend>{ar.cashInOut.title}</legend>
         <div className="grid2">
           <label className="formfield">
@@ -147,17 +141,19 @@ export function CashInOutScreen() {
             <input className="field" value={note} onChange={(e) => setNote(e.target.value)} />
           </label>
         </div>
-        <button type="button" className="btn btn--primary" style={{ marginBlockStart: '0.75rem' }} onClick={() => void submit()}>
-          {ar.cashInOut.submit}
-        </button>
+        <div className="btn-row">
+          <button type="button" className="btn btn--primary" onClick={() => void submit()}>
+            {ar.cashInOut.submit}
+          </button>
+        </div>
       </fieldset>
 
-      <fieldset className="fieldset">
-        <legend>{ar.cashInOut.history}</legend>
+      <div className="panel">
+        <h2 className="section-heading">{ar.cashInOut.history}</h2>
         {transactions.length === 0 ? (
           <p className="muted">{ar.cashInOut.empty}</p>
         ) : (
-          <table className="subtable">
+          <table className="datatable">
             <thead>
               <tr>
                 <th>{ar.purchases.invoiceDate}</th>
@@ -180,18 +176,7 @@ export function CashInOutScreen() {
             </tbody>
           </table>
         )}
-      </fieldset>
-    </div>
-  );
-}
-
-function Stat({ label, value, good }: { label: string; value: string; good?: boolean }) {
-  return (
-    <div className={good ? 'stat stat--good' : 'stat'}>
-      <span className="stat__value" dir="ltr">
-        {value}
-      </span>
-      <span className="stat__label">{label}</span>
+      </div>
     </div>
   );
 }

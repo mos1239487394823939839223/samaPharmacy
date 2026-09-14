@@ -1,3 +1,5 @@
+import type { ExpiryBucketDays } from './settings';
+
 export interface ItemStockRow {
   itemId: number;
   code: number;
@@ -58,4 +60,5 @@ export interface ExpiryBucketSummary {
 export interface ExpiryReport {
   rows: ExpiryBatchRow[];
   summary: ExpiryBucketSummary[];
+  bucketDays: ExpiryBucketDays;
 }

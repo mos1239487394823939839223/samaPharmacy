@@ -8,6 +8,8 @@ import { useEffect, useRef, useState } from 'react';
 import type { ItemListRow, SupplierRow } from '@pharmacy/shared';
 import { fromPiastres } from '@pharmacy/core';
 import { ar } from '../../i18n/ar';
+import { Stat } from '../../components/Stat';
+import { useToast } from '../../components/Toast';
 
 interface DraftLine {
   key: number;
@@ -29,7 +31,7 @@ export function PurchaseReturnGeneralScreen() {
   const [lines, setLines] = useState<DraftLine[]>([]);
   const [reason, setReason] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const { showToast } = useToast();
   const supplierDebounce = useRef<ReturnType<typeof setTimeout>>();
   const itemDebounce = useRef<ReturnType<typeof setTimeout>>();
 
@@ -116,7 +118,7 @@ export function PurchaseReturnGeneralScreen() {
         })),
       });
       const created = await window.api.purchaseReturns.get(returnId);
-      setNotice(ar.purchaseReturns.confirmed.replace('{serial}', String(created?.serial ?? returnId)));
+      showToast(ar.purchaseReturns.confirmed.replace('{serial}', String(created?.serial ?? returnId)));
       setLines([]);
     } catch (err) {
       setError(`${ar.purchaseReturns.errors.createFailed}: ${(err as Error).message}`);
@@ -130,8 +132,8 @@ export function PurchaseReturnGeneralScreen() {
 
   return (
     <div className="items">
-      <div className="grid2" style={{ marginBlockEnd: '1rem' }}>
-        <label className="formfield" style={{ position: 'relative' }}>
+      <div className="grid2 mb">
+        <label className="formfield field-wrap">
           <span className="formfield__label">
             {ar.purchaseReturns.supplier}
             <span className="req"> *</span>
@@ -150,7 +152,7 @@ export function PurchaseReturnGeneralScreen() {
               {supplierResults.map((s) => (
                 <li key={s.id}>
                   <button type="button" onClick={() => selectSupplier(s)}>
-                    {s.nameAr}
+                    <span>{s.nameAr}</span>
                   </button>
                 </li>
               ))}
@@ -159,7 +161,7 @@ export function PurchaseReturnGeneralScreen() {
         </label>
       </div>
 
-      <div className="items__bar" style={{ position: 'relative' }}>
+      <div className="items__bar field-wrap">
         <input
           className="field items__search"
           placeholder={ar.purchaseReturns.itemSearch}
@@ -167,11 +169,11 @@ export function PurchaseReturnGeneralScreen() {
           onChange={(e) => setItemQuery(e.target.value)}
         />
         {itemResults.length > 0 && (
-          <ul className="autocomplete" style={{ top: '2.6rem' }}>
+          <ul className="autocomplete autocomplete--offset">
             {itemResults.map((it) => (
               <li key={it.id}>
                 <button type="button" onClick={() => void addItem(it)}>
-                  {it.nameAr}
+                  <span>{it.nameAr}</span>
                 </button>
               </li>
             ))}
@@ -180,14 +182,6 @@ export function PurchaseReturnGeneralScreen() {
       </div>
 
       {error && <div className="alert alert--error">{error}</div>}
-      {notice && (
-        <div className="alert alert--info">
-          {notice}
-          <button type="button" className="alert__close" onClick={() => setNotice(null)}>
-            ×
-          </button>
-        </div>
-      )}
 
       {lines.length > 0 && (
         <table className="subtable">
@@ -222,9 +216,8 @@ export function PurchaseReturnGeneralScreen() {
                   <td dir="ltr">{batch?.qtyOnHand ?? 0}</td>
                   <td>
                     <input
-                      className="field"
+                      className="field field--sm"
                       dir="ltr"
-                      style={{ maxInlineSize: '5rem' }}
                       inputMode="numeric"
                       value={l.qty}
                       onChange={(e) => updateLine(l.key, { qty: e.target.value })}
@@ -242,23 +235,20 @@ export function PurchaseReturnGeneralScreen() {
         </table>
       )}
 
-      <label className="formfield" style={{ marginBlockStart: '0.75rem', maxInlineSize: '24rem' }}>
+      <label className="formfield formfield--narrow mt">
         <span className="formfield__label">{ar.purchaseReturns.reason}</span>
         <input className="field" value={reason} onChange={(e) => setReason(e.target.value)} />
       </label>
 
-      <div className="stats" style={{ marginBlock: '0.75rem' }}>
-        <div className="stat stat--good">
-          <span className="stat__value" dir="ltr">
-            {fromPiastres(totalCost)}
-          </span>
-          <span className="stat__label">{ar.purchaseReturns.total}</span>
-        </div>
+      <div className="stats my">
+        <Stat label={ar.purchaseReturns.total} value={fromPiastres(totalCost)} good />
       </div>
 
-      <button type="button" className="btn btn--primary" onClick={() => void submit()} disabled={lines.length === 0}>
-        {ar.purchaseReturns.confirm}
-      </button>
+      <div className="btn-row" style={{ marginBlockStart: 0 }}>
+        <button type="button" className="btn btn--primary" onClick={() => void submit()} disabled={lines.length === 0}>
+          {ar.purchaseReturns.confirm}
+        </button>
+      </div>
     </div>
   );
 }

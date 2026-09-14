@@ -13,6 +13,7 @@ import type { ItemListRow, SupplierRow, WarehouseRow } from '@pharmacy/shared';
 import { fromPiastres, landedCost, toBaseUnits, type LandedCostLine } from '@pharmacy/core';
 import { ar } from '../../i18n/ar';
 import { MoneyInput } from '../../components/MoneyInput';
+import { Stat } from '../../components/Stat';
 import { attachShortcuts } from '../../lib/shortcuts';
 
 interface DraftLine {
@@ -243,7 +244,7 @@ export function PurchaseForm({ onSaved, onCancel }: Props) {
 
       <div className="panel">
         <div className="grid2">
-          <label className="formfield" style={{ position: 'relative' }}>
+          <label className="formfield field-wrap">
             <span className="formfield__label">
               {ar.purchases.supplier}
               <span className="req"> *</span>
@@ -262,7 +263,7 @@ export function PurchaseForm({ onSaved, onCancel }: Props) {
                 {supplierResults.map((s) => (
                   <li key={s.id}>
                     <button type="button" onClick={() => selectSupplier(s)}>
-                      {s.nameAr} <span dir="ltr">#{s.code}</span>
+                      <span>{s.nameAr}</span> <span dir="ltr">#{s.code}</span>
                     </button>
                   </li>
                 ))}
@@ -273,7 +274,7 @@ export function PurchaseForm({ onSaved, onCancel }: Props) {
           {supplier && (
             <div className="formfield">
               <span className="formfield__label">{ar.purchases.supplierBalance}</span>
-              <span dir="ltr" style={{ fontWeight: 600 }}>
+              <span dir="ltr" className="strong">
                 {supplierBalance === null ? '—' : fromPiastres(supplierBalance)}
               </span>
             </div>
@@ -336,7 +337,7 @@ export function PurchaseForm({ onSaved, onCancel }: Props) {
           <table className="subtable">
             <thead>
               <tr>
-                <th style={{ minWidth: '12rem' }}>{ar.purchases.grid.item}</th>
+                <th className="col--wide">{ar.purchases.grid.item}</th>
                 <th>{ar.purchases.grid.qty}</th>
                 <th>{ar.purchases.grid.bonus}</th>
                 <th>{ar.purchases.grid.batchNumber}</th>
@@ -351,7 +352,7 @@ export function PurchaseForm({ onSaved, onCancel }: Props) {
             <tbody>
               {lines.map((line) => (
                 <tr key={line.key}>
-                  <td style={{ position: 'relative' }}>
+                  <td className="field-wrap">
                     <input
                       className="field"
                       value={line.itemQuery}
@@ -362,7 +363,7 @@ export function PurchaseForm({ onSaved, onCancel }: Props) {
                         {line.itemResults.map((it) => (
                           <li key={it.id}>
                             <button type="button" onClick={() => selectItemForLine(line.key, it)}>
-                              {it.nameAr}
+                              <span>{it.nameAr}</span>
                             </button>
                           </li>
                         ))}
@@ -465,22 +466,11 @@ export function PurchaseForm({ onSaved, onCancel }: Props) {
           </label>
         </div>
 
-        <div className="stats" style={{ marginBlockStart: '0.75rem' }}>
-          <Stat label={ar.purchases.subtotal} value={preview.subtotal} />
-          <Stat label={ar.purchases.total} value={preview.total} good />
+        <div className="stats" style={{ marginBlockStart: 'var(--space-3)' }}>
+          <Stat label={ar.purchases.subtotal} value={fromPiastres(preview.subtotal)} neutral />
+          <Stat label={ar.purchases.total} value={fromPiastres(preview.total)} good />
         </div>
       </div>
-    </div>
-  );
-}
-
-function Stat({ label, value, good }: { label: string; value: number; good?: boolean }) {
-  return (
-    <div className={good ? 'stat stat--good' : 'stat'}>
-      <span className="stat__value" dir="ltr">
-        {fromPiastres(value)}
-      </span>
-      <span className="stat__label">{label}</span>
     </div>
   );
 }

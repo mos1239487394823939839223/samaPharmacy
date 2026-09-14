@@ -79,13 +79,13 @@ export function WarehousesScreen() {
       {error && <div className="alert alert--error">{error}</div>}
 
       {editing && (
-        <div className="panel" style={{ marginBlockEnd: '1rem' }}>
+        <div className="panel mb">
           <div className="grid2">
             <label className="formfield">
               <span className="formfield__label">{ar.warehouses.name}</span>
               <input className="field" value={nameAr} onChange={(e) => setNameAr(e.target.value)} />
             </label>
-            <label className="check" style={{ alignSelf: 'end' }}>
+            <label className="check check--end">
               <input
                 type="checkbox"
                 checked={isDefault}
@@ -94,7 +94,7 @@ export function WarehousesScreen() {
               <span>{ar.warehouses.isDefault}</span>
             </label>
           </div>
-          <div style={{ display: 'flex', gap: '0.5rem', marginBlockStart: '0.75rem' }}>
+          <div className="btn-row">
             <button type="button" className="btn btn--primary" onClick={() => void save()}>
               {ar.items.actions.save}
             </button>

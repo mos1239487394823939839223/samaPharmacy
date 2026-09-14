@@ -10,6 +10,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { ImportPreview, ImportProgressEvent } from '@pharmacy/shared';
 import { IMPORTABLE_FIELDS, REQUIRED_FIELDS, rejectedToCsv, type ImportField } from '@pharmacy/core';
 import { ar } from '../../i18n/ar';
+import { Stat } from '../../components/Stat';
 
 type Phase = 'idle' | 'previewing' | 'ready' | 'applying' | 'done';
 
@@ -136,11 +137,11 @@ export function ImportWizard({ onClose, onImported }: Props) {
           </p>
 
           <div className="stats">
-            <Stat label={ar.items.import.totalRows} value={preview.totalRows} />
-            <Stat label={ar.items.import.accepted} value={preview.acceptedCount} good />
+            <Stat label={ar.items.import.totalRows} value={String(preview.totalRows)} neutral />
+            <Stat label={ar.items.import.accepted} value={String(preview.acceptedCount)} good />
             <Stat
               label={ar.items.import.rejected}
-              value={preview.totalRows - preview.acceptedCount}
+              value={String(preview.totalRows - preview.acceptedCount)}
               bad={preview.totalRows - preview.acceptedCount > 0}
             />
           </div>
@@ -230,23 +231,3 @@ export function ImportWizard({ onClose, onImported }: Props) {
   );
 }
 
-function Stat({
-  label,
-  value,
-  good,
-  bad,
-}: {
-  label: string;
-  value: number;
-  good?: boolean;
-  bad?: boolean;
-}) {
-  return (
-    <div className={`stat${good ? ' stat--good' : ''}${bad ? ' stat--bad' : ''}`}>
-      <span className="stat__value" dir="ltr">
-        {value}
-      </span>
-      <span className="stat__label">{label}</span>
-    </div>
-  );
-}

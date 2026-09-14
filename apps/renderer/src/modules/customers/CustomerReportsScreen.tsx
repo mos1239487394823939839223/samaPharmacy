@@ -8,6 +8,7 @@ import type { CustomerRow, CustomerLedgerRow } from '@pharmacy/shared';
 import { fromPiastres } from '@pharmacy/core';
 import { ar } from '../../i18n/ar';
 import { MoneyInput } from '../../components/MoneyInput';
+import { Stat } from '../../components/Stat';
 
 type EntryTypeKey = keyof typeof ar.customers.entryTypes;
 
@@ -67,8 +68,8 @@ export function CustomerReportsScreen() {
   }
 
   return (
-    <div className="items">
-      <div className="items__bar" style={{ position: 'relative' }}>
+    <div className="stack">
+      <div className="items__bar field-wrap">
         <input
           className="field items__search"
           placeholder={ar.customers.search}
@@ -76,11 +77,11 @@ export function CustomerReportsScreen() {
           onChange={(e) => setQuery(e.target.value)}
         />
         {results.length > 0 && (
-          <ul className="autocomplete" style={{ top: '2.6rem', maxInlineSize: '24rem' }}>
+          <ul className="autocomplete autocomplete--offset" style={{ maxInlineSize: '24rem' }}>
             {results.map((c) => (
               <li key={c.id}>
                 <button type="button" onClick={() => void selectCustomer(c)}>
-                  {c.name} <span dir="ltr">#{c.code}</span>
+                  <span>{c.name}</span> <span dir="ltr">#{c.code}</span>
                 </button>
               </li>
             ))}
@@ -94,19 +95,23 @@ export function CustomerReportsScreen() {
         <p className="muted">{ar.customers.selectCustomer}</p>
       ) : (
         <>
-          <div className="panel">
-            <h2 style={{ margin: '0 0 0.75rem' }}>
-              {selected.name} <span className="muted small" dir="ltr">#{selected.code}</span>
+          <div className="panel stack">
+            <h2 className="section-heading">
+              {selected.name}{' '}
+              <span className="muted small" dir="ltr">
+                #{selected.code}
+              </span>
             </h2>
             <div className="stats">
               <Stat label={ar.customers.balance} value={fromPiastres(balance ?? 0)} good={(balance ?? 0) === 0} />
               <Stat
                 label={ar.customers.creditLimit}
                 value={selected.creditLimit === null ? ar.customers.noLimit : fromPiastres(selected.creditLimit)}
+                neutral
               />
             </div>
 
-            <fieldset className="fieldset">
+            <fieldset className="fieldset" style={{ marginBlockStart: 0 }}>
               <legend>{ar.customers.recordPayment}</legend>
               <div className="grid2">
                 <label className="formfield">
@@ -118,18 +123,20 @@ export function CustomerReportsScreen() {
                   <input className="field" value={paymentNote} onChange={(e) => setPaymentNote(e.target.value)} />
                 </label>
               </div>
-              <button type="button" className="btn btn--primary btn--sm" style={{ marginBlockStart: '0.5rem' }} onClick={() => void submitPayment()}>
-                {ar.customers.recordPayment}
-              </button>
+              <div className="btn-row">
+                <button type="button" className="btn btn--primary btn--sm" onClick={() => void submitPayment()}>
+                  {ar.customers.recordPayment}
+                </button>
+              </div>
             </fieldset>
           </div>
 
-          <fieldset className="fieldset">
-            <legend>{ar.customers.ledgerTitle}</legend>
+          <div className="panel">
+            <h2 className="section-heading">{ar.customers.ledgerTitle}</h2>
             {ledger.length === 0 ? (
               <p className="muted">—</p>
             ) : (
-              <table className="subtable">
+              <table className="datatable">
                 <thead>
                   <tr>
                     <th>{ar.customers.ledgerDate}</th>
@@ -154,20 +161,9 @@ export function CustomerReportsScreen() {
                 </tbody>
               </table>
             )}
-          </fieldset>
+          </div>
         </>
       )}
-    </div>
-  );
-}
-
-function Stat({ label, value, good }: { label: string; value: string; good?: boolean }) {
-  return (
-    <div className={good ? 'stat stat--good' : 'stat'}>
-      <span className="stat__value" dir="ltr">
-        {value}
-      </span>
-      <span className="stat__label">{label}</span>
     </div>
   );
 }

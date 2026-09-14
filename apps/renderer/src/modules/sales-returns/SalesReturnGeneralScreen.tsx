@@ -10,6 +10,8 @@ import type { ItemListRow } from '@pharmacy/shared';
 import { fromPiastres } from '@pharmacy/core';
 import { ar } from '../../i18n/ar';
 import { MoneyInput } from '../../components/MoneyInput';
+import { Stat } from '../../components/Stat';
+import { useToast } from '../../components/Toast';
 
 interface DraftLine {
   key: number;
@@ -31,7 +33,7 @@ export function SalesReturnGeneralScreen() {
   const [refundMethod, setRefundMethod] = useState<'cash' | 'credit_note' | 'account'>('cash');
   const [reason, setReason] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const { showToast } = useToast();
   const debounce = useRef<ReturnType<typeof setTimeout>>();
 
   useEffect(() => {
@@ -113,7 +115,7 @@ export function SalesReturnGeneralScreen() {
         })),
       });
       const created = await window.api.salesReturns.get(returnId);
-      setNotice(ar.salesReturns.confirmed.replace('{serial}', String(created?.serial ?? returnId)));
+      showToast(ar.salesReturns.confirmed.replace('{serial}', String(created?.serial ?? returnId)));
       setLines([]);
     } catch (err) {
       setError(`${ar.salesReturns.errors.createFailed}: ${(err as Error).message}`);
@@ -126,7 +128,7 @@ export function SalesReturnGeneralScreen() {
     <div className="items">
       <p className="hint">{ar.salesReturns.priceCapNotice}</p>
 
-      <div className="items__bar" style={{ position: 'relative' }}>
+      <div className="items__bar field-wrap">
         <input
           className="field items__search"
           placeholder={ar.salesReturns.itemSearch}
@@ -134,11 +136,11 @@ export function SalesReturnGeneralScreen() {
           onChange={(e) => setQuery(e.target.value)}
         />
         {results.length > 0 && (
-          <ul className="autocomplete" style={{ top: '2.6rem' }}>
+          <ul className="autocomplete autocomplete--offset">
             {results.map((it) => (
               <li key={it.id}>
                 <button type="button" onClick={() => void addItem(it)}>
-                  {it.nameAr}
+                  <span>{it.nameAr}</span>
                 </button>
               </li>
             ))}
@@ -147,14 +149,6 @@ export function SalesReturnGeneralScreen() {
       </div>
 
       {error && <div className="alert alert--error">{error}</div>}
-      {notice && (
-        <div className="alert alert--info">
-          {notice}
-          <button type="button" className="alert__close" onClick={() => setNotice(null)}>
-            ×
-          </button>
-        </div>
-      )}
 
       {lines.length > 0 && (
         <table className="subtable">
@@ -173,9 +167,8 @@ export function SalesReturnGeneralScreen() {
                 <td>{l.item.nameAr}</td>
                 <td>
                   <input
-                    className="field"
+                    className="field field--sm"
                     dir="ltr"
-                    style={{ maxInlineSize: '5rem' }}
                     inputMode="numeric"
                     value={l.qty}
                     onChange={(e) => updateLine(l.key, { qty: e.target.value })}
@@ -198,7 +191,7 @@ export function SalesReturnGeneralScreen() {
         </table>
       )}
 
-      <div className="grid2" style={{ marginBlockStart: '1rem' }}>
+      <div className="grid2 mt">
         <label className="formfield">
           <span className="formfield__label">{ar.salesReturns.refundMethod}</span>
           <select className="field" value={refundMethod} onChange={(e) => setRefundMethod(e.target.value as 'cash')}>
@@ -215,18 +208,15 @@ export function SalesReturnGeneralScreen() {
 
       <p className="hint">{ar.salesReturns.approvalRequired}</p>
 
-      <div className="stats" style={{ marginBlockEnd: '0.75rem' }}>
-        <div className="stat stat--good">
-          <span className="stat__value" dir="ltr">
-            {fromPiastres(total)}
-          </span>
-          <span className="stat__label">{ar.salesReturns.total}</span>
-        </div>
+      <div className="stats mb">
+        <Stat label={ar.salesReturns.total} value={fromPiastres(total)} good />
       </div>
 
-      <button type="button" className="btn btn--primary" onClick={() => void submit()} disabled={lines.length === 0}>
-        {ar.salesReturns.confirm}
-      </button>
+      <div className="btn-row" style={{ marginBlockStart: 0 }}>
+        <button type="button" className="btn btn--primary" onClick={() => void submit()} disabled={lines.length === 0}>
+          {ar.salesReturns.confirm}
+        </button>
+      </div>
     </div>
   );
 }

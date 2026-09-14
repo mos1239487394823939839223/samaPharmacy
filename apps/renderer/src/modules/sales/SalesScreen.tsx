@@ -12,6 +12,8 @@ import { useEffect, useRef, useState } from 'react';
 import type { ItemListRow } from '@pharmacy/shared';
 import { fromPiastres, toPiastres } from '@pharmacy/core';
 import { ar } from '../../i18n/ar';
+import { Stat } from '../../components/Stat';
+import { useToast } from '../../components/Toast';
 import { useBarcodeScanner } from '../../hardware/scanner';
 import { loadScannerConfig } from '../../hardware/config';
 
@@ -36,7 +38,7 @@ export function SalesScreen() {
   const [invoiceType, setInvoiceType] = useState<'cash' | 'credit'>('cash');
   const [paidCash, setPaidCash] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const { showToast } = useToast();
   const [saving, setSaving] = useState(false);
 
   const searchRef = useRef<HTMLInputElement>(null);
@@ -172,7 +174,7 @@ export function SalesScreen() {
       await window.api.sales.confirm(invoiceId);
       const invoice = await window.api.sales.get(invoiceId);
 
-      setNotice(ar.sales.confirmed.replace('{serial}', String(invoice?.serial ?? invoiceId)));
+      showToast(ar.sales.confirmed.replace('{serial}', String(invoice?.serial ?? invoiceId)));
       setCart([]);
       setPaidCash(null);
       searchRef.current?.focus();
@@ -205,16 +207,12 @@ export function SalesScreen() {
           {ar.sales.warehouse}: {warehouseName}
         </span>
         {results.length > 0 && (
-          <ul className="autocomplete" style={{ top: '2.6rem' }}>
+          <ul className="autocomplete autocomplete--offset">
             {results.map((it) => (
               <li key={it.id}>
                 <button type="button" onClick={() => void addItemToCart(it)}>
-                  {it.nameAr}
-                  {it.publicPrice !== null && (
-                    <span dir="ltr" style={{ float: 'left' }}>
-                      {fromPiastres(it.publicPrice)}
-                    </span>
-                  )}
+                  <span>{it.nameAr}</span>
+                  {it.publicPrice !== null && <span dir="ltr">{fromPiastres(it.publicPrice)}</span>}
                 </button>
               </li>
             ))}
@@ -223,14 +221,6 @@ export function SalesScreen() {
       </div>
 
       {error && <div className="alert alert--error">{error}</div>}
-      {notice && (
-        <div className="alert alert--info">
-          {notice}
-          <button type="button" className="alert__close" onClick={() => setNotice(null)}>
-            ×
-          </button>
-        </div>
-      )}
 
       {cart.length === 0 ? (
         <p className="muted">{ar.sales.emptyCart}</p>
@@ -255,9 +245,8 @@ export function SalesScreen() {
                   <td>{l.item.nameAr}</td>
                   <td>
                     <input
-                      className="field"
+                      className="field field--sm"
                       dir="ltr"
-                      style={{ maxInlineSize: '5rem' }}
                       inputMode="decimal"
                       value={l.qty}
                       onChange={(e) => updateLine(l.key, { qty: Number(e.target.value) || 0 })}
@@ -266,9 +255,8 @@ export function SalesScreen() {
                   <td dir="ltr">{fromPiastres(l.unitPrice)}</td>
                   <td>
                     <input
-                      className="field"
+                      className="field field--xs"
                       dir="ltr"
-                      style={{ maxInlineSize: '4rem' }}
                       inputMode="decimal"
                       value={l.discountPct}
                       onChange={(e) => updateLine(l.key, { discountPct: Number(e.target.value) || 0 })}
@@ -321,10 +309,10 @@ export function SalesScreen() {
         </div>
 
         <div className="stats">
-          <Stat label={ar.sales.itemCount} value={String(cart.length)} />
+          <Stat label={ar.sales.itemCount} value={String(cart.length)} neutral />
           <Stat label={ar.sales.total} value={fromPiastres(totals.total)} good />
           {invoiceType === 'cash' && paidCash !== null && (
-            <Stat label={ar.sales.change} value={fromPiastres(Math.max(change, 0))} />
+            <Stat label={ar.sales.change} value={fromPiastres(Math.max(change, 0))} neutral />
           )}
         </div>
 
@@ -337,17 +325,6 @@ export function SalesScreen() {
           {invoiceType === 'cash' ? ar.sales.confirmCash : ar.sales.confirmCredit}
         </button>
       </div>
-    </div>
-  );
-}
-
-function Stat({ label, value, good }: { label: string; value: string; good?: boolean }) {
-  return (
-    <div className={good ? 'stat stat--good' : 'stat'}>
-      <span className="stat__value" dir="ltr">
-        {value}
-      </span>
-      <span className="stat__label">{label}</span>
     </div>
   );
 }

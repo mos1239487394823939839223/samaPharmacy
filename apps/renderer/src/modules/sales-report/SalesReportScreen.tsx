@@ -10,6 +10,7 @@ import { useEffect, useState } from 'react';
 import type { SalesReportRow, SalesReportInvoiceRow } from '@pharmacy/shared';
 import { fromPiastres } from '@pharmacy/core';
 import { ar } from '../../i18n/ar';
+import { Stat } from '../../components/Stat';
 
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
@@ -62,7 +63,7 @@ export function SalesReportScreen() {
   }
 
   return (
-    <div className="items">
+    <div className="stack">
       <div className="panel">
         <div className="grid2">
           <label className="formfield">
@@ -74,7 +75,7 @@ export function SalesReportScreen() {
             <input className="field" type="date" dir="ltr" value={to} onChange={(e) => setTo(e.target.value)} />
           </label>
         </div>
-        <div style={{ display: 'flex', gap: '0.5rem', marginBlockStart: '0.75rem' }}>
+        <div className="btn-row">
           <button type="button" className="btn btn--sm" onClick={() => applyPreset(0)}>
             {ar.salesReport.today}
           </button>
@@ -96,20 +97,20 @@ export function SalesReportScreen() {
         <p className="muted">{ar.items.loading}</p>
       ) : report ? (
         <>
-          <div className="stats" style={{ marginBlockStart: '1rem' }}>
-            <Stat label={ar.salesReport.invoiceCount} value={String(report.invoiceCount)} />
+          <div className="stats">
+            <Stat label={ar.salesReport.invoiceCount} value={String(report.invoiceCount)} neutral />
             <Stat label={ar.salesReport.cashTotal} value={fromPiastres(report.cashTotal)} />
             <Stat label={ar.salesReport.creditTotal} value={fromPiastres(report.creditTotal)} />
             <Stat label={ar.salesReport.grandTotal} value={fromPiastres(report.grandTotal)} good />
             <Stat label={ar.salesReport.grossProfit} value={fromPiastres(report.grossProfit)} good />
           </div>
 
-          <fieldset className="fieldset" style={{ marginBlockStart: '1rem' }}>
-            <legend>{ar.salesReport.invoiceList}</legend>
+          <div className="panel">
+            <h2 className="section-heading">{ar.salesReport.invoiceList}</h2>
             {invoices.length === 0 ? (
               <p className="muted">{ar.salesReport.empty}</p>
             ) : (
-              <table className="subtable">
+              <table className="datatable">
                 <thead>
                   <tr>
                     <th>{ar.salesReport.serial}</th>
@@ -132,20 +133,9 @@ export function SalesReportScreen() {
                 </tbody>
               </table>
             )}
-          </fieldset>
+          </div>
         </>
       ) : null}
-    </div>
-  );
-}
-
-function Stat({ label, value, good }: { label: string; value: string; good?: boolean }) {
-  return (
-    <div className={good ? 'stat stat--good' : 'stat'}>
-      <span className="stat__value" dir="ltr">
-        {value}
-      </span>
-      <span className="stat__label">{label}</span>
     </div>
   );
 }

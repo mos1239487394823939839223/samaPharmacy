@@ -8,6 +8,7 @@ import { useState } from 'react';
 import type { ReturnableLine } from '@pharmacy/shared';
 import { fromPiastres } from '@pharmacy/core';
 import { ar } from '../../i18n/ar';
+import { useToast } from '../../components/Toast';
 
 interface DraftLine extends ReturnableLine {
   returnQty: string;
@@ -23,12 +24,11 @@ export function SalesReturnByInvoiceScreen() {
   const [refundMethod, setRefundMethod] = useState<'cash' | 'credit_note' | 'account'>('cash');
   const [reason, setReason] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const { showToast } = useToast();
 
   async function findInvoice() {
     if (!window.api || !serial.trim()) return;
     setError(null);
-    setNotice(null);
     try {
       // list() has no serial filter yet; fetch a page and match client-side —
       // acceptable at this scale, a dedicated lookup can follow later.
@@ -76,7 +76,7 @@ export function SalesReturnByInvoiceScreen() {
         })),
       });
       const created = await window.api.salesReturns.get(returnId);
-      setNotice(ar.salesReturns.confirmed.replace('{serial}', String(created?.serial ?? returnId)));
+      showToast(ar.salesReturns.confirmed.replace('{serial}', String(created?.serial ?? returnId)));
       setInvoiceId(null);
       setLines([]);
       setSerial('');
@@ -102,14 +102,6 @@ export function SalesReturnByInvoiceScreen() {
       </div>
 
       {error && <div className="alert alert--error">{error}</div>}
-      {notice && (
-        <div className="alert alert--info">
-          {notice}
-          <button type="button" className="alert__close" onClick={() => setNotice(null)}>
-            ×
-          </button>
-        </div>
-      )}
 
       {invoiceId && (
         <>
@@ -135,9 +127,8 @@ export function SalesReturnByInvoiceScreen() {
                     <td dir="ltr">{l.alreadyReturnedQtyBase}</td>
                     <td>
                       <input
-                        className="field"
+                        className="field field--sm"
                         dir="ltr"
-                        style={{ maxInlineSize: '5rem' }}
                         inputMode="numeric"
                         value={l.returnQty}
                         onChange={(e) => updateLine(l.sourceLineId, { returnQty: e.target.value })}
@@ -158,7 +149,7 @@ export function SalesReturnByInvoiceScreen() {
             </tbody>
           </table>
 
-          <div className="grid2" style={{ marginBlockStart: '1rem' }}>
+          <div className="grid2 mt">
             <label className="formfield">
               <span className="formfield__label">{ar.salesReturns.refundMethod}</span>
               <select className="field" value={refundMethod} onChange={(e) => setRefundMethod(e.target.value as 'cash')}>
@@ -173,9 +164,11 @@ export function SalesReturnByInvoiceScreen() {
             </label>
           </div>
 
-          <button type="button" className="btn btn--primary" style={{ marginBlockStart: '1rem' }} onClick={() => void submit()}>
-            {ar.salesReturns.confirm}
-          </button>
+          <div className="btn-row">
+            <button type="button" className="btn btn--primary" onClick={() => void submit()}>
+              {ar.salesReturns.confirm}
+            </button>
+          </div>
         </>
       )}
     </div>

@@ -144,9 +144,7 @@ function BatchDetail({ item, onBack }: { item: ItemStockRow; onBack: () => void 
         <button type="button" className="btn" onClick={onBack}>
           {ar.stock.back}
         </button>
-        <h2 className="shell__heading" style={{ margin: 0 }}>
-          {item.nameAr}
-        </h2>
+        <h2 className="section-heading section-heading--inline">{item.nameAr}</h2>
       </div>
 
       {loading ? (
@@ -188,7 +186,7 @@ function BatchDetail({ item, onBack }: { item: ItemStockRow; onBack: () => void 
       )}
 
       {movesFor !== null && (
-        <fieldset className="fieldset" style={{ marginBlockStart: '1rem' }}>
+        <fieldset className="fieldset">
           <legend>{ar.stock.moves}</legend>
           {ledgerCheck && (
             <p className={ledgerCheck.matches ? 'hint' : 'alert alert--error'}>

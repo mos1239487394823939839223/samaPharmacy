@@ -167,7 +167,7 @@ export function getExpiryReport(
   db: Db,
   asOf: string,
   bucketDays: ExpiryBucketDays = getExpiryBucketDays(db)
-): { rows: ExpiryBatchRow[]; summary: ExpiryBucketSummary[] } {
+): { rows: ExpiryBatchRow[]; summary: ExpiryBucketSummary[]; bucketDays: ExpiryBucketDays } {
   const raw = db
     .prepare(
       `SELECT b.id AS batchId, b.item_id AS itemId, i.code, i.name_ar AS nameAr,
@@ -226,7 +226,7 @@ export function getExpiryReport(
     };
   });
 
-  return { rows, summary };
+  return { rows, summary, bucketDays };
 }
 
 /** Items at or below their configured minimum stock — for a reorder view. */

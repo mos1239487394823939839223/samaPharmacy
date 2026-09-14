@@ -133,7 +133,7 @@ export function CustomerForm({ existing, onSaved, onCancel }: Props) {
               <option value="company">{ar.customers.accountTypes.company}</option>
             </select>
           </label>
-          <label className="check" style={{ alignSelf: 'end' }}>
+          <label className="check check--end">
             <input type="checkbox" checked={isVip} onChange={(e) => setIsVip(e.target.checked)} />
             <span>{ar.customers.isVip}</span>
           </label>
@@ -174,7 +174,7 @@ export function CustomerForm({ existing, onSaved, onCancel }: Props) {
               <MoneyInput value={creditLimit} onChange={setCreditLimit} placeholder={ar.customers.noLimit} />
             </label>
           </div>
-          <div className="grid2" style={{ marginBlockStart: '0.75rem' }}>
+          <div className="grid2 mt">
             <label className="formfield">
               <span className="formfield__label">{ar.customers.discountCashPct}</span>
               <input className="field" dir="ltr" inputMode="decimal" value={discountCashPct} onChange={(e) => setDiscountCashPct(e.target.value)} />
@@ -192,15 +192,10 @@ export function CustomerForm({ existing, onSaved, onCancel }: Props) {
 
         <fieldset className="fieldset">
           <legend>{ar.customers.tags}</legend>
-          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBlockEnd: '0.5rem' }}>
+          <div className="tag-row">
             {tags.map((t) => (
               <span key={t} className="badge">
-                {t}{' '}
-                <button
-                  type="button"
-                  onClick={() => setTags(tags.filter((x) => x !== t))}
-                  style={{ border: 'none', background: 'none', cursor: 'pointer' }}
-                >
+                {t} <button type="button" className="tag-remove" onClick={() => setTags(tags.filter((x) => x !== t))}>
                   ×
                 </button>
               </span>
@@ -220,7 +215,7 @@ export function CustomerForm({ existing, onSaved, onCancel }: Props) {
           />
         </fieldset>
 
-        <label className="formfield" style={{ marginBlockStart: '0.75rem' }}>
+        <label className="formfield mt">
           <span className="formfield__label">{ar.customers.notes}</span>
           <input className="field" value={notes} onChange={(e) => setNotes(e.target.value)} />
         </label>
