@@ -85,3 +85,9 @@ export interface SalesReportInvoiceRow {
   confirmedAt: string | null;
   customerId: number | null;
 }
+
+export interface SalesTrendPoint {
+  date: string;
+  grandTotal: number;
+  invoiceCount: number;
+}

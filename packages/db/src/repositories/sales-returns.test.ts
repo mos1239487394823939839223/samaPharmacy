@@ -12,6 +12,7 @@ import { createSalesInvoice, confirmSalesInvoice, getSalesLines } from './sales'
 import { getItemBatches, getBatchMoves } from './stock';
 import { createSalesReturn, getSalesReturn, getSalesReturnLines, getReturnableLines } from './sales-returns';
 import { updateSettings } from './settings';
+import { openShift, computeExpectedCash } from './shifts';
 
 let db: Db;
 let unitId: number;
@@ -140,6 +141,143 @@ describe('createSalesReturn — against an invoice (مرتجع فواتير ال
     });
 
     expect(getCustomerBalance(db, customerId)).toBe(1000); // 2000 - 1000 refunded
+  });
+
+  it('rejects a return quantity that exceeds what was sold minus what is already returned', () => {
+    const { itemId, unitId: uId } = makeItem('صنف حد المرتجع');
+    stockUp(itemId, uId, 100, 50);
+    const invoiceId = sell(itemId, uId, 10, 200);
+    const [saleLine] = getSalesLines(db, invoiceId);
+
+    // Attempting to return 999 units against a line that only sold 10 must
+    // be rejected outright — this used to silently succeed and fabricate
+    // stock (990 phantom units) with a matching phantom refund.
+    expect(() =>
+      createSalesReturn(db, {
+        sourceInvoiceId: invoiceId,
+        warehouseId,
+        refundMethod: 'cash',
+        lines: [
+          {
+            itemId,
+            batchId: saleLine!.batchId,
+            unitId: uId,
+            qtyInUnit: 999,
+            qtyBase: 999,
+            unitPrice: 200,
+            sourceLineId: saleLine!.id,
+          },
+        ],
+      })
+    ).toThrow(/only .* remain returnable/);
+
+    // Stock must be untouched by the rejected attempt.
+    expect(getItemBatches(db, itemId)[0]!.qtyOnHand).toBe(90);
+  });
+
+  it('rejects a second return that would push the cumulative total past what was sold', () => {
+    const { itemId, unitId: uId } = makeItem('صنف مرتجع متكرر');
+    stockUp(itemId, uId, 100, 50);
+    const invoiceId = sell(itemId, uId, 10, 200);
+    const [saleLine] = getSalesLines(db, invoiceId);
+
+    // Return 6 of the 10 sold — fine.
+    createSalesReturn(db, {
+      sourceInvoiceId: invoiceId,
+      warehouseId,
+      refundMethod: 'cash',
+      lines: [{ itemId, batchId: saleLine!.batchId, unitId: uId, qtyInUnit: 6, qtyBase: 6, unitPrice: 200, sourceLineId: saleLine!.id }],
+    });
+
+    // A second return of 5 more would total 11 against only 10 sold — reject.
+    expect(() =>
+      createSalesReturn(db, {
+        sourceInvoiceId: invoiceId,
+        warehouseId,
+        refundMethod: 'cash',
+        lines: [{ itemId, batchId: saleLine!.batchId, unitId: uId, qtyInUnit: 5, qtyBase: 5, unitPrice: 200, sourceLineId: saleLine!.id }],
+      })
+    ).toThrow(/only .* remain returnable/);
+  });
+
+  it('allows returning exactly the remaining sold quantity across two returns', () => {
+    const { itemId, unitId: uId } = makeItem('صنف مرتجع جزئي صحيح');
+    stockUp(itemId, uId, 100, 50);
+    const invoiceId = sell(itemId, uId, 10, 200);
+    const [saleLine] = getSalesLines(db, invoiceId);
+
+    createSalesReturn(db, {
+      sourceInvoiceId: invoiceId,
+      warehouseId,
+      refundMethod: 'cash',
+      lines: [{ itemId, batchId: saleLine!.batchId, unitId: uId, qtyInUnit: 6, qtyBase: 6, unitPrice: 200, sourceLineId: saleLine!.id }],
+    });
+
+    expect(() =>
+      createSalesReturn(db, {
+        sourceInvoiceId: invoiceId,
+        warehouseId,
+        refundMethod: 'cash',
+        lines: [{ itemId, batchId: saleLine!.batchId, unitId: uId, qtyInUnit: 4, qtyBase: 4, unitPrice: 200, sourceLineId: saleLine!.id }],
+      })
+    ).not.toThrow();
+
+    expect(getItemBatches(db, itemId)[0]!.qtyOnHand).toBe(100); // fully returned
+  });
+
+  it('a cash refund reduces the open shift expected cash by the refunded amount', () => {
+    const { itemId, unitId: uId } = makeItem('صنف مرتجع نقدي');
+    stockUp(itemId, uId, 100, 50);
+
+    const shiftId = openShift(db, warehouseId, 0);
+    const invoiceId = sell(itemId, uId, 10, 200); // 2000 piastres cash sale
+    expect(computeExpectedCash(db, shiftId)).toBe(2000);
+
+    const [saleLine] = getSalesLines(db, invoiceId);
+    createSalesReturn(db, {
+      sourceInvoiceId: invoiceId,
+      warehouseId,
+      refundMethod: 'cash',
+      lines: [{ itemId, batchId: saleLine!.batchId, unitId: uId, qtyInUnit: 10, qtyBase: 10, unitPrice: 200, sourceLineId: saleLine!.id }],
+    });
+
+    expect(computeExpectedCash(db, shiftId)).toBe(0); // 2000 sale - 2000 refund
+  });
+
+  it('a cash refund with no open shift still succeeds, with nothing to record against', () => {
+    const { itemId, unitId: uId } = makeItem('صنف مرتجع نقدي بدون وردية');
+    stockUp(itemId, uId, 100, 50);
+    const invoiceId = sell(itemId, uId, 10, 200);
+    const [saleLine] = getSalesLines(db, invoiceId);
+
+    expect(() =>
+      createSalesReturn(db, {
+        sourceInvoiceId: invoiceId,
+        warehouseId,
+        refundMethod: 'cash',
+        lines: [{ itemId, batchId: saleLine!.batchId, unitId: uId, qtyInUnit: 10, qtyBase: 10, unitPrice: 200, sourceLineId: saleLine!.id }],
+      })
+    ).not.toThrow();
+  });
+
+  it('a non-cash refund (account) does not touch the shift cash drawer', () => {
+    const { itemId, unitId: uId } = makeItem('صنف مرتجع آجل بدون نقدية');
+    stockUp(itemId, uId, 100, 50);
+    const shiftId = openShift(db, warehouseId, 0);
+    const customerId = createCustomer(db, { name: 'عميل مرتجع آجل', mobile1: '0120000002' });
+    const invoiceId = sell(itemId, uId, 10, 200, customerId, 'credit');
+    const expectedBefore = computeExpectedCash(db, shiftId);
+
+    const [saleLine] = getSalesLines(db, invoiceId);
+    createSalesReturn(db, {
+      sourceInvoiceId: invoiceId,
+      warehouseId,
+      customerId,
+      refundMethod: 'account',
+      lines: [{ itemId, batchId: saleLine!.batchId, unitId: uId, qtyInUnit: 5, qtyBase: 5, unitPrice: 200, sourceLineId: saleLine!.id }],
+    });
+
+    expect(computeExpectedCash(db, shiftId)).toBe(expectedBefore); // unchanged
   });
 });
 

@@ -23,6 +23,7 @@ import type {
   SalesLineRow,
   SalesReportRow,
   SalesReportInvoiceRow,
+  SalesTrendPoint,
 } from './sales';
 import type { ShiftRow, CashTransactionRow, CloseShiftInput, ShiftSalesSummary } from './shifts';
 import type {
@@ -30,6 +31,7 @@ import type {
   CustomerRow,
   CustomerDetail,
   CustomerLedgerRow,
+  ReceivablesSummary,
 } from './customers';
 import type {
   SalesReturnInput,
@@ -75,6 +77,7 @@ export type DbRequest =
   | { kind: 'suppliers.deactivate'; id: number }
   | { kind: 'purchases.create'; input: PurchaseInvoiceInput }
   | { kind: 'purchases.get'; id: number }
+  | { kind: 'purchases.getBySerial'; serial: number }
   | { kind: 'purchases.list'; limit?: number; offset?: number }
   | { kind: 'purchases.confirm'; id: number }
   | { kind: 'purchases.void'; id: number }
@@ -86,6 +89,7 @@ export type DbRequest =
   | { kind: 'stock.expiryReport'; asOf: string }
   | { kind: 'sales.create'; input: SalesInvoiceInput }
   | { kind: 'sales.get'; id: number }
+  | { kind: 'sales.getBySerial'; serial: number }
   | { kind: 'sales.list'; limit?: number; offset?: number }
   | { kind: 'sales.confirm'; id: number }
   | { kind: 'sales.void'; id: number }
@@ -109,6 +113,7 @@ export type DbRequest =
   | { kind: 'customers.balance'; id: number }
   | { kind: 'customers.ledger'; id: number; limit?: number }
   | { kind: 'customers.recordPayment'; id: number; amount: number; note?: string | null }
+  | { kind: 'customers.receivablesSummary' }
   | { kind: 'salesReturns.create'; input: SalesReturnInput }
   | { kind: 'salesReturns.get'; id: number }
   | { kind: 'salesReturns.list'; limit?: number; offset?: number }
@@ -119,6 +124,7 @@ export type DbRequest =
   | { kind: 'purchaseReturns.returnableLines'; invoiceId: number }
   | { kind: 'sales.report'; from: string; to: string }
   | { kind: 'sales.reportInvoices'; from: string; to: string; limit?: number }
+  | { kind: 'sales.trend'; from: string; to: string }
   | { kind: 'settings.get' }
   | { kind: 'settings.update'; input: PharmacySettingsInput };
 
@@ -202,6 +208,7 @@ export interface RendererApi {
   purchases: {
     create(input: PurchaseInvoiceInput): Promise<number>;
     get(id: number): Promise<(PurchaseInvoiceRow & { lines: PurchaseLineRow[] }) | null>;
+    getBySerial(serial: number): Promise<PurchaseInvoiceRow | null>;
     list(opts?: { limit?: number; offset?: number }): Promise<PurchaseInvoiceRow[]>;
     /** Creates batches, writes stock_moves, posts the supplier ledger. */
     confirm(id: number): Promise<void>;
@@ -218,6 +225,7 @@ export interface RendererApi {
   sales: {
     create(input: SalesInvoiceInput): Promise<number>;
     get(id: number): Promise<(SalesInvoiceRow & { lines: SalesLineRow[] }) | null>;
+    getBySerial(serial: number): Promise<SalesInvoiceRow | null>;
     list(opts?: { limit?: number; offset?: number }): Promise<SalesInvoiceRow[]>;
     /** Decrements stock, writes stock_moves. Only place a sale actually leaves the pharmacy. */
     confirm(id: number): Promise<void>;
@@ -253,6 +261,7 @@ export interface RendererApi {
     balance(id: number): Promise<number>;
     ledger(id: number, limit?: number): Promise<CustomerLedgerRow[]>;
     recordPayment(id: number, amount: number, note?: string | null): Promise<void>;
+    receivablesSummary(): Promise<ReceivablesSummary>;
   };
   salesReturns: {
     create(input: SalesReturnInput): Promise<number>;
@@ -269,6 +278,7 @@ export interface RendererApi {
   salesReport: {
     summary(from: string, to: string): Promise<SalesReportRow>;
     invoices(from: string, to: string, limit?: number): Promise<SalesReportInvoiceRow[]>;
+    trend(from: string, to: string): Promise<SalesTrendPoint[]>;
   };
   settings: {
     get(): Promise<PharmacySettings>;

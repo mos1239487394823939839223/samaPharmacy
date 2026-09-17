@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { PingResult } from '@pharmacy/shared';
 import { ar } from '../i18n/ar';
+import { AlertCircleIcon } from './icons';
 
 type State =
   | { status: 'loading' }
@@ -34,7 +35,10 @@ export function HealthCheck() {
   if (state.status === 'error') {
     return (
       <div className="card error">
-        <h2>{ar.status.connectionFailed}</h2>
+        <h2 style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+          <AlertCircleIcon className="icon--sm" style={{ color: 'var(--error-500)' }} />
+          {ar.status.connectionFailed}
+        </h2>
         <pre>{state.message}</pre>
       </div>
     );

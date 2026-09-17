@@ -186,6 +186,25 @@ export function getPurchaseInvoice(db: Db, id: number): PurchaseInvoiceRow | und
     .get(id) as PurchaseInvoiceRow | undefined;
 }
 
+/**
+ * Look up a purchase invoice by its serial directly rather than fetching a
+ * page of recent invoices and scanning it client-side — see
+ * getSalesInvoiceBySerial for the same reasoning. serial is UNIQUE, so this
+ * is index-backed regardless of history size.
+ */
+export function getPurchaseInvoiceBySerial(db: Db, serial: number): PurchaseInvoiceRow | undefined {
+  return db
+    .prepare(
+      `SELECT id, serial, supplier_invoice_no AS supplierInvoiceNo, supplier_id AS supplierId,
+              warehouse_id AS warehouseId, purchase_type AS purchaseType,
+              invoice_date AS invoiceDate, status, expenses,
+              extra_discount_amt AS extraDiscountAmt, subtotal, tax_total AS taxTotal,
+              total, paid, notes, created_at AS createdAt, confirmed_at AS confirmedAt
+       FROM purchase_invoices WHERE serial = ?`
+    )
+    .get(serial) as PurchaseInvoiceRow | undefined;
+}
+
 export function getPurchaseLines(db: Db, invoiceId: number): PurchaseLineRow[] {
   return db
     .prepare(

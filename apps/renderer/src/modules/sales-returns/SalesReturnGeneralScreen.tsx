@@ -7,7 +7,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import type { ItemListRow } from '@pharmacy/shared';
-import { fromPiastres } from '@pharmacy/core';
+import { fromPiastres, toAsciiDigits } from '@pharmacy/core';
 import { ar } from '../../i18n/ar';
 import { MoneyInput } from '../../components/MoneyInput';
 import { Stat } from '../../components/Stat';
@@ -16,10 +16,12 @@ import { useToast } from '../../components/Toast';
 interface DraftLine {
   key: number;
   item: ItemListRow;
+  unitId: number | null;
   batchId: number | null;
   batches: Array<{ id: number; qtyOnHand: number; expiryDate: string | null }>;
   qty: string;
   unitPrice: number | null;
+  publicPrice: number | null;
   damaged: boolean;
 }
 
@@ -61,22 +63,35 @@ export function SalesReturnGeneralScreen() {
   async function addItem(item: ItemListRow) {
     if (!window.api || !warehouseId) return;
     // A general return still needs a real batch to add stock back to — use
-    // whatever batch of this item already exists in this warehouse (sellable
-    // or not), so the returned stock has somewhere concrete to land.
-    const batches = await window.api.stock.batches(item.id);
+    // whatever non-quarantined batch of this item already exists in this
+    // warehouse, so the returned stock has somewhere concrete to land. A
+    // quarantined batch is excluded as a *target* here — BR-12/the damaged
+    // flag are what route stock into quarantine, not a manual pick of one.
+    const [detail, batches] = await Promise.all([
+      window.api.items.get(item.id),
+      window.api.stock.batches(item.id),
+    ]);
     const relevant = batches
-      .filter((b) => b.warehouseId === warehouseId)
+      .filter((b) => b.warehouseId === warehouseId && !b.isQuarantined)
       .map((b) => ({ id: b.id, qtyOnHand: b.qtyOnHand, expiryDate: b.expiryDate }));
+
+    // unit_id is a real foreign key to item_units (docs/schema.sql) — every
+    // item has its own distinct rows there, so this must be resolved per
+    // item the same way SalesScreen resolves it for a sale line, never a
+    // hardcoded id that may belong to an unrelated item or not exist at all.
+    const unit = detail?.units.find((u) => u.isDefaultSale) ?? detail?.units[0];
 
     setLines((prev) => [
       ...prev,
       {
         key: keySeq++,
         item,
+        unitId: unit?.id ?? null,
         batchId: relevant[0]?.id ?? null,
         batches: relevant,
         qty: '',
         unitPrice: item.publicPrice,
+        publicPrice: item.publicPrice,
         damaged: false,
       },
     ]);
@@ -92,8 +107,24 @@ export function SalesReturnGeneralScreen() {
     if (!window.api || !warehouseId) return;
     setError(null);
 
-    const valid = lines.filter((l) => l.batchId && Number(l.qty) > 0 && l.unitPrice !== null);
+    const valid = lines.filter((l) => l.batchId && l.unitId && Number(l.qty) > 0 && l.unitPrice !== null);
     if (valid.length === 0) return setError(ar.salesReturns.errors.noLines);
+
+    if (lines.some((l) => !l.batchId)) return setError(ar.salesReturns.errors.noBatch);
+
+    // createSalesReturn's zod schema requires qtyBase to be a positive
+    // integer — checked here so a fractional quantity fails with the Arabic
+    // message instead of the schema's raw English one after submit.
+    if (valid.some((l) => !Number.isInteger(Number(l.qty)))) return setError(ar.salesReturns.errors.qtyNotWhole);
+
+    if (valid.some((l) => (l.unitPrice ?? 0) < 0)) return setError(ar.salesReturns.errors.negativePrice);
+
+    // Mirrors createSalesReturn's own general-return price cap (there is no
+    // source invoice here to bound the refund otherwise) — checked before
+    // submit so an edited price above public_price fails with the Arabic
+    // message instead of the repository's raw error.
+    const overPriced = valid.find((l) => l.publicPrice != null && (l.unitPrice ?? 0) > l.publicPrice);
+    if (overPriced) return setError(ar.salesReturns.errors.priceAbovePublic);
 
     try {
       const returnId = await window.api.salesReturns.create({
@@ -107,7 +138,7 @@ export function SalesReturnGeneralScreen() {
         lines: valid.map((l) => ({
           itemId: l.item.id,
           batchId: l.batchId!,
-          unitId: 1,
+          unitId: l.unitId!,
           qtyInUnit: Number(l.qty),
           qtyBase: Number(l.qty),
           unitPrice: l.unitPrice!,
@@ -155,6 +186,7 @@ export function SalesReturnGeneralScreen() {
           <thead>
             <tr>
               <th>{ar.items.fields.nameAr}</th>
+              <th>{ar.salesReturns.batch}</th>
               <th>{ar.salesReturns.returnQty}</th>
               <th>{ar.salesReturns.unitPrice}</th>
               <th>{ar.salesReturns.damaged}</th>
@@ -166,12 +198,31 @@ export function SalesReturnGeneralScreen() {
               <tr key={l.key}>
                 <td>{l.item.nameAr}</td>
                 <td>
+                  {l.batches.length === 0 ? (
+                    <span className="muted small">{ar.salesReturns.noBatch}</span>
+                  ) : (
+                    <select
+                      className="field field--sm"
+                      value={l.batchId ?? ''}
+                      onChange={(e) => updateLine(l.key, { batchId: Number(e.target.value) })}
+                    >
+                      {l.batches.map((b) => (
+                        <option key={b.id} value={b.id}>
+                          {b.expiryDate ?? '—'} ({b.qtyOnHand})
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </td>
+                <td>
                   <input
                     className="field field--sm"
                     dir="ltr"
                     inputMode="numeric"
                     value={l.qty}
-                    onChange={(e) => updateLine(l.key, { qty: e.target.value })}
+                    onChange={(e) =>
+                      updateLine(l.key, { qty: toAsciiDigits(e.target.value).replace(/[^\d]/g, '') })
+                    }
                   />
                 </td>
                 <td>
@@ -194,10 +245,13 @@ export function SalesReturnGeneralScreen() {
       <div className="grid2 mt">
         <label className="formfield">
           <span className="formfield__label">{ar.salesReturns.refundMethod}</span>
+          {/* No 'account' option here: recordCustomerPayment only fires with
+              a customerId, and a general return (no source invoice) has no
+              customer picker anywhere to supply one — offering it would
+              silently confirm the return with no ledger effect. */}
           <select className="field" value={refundMethod} onChange={(e) => setRefundMethod(e.target.value as 'cash')}>
             <option value="cash">{ar.salesReturns.cash}</option>
             <option value="credit_note">{ar.salesReturns.creditNote}</option>
-            <option value="account">{ar.salesReturns.account}</option>
           </select>
         </label>
         <label className="formfield">

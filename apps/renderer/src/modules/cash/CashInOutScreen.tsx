@@ -17,6 +17,7 @@ import { ar } from '../../i18n/ar';
 import { MoneyInput } from '../../components/MoneyInput';
 import { Stat } from '../../components/Stat';
 import { useToast } from '../../components/Toast';
+import { EmptyState } from '../../components/EmptyState';
 
 const CATEGORIES = [
   { value: 'petty_cash', label: ar.cashInOut.categories.pettyCash },
@@ -86,7 +87,17 @@ export function CashInOutScreen() {
       setNote('');
       await load();
     } catch (err) {
-      setError(`${ar.cashInOut.errors.submitFailed}: ${(err as Error).message}`);
+      const message = (err as Error).message;
+      // recordCashTransaction (packages/db/src/repositories/shifts.ts) rejects
+      // a movement against a shift closed since this screen loaded it — a
+      // real race if the shift is closed from ShiftHandoverScreen without
+      // this screen reloading. Caught by message shape since the boundary
+      // flattens every thrown error to a bare string (db-process/index.ts).
+      setError(
+        /is closed \(rule 9\/BR-10\)/.test(message)
+          ? ar.cashInOut.errors.shiftClosed
+          : `${ar.cashInOut.errors.submitFailed}: ${message}`
+      );
     }
   }
 
@@ -151,7 +162,7 @@ export function CashInOutScreen() {
       <div className="panel">
         <h2 className="section-heading">{ar.cashInOut.history}</h2>
         {transactions.length === 0 ? (
-          <p className="muted">{ar.cashInOut.empty}</p>
+          <EmptyState title={ar.cashInOut.empty} />
         ) : (
           <table className="datatable">
             <thead>

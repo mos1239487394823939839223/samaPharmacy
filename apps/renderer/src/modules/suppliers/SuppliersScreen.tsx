@@ -4,9 +4,10 @@
 
 import { useEffect, useRef, useState } from 'react';
 import type { SupplierRow } from '@pharmacy/shared';
-import { fromPiastres } from '@pharmacy/core';
+import { fromPiastres, toAsciiDigits } from '@pharmacy/core';
 import { ar } from '../../i18n/ar';
 import { MoneyInput } from '../../components/MoneyInput';
+import { EmptyState, TableSkeleton } from '../../components/EmptyState';
 
 type Mode = { view: 'list' } | { view: 'form'; existing: SupplierRow | null };
 
@@ -87,9 +88,9 @@ export function SuppliersScreen() {
       {error && <div className="alert alert--error">{error}</div>}
 
       {loading ? (
-        <p className="muted">{ar.items.loading}</p>
+        <TableSkeleton cols={5} />
       ) : rows.length === 0 ? (
-        <p className="muted">{query.trim() ? ar.suppliers.noResults : ar.suppliers.empty}</p>
+        <EmptyState title={query.trim() ? ar.suppliers.noResults : ar.suppliers.empty} />
       ) : (
         <table className="datatable">
           <thead>
@@ -156,25 +157,29 @@ function SupplierForm({
   const [error, setError] = useState<string | null>(null);
 
   async function submit() {
-    if (!window.api || !nameAr.trim()) {
-      setError(ar.items.errors.nameRequired);
-      return;
-    }
+    setError(null);
+    if (!nameAr.trim()) return setError(ar.suppliers.errors.nameRequired);
+
+    const termsDays = paymentTermsDays === '' ? null : Number(paymentTermsDays);
+    if (termsDays !== null && termsDays < 0) return setError(ar.suppliers.errors.negativePaymentTerms);
+
+    if (!window.api) return setError(ar.status.noBridge);
+
     const input = {
       nameAr: nameAr.trim(),
-      phone1: phone1.trim() || null,
-      phone2: phone2.trim() || null,
+      phone1: toAsciiDigits(phone1.trim()) || null,
+      phone2: toAsciiDigits(phone2.trim()) || null,
       address: address.trim() || null,
       taxNumber: taxNumber.trim() || null,
       openingBalance: openingBalance ?? 0,
-      paymentTermsDays: paymentTermsDays === '' ? null : Number(paymentTermsDays),
+      paymentTermsDays: termsDays,
     };
     try {
       if (existing) await window.api.suppliers.update(existing.id, input);
       else await window.api.suppliers.create(input);
       onSaved();
     } catch (err) {
-      setError((err as Error).message);
+      setError(`${ar.suppliers.errors.saveFailed}: ${(err as Error).message}`);
     }
   }
 
@@ -202,11 +207,23 @@ function SupplierForm({
           </label>
           <label className="formfield">
             <span className="formfield__label">{ar.suppliers.phone1}</span>
-            <input className="field" dir="ltr" value={phone1} onChange={(e) => setPhone1(e.target.value)} />
+            <input
+              className="field"
+              dir="ltr"
+              inputMode="tel"
+              value={phone1}
+              onChange={(e) => setPhone1(toAsciiDigits(e.target.value))}
+            />
           </label>
           <label className="formfield">
             <span className="formfield__label">{ar.suppliers.phone2}</span>
-            <input className="field" dir="ltr" value={phone2} onChange={(e) => setPhone2(e.target.value)} />
+            <input
+              className="field"
+              dir="ltr"
+              inputMode="tel"
+              value={phone2}
+              onChange={(e) => setPhone2(toAsciiDigits(e.target.value))}
+            />
           </label>
           <label className="formfield">
             <span className="formfield__label">{ar.suppliers.taxNumber}</span>
@@ -227,7 +244,7 @@ function SupplierForm({
               dir="ltr"
               inputMode="numeric"
               value={paymentTermsDays}
-              onChange={(e) => setPaymentTermsDays(e.target.value)}
+              onChange={(e) => setPaymentTermsDays(toAsciiDigits(e.target.value))}
             />
           </label>
         </div>

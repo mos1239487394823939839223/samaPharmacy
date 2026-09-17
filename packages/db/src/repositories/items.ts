@@ -10,6 +10,9 @@ import { normalizeName } from '@pharmacy/core';
 import type { Db } from '../connection';
 
 export interface ItemUnitInput {
+  /** Present for a unit that already exists in item_units; absent for a
+      unit newly added in this edit. See replaceUnits. */
+  id?: number;
   nameAr: string;
   factor: number;
   salePrice: number;
@@ -192,23 +195,45 @@ function replaceBarcodes(db: Db, itemId: number, barcodes: string[]): void {
   });
 }
 
+/**
+ * Reconciles item_units against the submitted set instead of deleting and
+ * reinserting every row (rule 9: nothing is deleted). sales_invoice_lines,
+ * purchase_invoice_lines, sales_return_lines and purchase_return_lines all
+ * hold a NOT NULL foreign key to item_units(id) — a delete-all pass fails
+ * with "FOREIGN KEY constraint failed" the moment an item has ever been
+ * sold or purchased, which is most items past their first day. Existing
+ * units (identified by id) are updated in place, so their id — and every
+ * historical line referencing it — survives. A unit the user removed from
+ * the form is never hard-deleted; it's retired via allow_sale = 0 so it
+ * can no longer be sold but its referencing rows stay valid.
+ */
 function replaceUnits(db: Db, itemId: number, units: ItemUnitInput[]): void {
-  db.prepare('DELETE FROM item_units WHERE item_id = ?').run(itemId);
+  const update = db.prepare(
+    `UPDATE item_units
+     SET name_ar = ?, factor = ?, sale_price = ?, is_base = ?, is_default_sale = ?, allow_sale = ?
+     WHERE id = ? AND item_id = ?`
+  );
   const insert = db.prepare(
     `INSERT INTO item_units (item_id, name_ar, factor, sale_price, is_base, is_default_sale, allow_sale)
      VALUES (?, ?, ?, ?, ?, ?, ?)`
   );
+  const retire = db.prepare(
+    `UPDATE item_units SET allow_sale = 0 WHERE item_id = ? AND id NOT IN (${units
+      .filter((u) => u.id != null)
+      .map(() => '?')
+      .join(',') || 'NULL'})`
+  );
+
   for (const u of units) {
-    insert.run(
-      itemId,
-      u.nameAr,
-      u.factor,
-      u.salePrice,
-      u.isBase ? 1 : 0,
-      u.isDefaultSale ? 1 : 0,
-      u.allowSale === false ? 0 : 1
-    );
+    const allowSale = u.allowSale === false ? 0 : 1;
+    if (u.id != null) {
+      update.run(u.nameAr, u.factor, u.salePrice, u.isBase ? 1 : 0, u.isDefaultSale ? 1 : 0, allowSale, u.id, itemId);
+    } else {
+      insert.run(itemId, u.nameAr, u.factor, u.salePrice, u.isBase ? 1 : 0, u.isDefaultSale ? 1 : 0, allowSale);
+    }
   }
+
+  retire.run(itemId, ...units.filter((u) => u.id != null).map((u) => u.id));
 }
 
 function replaceScientificGroups(db: Db, itemId: number, groupIds: number[]): void {

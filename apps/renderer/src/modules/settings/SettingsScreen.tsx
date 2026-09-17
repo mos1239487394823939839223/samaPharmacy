@@ -13,6 +13,7 @@
 
 import { useEffect, useState } from 'react';
 import type { PharmacySettings } from '@pharmacy/shared';
+import { toAsciiDigits } from '@pharmacy/core';
 import { ar } from '../../i18n/ar';
 import {
   loadScannerConfig,
@@ -84,7 +85,26 @@ export function SettingsScreen() {
     }
     const windowDays = Number(returnWindowDays);
     if (!(Number.isInteger(windowDays) && windowDays > 0)) {
-      setError(ar.settings.expiryOrderError);
+      setError(ar.settings.returnWindowError);
+      return;
+    }
+
+    // A bad scanner value doesn't just fail loudly like the settings above —
+    // it silently breaks every future scan (scanner.ts rejects on
+    // raw.length < minLength / > maxLength), with nothing telling the
+    // pharmacist why the till stopped scanning. Caught here before either
+    // save, not just before the scanner one, since both happen in this call.
+    if (scanner.minLength > scanner.maxLength) {
+      setError(ar.settings.scannerLengthOrderError);
+      return;
+    }
+    if (
+      scanner.minLength <= 0 ||
+      scanner.maxLength <= 0 ||
+      scanner.maxIntervalMs <= 0 ||
+      scanner.debounceMs <= 0
+    ) {
+      setError(ar.settings.scannerPositiveError);
       return;
     }
 
@@ -141,7 +161,7 @@ export function SettingsScreen() {
               dir="ltr"
               inputMode="numeric"
               value={d30}
-              onChange={(e) => setD30(e.target.value)}
+              onChange={(e) => setD30(toAsciiDigits(e.target.value))}
             />
           </label>
           <label className="formfield">
@@ -151,7 +171,7 @@ export function SettingsScreen() {
               dir="ltr"
               inputMode="numeric"
               value={d60}
-              onChange={(e) => setD60(e.target.value)}
+              onChange={(e) => setD60(toAsciiDigits(e.target.value))}
             />
           </label>
           <label className="formfield">
@@ -161,7 +181,7 @@ export function SettingsScreen() {
               dir="ltr"
               inputMode="numeric"
               value={d90}
-              onChange={(e) => setD90(e.target.value)}
+              onChange={(e) => setD90(toAsciiDigits(e.target.value))}
             />
           </label>
           <label className="formfield">
@@ -171,7 +191,7 @@ export function SettingsScreen() {
               dir="ltr"
               inputMode="numeric"
               value={d180}
-              onChange={(e) => setD180(e.target.value)}
+              onChange={(e) => setD180(toAsciiDigits(e.target.value))}
             />
           </label>
         </div>
@@ -187,7 +207,7 @@ export function SettingsScreen() {
               dir="ltr"
               inputMode="numeric"
               value={returnWindowDays}
-              onChange={(e) => setReturnWindowDays(e.target.value)}
+              onChange={(e) => setReturnWindowDays(toAsciiDigits(e.target.value))}
             />
           </label>
         </div>
@@ -219,7 +239,7 @@ export function SettingsScreen() {
               dir="ltr"
               inputMode="numeric"
               value={scanner.minLength}
-              onChange={(e) => setScanner((s) => ({ ...s, minLength: Number(e.target.value) || 0 }))}
+              onChange={(e) => setScanner((s) => ({ ...s, minLength: Number(toAsciiDigits(e.target.value)) || 0 }))}
             />
           </label>
           <label className="formfield">
@@ -229,7 +249,7 @@ export function SettingsScreen() {
               dir="ltr"
               inputMode="numeric"
               value={scanner.maxLength}
-              onChange={(e) => setScanner((s) => ({ ...s, maxLength: Number(e.target.value) || 0 }))}
+              onChange={(e) => setScanner((s) => ({ ...s, maxLength: Number(toAsciiDigits(e.target.value)) || 0 }))}
             />
           </label>
           <label className="formfield">
@@ -239,7 +259,7 @@ export function SettingsScreen() {
               dir="ltr"
               inputMode="numeric"
               value={scanner.maxIntervalMs}
-              onChange={(e) => setScanner((s) => ({ ...s, maxIntervalMs: Number(e.target.value) || 0 }))}
+              onChange={(e) => setScanner((s) => ({ ...s, maxIntervalMs: Number(toAsciiDigits(e.target.value)) || 0 }))}
             />
           </label>
           <label className="formfield">
@@ -249,7 +269,7 @@ export function SettingsScreen() {
               dir="ltr"
               inputMode="numeric"
               value={scanner.debounceMs}
-              onChange={(e) => setScanner((s) => ({ ...s, debounceMs: Number(e.target.value) || 0 }))}
+              onChange={(e) => setScanner((s) => ({ ...s, debounceMs: Number(toAsciiDigits(e.target.value)) || 0 }))}
             />
           </label>
         </div>

@@ -12,6 +12,7 @@ import {
   confirmPurchaseInvoice,
   voidPurchaseInvoice,
   getPurchaseInvoice,
+  getPurchaseInvoiceBySerial,
   getPurchaseLines,
   type PurchaseInvoiceInput,
 } from './purchases';
@@ -332,6 +333,24 @@ describe('confirmPurchaseInvoice', () => {
     // Weights: 10000 and 10000 (5*2000) -> expenses split 150/150.
     expect(b1!.unit_cost).toBe(101); // (10000+150)/100 = 101.5 -> truncated 101
     expect(b2!.unit_cost).toBe(203); // (10000+150)/50 = 203
+  });
+});
+
+describe('getPurchaseInvoiceBySerial', () => {
+  it('finds an invoice by its serial regardless of how many newer invoices exist', () => {
+    const target = createPurchaseInvoice(db, baseInvoice());
+    const targetSerial = getPurchaseInvoice(db, target)!.serial;
+
+    for (let i = 0; i < 10; i++) {
+      createPurchaseInvoice(db, baseInvoice({ supplierInvoiceNo: `SUP-${i + 2}` }));
+    }
+
+    const found = getPurchaseInvoiceBySerial(db, targetSerial);
+    expect(found?.id).toBe(target);
+  });
+
+  it('returns undefined for a serial that does not exist', () => {
+    expect(getPurchaseInvoiceBySerial(db, 999999)).toBeUndefined();
   });
 });
 

@@ -14,6 +14,7 @@ import type { Db } from '../connection';
 import { nextSequence } from './items';
 import { recordCustomerPayment } from './customers';
 import { getSalesReturnWindowDays } from './settings';
+import { getOpenShift, recordCashTransaction } from './shifts';
 
 export interface SalesReturnLineInput {
   itemId: number;
@@ -186,7 +187,39 @@ export function createSalesReturn(db: Db, input: SalesReturnInput): number {
 
     const getPublicPrice = db.prepare('SELECT public_price AS p FROM items WHERE id = ?');
 
+    // Bounds a return against an invoice line to what was actually sold on
+    // it, minus whatever has already been confirmed-returned against it —
+    // the same figure getReturnableLines already computes for display. Without
+    // this, nothing stopped a return line from naming a sourceLineId and
+    // requesting an arbitrary qtyBase, fabricating stock and refunding
+    // quantities that were never sold (found in performance/QA audit —
+    // over-return bug QA-001).
+    const getSourceLineRemaining = db.prepare(
+      `SELECT l.qty_base AS soldQtyBase,
+              COALESCE((
+                SELECT SUM(rl.qty_base) FROM sales_return_lines rl
+                JOIN sales_returns r ON r.id = rl.return_id
+                WHERE rl.source_line_id = l.id AND r.status = 'confirmed'
+              ), 0) AS alreadyReturnedQtyBase
+       FROM sales_invoice_lines l WHERE l.id = ?`
+    );
+
     const computedLines = data.lines.map((line) => {
+      if (line.sourceLineId != null) {
+        const src = getSourceLineRemaining.get(line.sourceLineId) as
+          | { soldQtyBase: number; alreadyReturnedQtyBase: number }
+          | undefined;
+        if (!src) throw new Error(`Source invoice line ${line.sourceLineId} not found`);
+        const remaining = src.soldQtyBase - src.alreadyReturnedQtyBase;
+        if (line.qtyBase > remaining) {
+          throw new Error(
+            `Cannot return ${line.qtyBase} units against invoice line ${line.sourceLineId}: ` +
+              `only ${remaining} remain returnable (${src.soldQtyBase} sold, ` +
+              `${src.alreadyReturnedQtyBase} already returned)`
+          );
+        }
+      }
+
       // A general return has no source invoice to check the refunded price
       // against, which is exactly the gap someone could use to refund more
       // than a customer ever paid. Cap it at the item's public_price, the
@@ -295,6 +328,20 @@ export function createSalesReturn(db: Db, input: SalesReturnInput): number {
     // them less", both are a credit entry.
     if (data.refundMethod === 'account' && data.customerId) {
       recordCustomerPayment(db, data.customerId, total, `مرتجع بيع #${serial}`);
+    }
+
+    // A cash refund physically leaves the drawer, same as a cash sale's
+    // paid_cash physically enters it — computeExpectedCash must reflect it
+    // or every cash return produces an unexplained shortage at shift close
+    // (found in performance/QA audit — QA-002). Mirrors createSalesInvoice's
+    // own tolerance for no shift system in use: if there is no open shift
+    // for this warehouse, the return still succeeds with no cash-drawer
+    // effect to record, rather than failing the whole return.
+    if (data.refundMethod === 'cash' && total > 0) {
+      const openShift = getOpenShift(db, data.warehouseId);
+      if (openShift) {
+        recordCashTransaction(db, openShift.id, 'out', total, 'sale_return', `مرتجع بيع #${serial}`);
+      }
     }
 
     return returnId;

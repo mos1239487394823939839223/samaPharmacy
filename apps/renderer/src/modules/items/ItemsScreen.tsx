@@ -12,6 +12,7 @@ import { fromPiastres } from '@pharmacy/core';
 import { ar } from '../../i18n/ar';
 import { ItemForm } from './ItemForm';
 import { ImportWizard } from './ImportWizard';
+import { EmptyState, TableSkeleton } from '../../components/EmptyState';
 
 type Mode = { view: 'list' } | { view: 'create' } | { view: 'edit'; item: ItemDetail } | { view: 'import' };
 
@@ -42,7 +43,7 @@ export function ItemsScreen({ showBadges }: { showBadges: boolean }) {
       setRows(list);
       setTotal(count);
     } catch (err) {
-      setError((err as Error).message);
+      setError(`${ar.items.errors.loadFailed}: ${(err as Error).message}`);
     } finally {
       setLoading(false);
     }
@@ -76,8 +77,12 @@ export function ItemsScreen({ showBadges }: { showBadges: boolean }) {
   async function deactivate(id: number) {
     if (!window.api) return;
     if (!confirm(ar.items.confirmDeactivate)) return;
-    await window.api.items.deactivate(id);
-    void load(query);
+    try {
+      await window.api.items.deactivate(id);
+      void load(query);
+    } catch (err) {
+      setError(`${ar.items.errors.deactivateFailed}: ${(err as Error).message}`);
+    }
   }
 
   if (mode.view === 'create' || mode.view === 'edit') {
@@ -128,9 +133,9 @@ export function ItemsScreen({ showBadges }: { showBadges: boolean }) {
       {error && <div className="alert alert--error">{error}</div>}
 
       {loading ? (
-        <p className="muted">{ar.items.loading}</p>
+        <TableSkeleton cols={5} />
       ) : rows.length === 0 ? (
-        <p className="muted">{query.trim() ? ar.items.noResults : ar.items.empty}</p>
+        <EmptyState title={query.trim() ? ar.items.noResults : ar.items.empty} />
       ) : (
         <table className="datatable">
           <thead>

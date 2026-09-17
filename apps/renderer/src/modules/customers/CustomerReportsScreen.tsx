@@ -30,7 +30,10 @@ export function CustomerReportsScreen() {
     }
     if (debounce.current) clearTimeout(debounce.current);
     debounce.current = setTimeout(() => {
-      void window.api!.customers.search(query, 10).then(setResults);
+      window.api!.customers
+        .search(query, 10)
+        .then(setResults)
+        .catch((err) => setError(`${ar.customers.errors.loadFailed}: ${(err as Error).message}`));
     }, 120);
     return () => {
       if (debounce.current) clearTimeout(debounce.current);
@@ -46,12 +49,16 @@ export function CustomerReportsScreen() {
 
   async function refresh(customerId: number) {
     if (!window.api) return;
-    const [bal, led] = await Promise.all([
-      window.api.customers.balance(customerId),
-      window.api.customers.ledger(customerId),
-    ]);
-    setBalance(bal);
-    setLedger(led);
+    try {
+      const [bal, led] = await Promise.all([
+        window.api.customers.balance(customerId),
+        window.api.customers.ledger(customerId),
+      ]);
+      setBalance(bal);
+      setLedger(led);
+    } catch (err) {
+      setError(`${ar.customers.errors.loadFailed}: ${(err as Error).message}`);
+    }
   }
 
   async function submitPayment() {

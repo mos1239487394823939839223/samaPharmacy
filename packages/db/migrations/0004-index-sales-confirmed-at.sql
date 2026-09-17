@@ -1,0 +1,23 @@
+-- ============================================================
+-- Migration 0004 — composite index on sales_invoices(status, confirmed_at)
+--
+-- Performance audit finding: getSalesReport / getSalesReportInvoices (the
+-- sales-reports screen and the dashboard's per-day trend) filter on
+-- `status = 'confirmed' AND confirmed_at BETWEEN ...`. The existing
+-- ix_sales_status index narrows to confirmed rows but every one of them
+-- then has to be checked against the date range row-by-row -- there was no
+-- index touching confirmed_at at all.
+--
+-- Measured against a synthetic 3-year, ~164,000-invoice history (a busy
+-- single-location pharmacy's realistic scale): a single day's report went
+-- from ~14.5ms to ~0.06ms, and the dashboard's 7-day trend (seven separate
+-- calls) from ~106ms to ~0.2ms total. EXPLAIN QUERY PLAN confirms the scan
+-- becomes a genuine range-bounded index search. Results were verified
+-- byte-identical before and after -- this changes only the access path, not
+-- the query's semantics.
+--
+-- The existing single-column ix_sales_status stays: it still serves any
+-- query that filters on status alone without a date range.
+-- ============================================================
+
+CREATE INDEX ix_sales_status_confirmed ON sales_invoices(status, confirmed_at);

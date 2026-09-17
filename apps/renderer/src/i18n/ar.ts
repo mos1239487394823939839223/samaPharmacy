@@ -30,6 +30,7 @@ export const ar = {
     itemsIbnSina: 'ابن سينا مباشر',
     itemsExpiry: 'لوحة الصلاحية',
     warehouses: 'المخازن',
+    warehousesList: 'المخازن',
     sales: 'المبيعات',
     salesInvoices: 'فواتير المبيعات',
     salesShiftHandover: 'تسليم الدرج',
@@ -45,13 +46,17 @@ export const ar = {
     cashInOut: 'صرف وتوريد نقدية',
     settings: 'الإعدادات',
     settingsGeneral: 'الإعدادات العامة',
+    settingsConnection: 'الاتصال سليم',
   },
 
   shell: {
     toggleDrawer: 'إظهار/إخفاء القائمة',
-    showShortcutBadges: 'إظهار اختصارات لوحة المفاتيح',
     notImplemented: 'هذه الشاشة قيد الإنشاء',
     notImplementedHint: 'سيتم بناؤها في مرحلة لاحقة.',
+    search: 'بحث سريع في النظام',
+    notifications: 'الإشعارات',
+    userMenu: 'قائمة المستخدم',
+    pharmacist: 'صيدلي',
   },
 
   items: {
@@ -173,15 +178,29 @@ export const ar = {
         salePrice: 'سعر البيع',
         minStock: 'الحد الأدنى',
       },
+      errors: {
+        pickFailed: 'تعذّر اختيار الملف',
+        previewFailed: 'تعذّر معاينة الملف',
+        applyFailed: 'فشل تنفيذ الاستيراد',
+        exportFailed: 'تعذّر تصدير المرفوضات',
+      },
     },
 
     errors: {
       nameRequired: 'اسم الصنف باللغة العربية مطلوب',
       duplicateBarcode: 'هذا الباركود مستخدم بالفعل',
+      duplicateBarcodeInForm: 'هذا الباركود مكرر في نفس الصنف',
       needBaseUnit: 'يجب تحديد وحدة أساسية واحدة بمعامل ١',
+      multipleBaseUnits: 'لا يمكن تحديد أكثر من وحدة أساسية واحدة',
+      duplicateUnitName: 'اسم الوحدة "{name}" مكرر',
+      invalidUnitFactor: 'معامل الوحدة "{name}" يجب أن يكون رقماً صحيحاً موجباً',
       priceAbovePublic: 'سعر البيع لا يمكن أن يتجاوز سعر الجمهور',
       invalidNumber: 'قيمة غير صالحة',
+      mainIngredientPctInvalid: 'نسبة المادة الفعالة يجب أن تكون رقماً بين 0 و100',
+      maxStockBelowMin: 'الحد الأقصى للمخزون لا يمكن أن يكون أقل من الحد الأدنى',
       saveFailed: 'تعذّر الحفظ',
+      loadFailed: 'تعذّر تحميل الأصناف',
+      deactivateFailed: 'تعذّر إيقاف الصنف',
     },
   },
 
@@ -195,6 +214,12 @@ export const ar = {
     empty: 'لا توجد مخازن',
     confirmDeactivate: 'إيقاف هذا المخزن؟',
     cannotDeactivateDefault: 'لا يمكن إيقاف المخزن الافتراضي',
+    errors: {
+      nameRequired: 'اسم المخزن مطلوب',
+      loadFailed: 'تعذّر تحميل المخازن',
+      saveFailed: 'تعذّر حفظ المخزن',
+      deactivateFailed: 'تعذّر إيقاف المخزن',
+    },
   },
 
   suppliers: {
@@ -214,6 +239,11 @@ export const ar = {
     empty: 'لا يوجد موردون',
     noResults: 'لا توجد نتائج',
     confirmDeactivate: 'إيقاف هذا المورد؟',
+    errors: {
+      nameRequired: 'اسم المورد مطلوب',
+      negativePaymentTerms: 'مدة السداد لا يمكن أن تكون سالبة',
+      saveFailed: 'فشل الحفظ',
+    },
   },
 
   purchases: {
@@ -273,8 +303,11 @@ export const ar = {
       noWarehouse: 'يجب اختيار المخزن',
       noLines: 'يجب إضافة صنف واحد على الأقل',
       itemRequired: 'الصنف مطلوب لكل سطر',
+      qtyRequired: 'الكمية يجب أن تكون أكبر من صفر',
+      expiryRequired: 'تاريخ الصلاحية مطلوب لهذا الصنف',
       confirmFailed: 'فشل تأكيد الفاتورة',
       saveFailed: 'فشل حفظ الفاتورة',
+      loadFailed: 'تعذّر تحميل فواتير الشراء',
     },
   },
 
@@ -291,11 +324,14 @@ export const ar = {
     unitCost: 'تكلفة الوحدة',
     receivedAt: 'تاريخ الاستلام',
     quarantined: 'محجور',
+    outOfStock: 'نفذ من المخزون',
     empty: 'لا توجد أصناف',
     noResults: 'لا توجد نتائج',
     noBatches: 'لا توجد تشغيلات لهذا الصنف',
     back: 'رجوع للقائمة',
     moves: 'حركة المخزون',
+    moveTypeLabel: 'نوع الحركة',
+    qtyDelta: 'الكمية',
     moveType: {
       purchase: 'شراء',
       sale: 'بيع',
@@ -309,6 +345,9 @@ export const ar = {
     verifyLedger: 'التحقق من السجل',
     ledgerMatches: 'الرصيد يطابق السجل',
     ledgerMismatch: 'تحذير: الرصيد لا يطابق مجموع الحركات',
+    errors: {
+      loadFailed: 'تعذّر تحميل بيانات المخزون',
+    },
   },
 
   sales: {
@@ -319,12 +358,16 @@ export const ar = {
     invoiceType: 'نوع الفاتورة',
     cash: 'كاش',
     credit: 'آجل',
+    customer: 'العميل',
+    customerSearch: 'ابحث عن عميل بالاسم أو رقم الموبايل',
+    customerRequired: 'مطلوب لفواتير الآجل',
+    changeCustomer: 'تغيير',
     serial: 'مسلسل الفاتورة',
     status: 'الحالة',
     qty: 'الكمية',
     unitPrice: 'السعر',
     beforeDiscount: 'ق.خ',
-    discount: 'خصم',
+    discount: 'خصم (ج.م)',
     afterDiscount: 'ب.خ',
     expiry: 'الصلاحية',
     stock: 'الرصيد',
@@ -349,7 +392,9 @@ export const ar = {
     errors: {
       noWarehouse: 'يجب اختيار المخزن',
       noLines: 'السلة فارغة',
+      invalidQty: 'يجب أن تكون الكمية أكبر من صفر لكل الأصناف في السلة',
       insufficientPaid: 'المبلغ المدفوع أقل من الإجمالي',
+      noCustomer: 'يجب اختيار عميل لفواتير الآجل',
       saveFailed: 'فشل حفظ الفاتورة',
       confirmFailed: 'فشل تأكيد الفاتورة',
       outOfStock: 'الكمية المطلوبة غير متوفرة في المخزون',
@@ -390,6 +435,7 @@ export const ar = {
     history: 'سجل الورديات',
     errors: {
       alreadyOpen: 'توجد وردية مفتوحة بالفعل لهذا المخزن',
+      negativeAmount: 'لا يمكن أن يكون المبلغ سالباً',
       openFailed: 'فشل فتح الوردية',
       closeFailed: 'فشل إغلاق الوردية',
       cashTxFailed: 'فشل تسجيل الحركة النقدية',
@@ -459,8 +505,13 @@ export const ar = {
     errors: {
       nameRequired: 'اسم العميل مطلوب',
       mobileRequired: 'رقم الموبايل مطلوب',
+      mobileInvalid: 'رقم الموبايل غير صحيح (أرقام فقط، 8 أرقام على الأقل)',
+      discountInvalid: 'نسبة الخصم يجب أن تكون رقماً بين 0 و100',
       saveFailed: 'فشل الحفظ',
+      saveFailedValidation: 'تحقق من البيانات المدخلة قبل الحفظ',
       paymentFailed: 'فشل تسجيل الدفعة',
+      loadFailed: 'تعذّر تحميل العملاء',
+      suspendFailed: 'تعذّر تحديث حالة العميل',
     },
   },
 
@@ -488,12 +539,20 @@ export const ar = {
     quarantineNotice: 'الأصناف المبردة تذهب للحجر الصحي تلقائياً ولا تُباع مرة أخرى إلا بموافقة وسبب موثق',
     itemSearch: 'ابحث عن صنف',
     priceCapNotice: 'السعر لا يمكن أن يتجاوز سعر الجمهور في المرتجع العام',
+    batch: 'التشغيلة',
+    noBatch: 'لا توجد تشغيلة لهذا الصنف في هذا المخزن',
     confirm: 'تأكيد المرتجع',
     confirmed: 'تم تأكيد المرتجع رقم {serial}',
     total: 'الاجمالي',
     empty: 'لا توجد مرتجعات',
     errors: {
       noLines: 'لا توجد أصناف للإرجاع',
+      qtyExceedsRemaining: 'الكمية المرتجعة أكبر من المتاح للإرجاع',
+      qtyNotWhole: 'الكمية المرتجعة يجب أن تكون رقماً صحيحاً',
+      accountNeedsCustomer: 'الخصم من حساب العميل يتطلب وجود عميل على الفاتورة',
+      priceAbovePublic: 'السعر لا يمكن أن يتجاوز سعر الجمهور',
+      negativePrice: 'السعر لا يمكن أن يكون سالباً',
+      noBatch: 'لا توجد تشغيلة متاحة لأحد الأصناف',
       createFailed: 'فشل إنشاء المرتجع',
     },
   },
@@ -522,6 +581,8 @@ export const ar = {
     errors: {
       noLines: 'لا توجد أصناف للإرجاع',
       noSupplier: 'يجب اختيار المورد',
+      qtyExceedsOnHand: 'الكمية المرتجعة أكبر من الرصيد الحالي',
+      qtyNotWhole: 'الكمية المرتجعة يجب أن تكون رقماً صحيحاً',
       createFailed: 'فشل إنشاء مرتجع الشراء',
     },
   },
@@ -552,6 +613,7 @@ export const ar = {
     empty: 'لا توجد حركات نقدية بعد',
     errors: {
       invalidAmount: 'يجب إدخال مبلغ أكبر من صفر',
+      shiftClosed: 'تم إغلاق الوردية — أعد تحميل الشاشة',
       submitFailed: 'فشل تسجيل الحركة',
     },
   },
@@ -581,6 +643,10 @@ export const ar = {
     credit: 'آجل',
     empty: 'لا توجد فواتير في هذه الفترة',
     apply: 'تطبيق',
+    errors: {
+      loadFailed: 'تعذّر تحميل تقرير المبيعات',
+      invalidRange: 'تاريخ البداية يجب أن يكون قبل تاريخ النهاية',
+    },
   },
 
   expiryReport: {
@@ -606,6 +672,9 @@ export const ar = {
     unitCost: 'تكلفة الوحدة',
     warehouseId: 'المخزن',
     empty: 'لا توجد دفعات في هذه الفئة',
+    errors: {
+      loadFailed: 'تعذّر تحميل لوحة الصلاحية',
+    },
   },
 
   settings: {
@@ -626,9 +695,12 @@ export const ar = {
     returnsSection: 'سياسة المرتجعات',
     returnWindowDays: 'مهلة مرتجع فواتير البيع (بالأيام)',
     returnWindowHint: 'أقصى عدد أيام بعد تأكيد فاتورة البيع يمكن خلالها عمل مرتجع بفاتورة. لا ينطبق على المرتجع العام.',
+    returnWindowError: 'مهلة المرتجع يجب أن تكون رقماً صحيحاً موجباً',
 
     scannerSection: 'إعدادات قارئ الباركود',
     scannerHint: 'هذه الإعدادات خاصة بهذا الجهاز ولا تتم مزامنتها مع الأجهزة الأخرى.',
+    scannerLengthOrderError: 'أقل طول للباركود يجب أن يكون أصغر من أو يساوي أقصى طول',
+    scannerPositiveError: 'قيم إعدادات القارئ يجب أن تكون أكبر من صفر',
     scannerTerminator: 'نهاية القراءة',
     scannerTerminatorEnter: 'Enter',
     scannerTerminatorTab: 'Tab',
@@ -642,6 +714,46 @@ export const ar = {
     scannerTestOk: 'تم استقبال الباركود بنجاح',
     scannerTestFailed: 'لم يتم استقبال أي باركود',
     scannerReset: 'إعادة تعيين إعدادات القارئ',
+  },
+
+  dashboard: {
+    title: 'الرئيسية',
+    todaySales: 'مبيعات اليوم',
+    todayInvoices: 'عدد فواتير اليوم',
+    todayProfit: 'الربح المتوقع اليوم',
+    lowStockList: 'أصناف تحتاج إعادة طلب',
+    noLowStock: 'لا توجد أصناف منخفضة المخزون حالياً',
+    openShift: 'الوردية المفتوحة',
+    noOpenShift: 'لا توجد وردية مفتوحة الآن',
+    expectedCash: 'الرصيد النقدي المتوقع',
+    quickLinks: 'اختصارات سريعة',
+    viewAll: 'عرض الكل',
+    loadFailed: 'تعذر تحميل بيانات لوحة التحكم',
+    retry: 'إعادة المحاولة',
+    warehouseFilter: 'المخزن',
+    operationsSection: 'العمليات التشغيلية',
+    financialSection: 'الملخص المالي',
+
+    salesTrend: 'أداء المبيعات',
+    lastNDays: 'آخر {n} أيام',
+    salesTrendFailed: 'تعذر تحميل اتجاه المبيعات',
+
+    recentTransactions: 'آخر العمليات',
+    noTransactions: 'لا توجد عمليات حتى الآن',
+    minutesAgo: 'منذ {n} دقيقة',
+    hoursAgo: 'منذ {n} ساعة',
+    daysAgo: 'منذ {n} يوم',
+    justNow: 'الآن',
+
+    cashSnapshot: 'الحركة النقدية اليوم',
+    cashSalesLabel: 'مبيعات نقدية',
+    cashInLabel: 'توريد نقدية',
+    cashOutLabel: 'صرف نقدية',
+    netCashLabel: 'صافي الحركة',
+
+    receivables: 'مستحقات العملاء',
+    receivablesHint: 'عميلاً لديهم رصيد مستحق',
+    noReceivables: 'لا توجد مستحقات على العملاء حالياً',
   },
 
   status: {

@@ -9,22 +9,50 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import type { ItemListRow } from '@pharmacy/shared';
-import { fromPiastres, toPiastres } from '@pharmacy/core';
+import type { CustomerRow, ItemListRow } from '@pharmacy/shared';
+import { fromPiastres, toAsciiDigits, toPiastres } from '@pharmacy/core';
 import { ar } from '../../i18n/ar';
 import { Stat } from '../../components/Stat';
 import { useToast } from '../../components/Toast';
 import { useBarcodeScanner } from '../../hardware/scanner';
 import { loadScannerConfig } from '../../hardware/config';
+import { EmptyState } from '../../components/EmptyState';
+import { MoneyInput } from '../../components/MoneyInput';
 
 interface CartLine {
   key: number;
   item: ItemListRow;
   unitId: number;
   unitFactor: number;
-  qty: number;
+  /** Raw text the user is editing — parsed to a number only for math/submit,
+      never fed back into the input's value (rule: buffer text, don't
+      reformat mid-typing; see MoneyInput for the same pattern with money). */
+  qty: string;
   unitPrice: number;
-  discountPct: number;
+  /** Flat discount for the whole line, in EGP as typed — "2" is two pounds,
+      "2.5" is two pounds fifty, exactly like any other money field. Not a
+      percentage: parsed through toPiastres (money's own decimal-string
+      parser) and submitted as discountAmt, never discountPct. */
+  discountEgp: string;
+}
+
+function parseQty(text: string): number {
+  const n = Number(toAsciiDigits(text));
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+/** Piastres from a possibly-empty/partial EGP string, never throwing —
+    the cart re-renders on every keystroke, so a mid-edit value like "2." or
+    "" must fall back to 0 instead of blowing up the totals row. */
+function parseDiscountPiastres(text: string): number {
+  const trimmed = toAsciiDigits(text).trim();
+  if (trimmed === '') return 0;
+  try {
+    const piastres = toPiastres(trimmed);
+    return piastres > 0 ? piastres : 0;
+  } catch {
+    return 0;
+  }
 }
 
 let keySeq = 1;
@@ -37,12 +65,16 @@ export function SalesScreen() {
   const [cart, setCart] = useState<CartLine[]>([]);
   const [invoiceType, setInvoiceType] = useState<'cash' | 'credit'>('cash');
   const [paidCash, setPaidCash] = useState<number | null>(null);
+  const [customer, setCustomer] = useState<CustomerRow | null>(null);
+  const [customerQuery, setCustomerQuery] = useState('');
+  const [customerResults, setCustomerResults] = useState<CustomerRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const { showToast } = useToast();
   const [saving, setSaving] = useState(false);
 
   const searchRef = useRef<HTMLInputElement>(null);
   const debounce = useRef<ReturnType<typeof setTimeout>>();
+  const customerDebounce = useRef<ReturnType<typeof setTimeout>>();
 
   useEffect(() => {
     if (!window.api) return;
@@ -69,7 +101,7 @@ export function SalesScreen() {
     setCart((prev) => {
       const existing = prev.find((l) => l.item.id === item.id && l.unitId === unit.id);
       if (existing) {
-        return prev.map((l) => (l === existing ? { ...l, qty: l.qty + 1 } : l));
+        return prev.map((l) => (l === existing ? { ...l, qty: String(parseQty(l.qty) + 1) } : l));
       }
       return [
         ...prev,
@@ -78,9 +110,9 @@ export function SalesScreen() {
           item,
           unitId: unit.id,
           unitFactor: unit.factor,
-          qty: 1,
+          qty: '1',
           unitPrice: unit.salePrice,
-          discountPct: 0,
+          discountEgp: '0',
         },
       ];
     });
@@ -124,6 +156,39 @@ export function SalesScreen() {
     };
   }, [query]);
 
+  useEffect(() => {
+    if (!window.api || !customerQuery.trim()) {
+      setCustomerResults([]);
+      return;
+    }
+    if (customerDebounce.current) clearTimeout(customerDebounce.current);
+    customerDebounce.current = setTimeout(() => {
+      void window.api!.customers.search(customerQuery, 10).then(setCustomerResults);
+    }, 120);
+    return () => {
+      if (customerDebounce.current) clearTimeout(customerDebounce.current);
+    };
+  }, [customerQuery]);
+
+  // Cash never carries a customer forward from a prior credit invoice in the
+  // same session — clearing it here instead of leaving stale state avoids
+  // silently attaching the wrong customer if the pharmacist switches back
+  // and forth on the same draft.
+  function selectInvoiceType(next: 'cash' | 'credit') {
+    setInvoiceType(next);
+    if (next === 'cash') {
+      setCustomer(null);
+      setCustomerQuery('');
+      setCustomerResults([]);
+    }
+  }
+
+  function selectCustomer(c: CustomerRow) {
+    setCustomer(c);
+    setCustomerQuery('');
+    setCustomerResults([]);
+  }
+
   function updateLine(key: number, patch: Partial<CartLine>) {
     setCart((prev) => prev.map((l) => (l.key === key ? { ...l, ...patch } : l)));
   }
@@ -134,8 +199,8 @@ export function SalesScreen() {
 
   const totals = cart.reduce(
     (acc, l) => {
-      const before = l.qty * l.unitPrice;
-      const discount = Math.round((before * l.discountPct) / 100);
+      const before = parseQty(l.qty) * l.unitPrice;
+      const discount = Math.min(parseDiscountPiastres(l.discountEgp), before);
       acc.subtotal += before;
       acc.total += before - discount;
       return acc;
@@ -149,9 +214,18 @@ export function SalesScreen() {
     setError(null);
     if (!warehouseId) return setError(ar.sales.errors.noWarehouse);
     if (cart.length === 0) return setError(ar.sales.errors.noLines);
+    // parseQty coerces an empty/invalid quantity field to 0 for the totals
+    // display, so nothing else here catches an emptied qty before submit —
+    // it used to reach the backend's zod schema (qtyInUnit must be >0) and
+    // fail there instead, surfacing the schema's raw JSON error to the user.
+    if (cart.some((l) => parseQty(l.qty) <= 0)) return setError(ar.sales.errors.invalidQty);
     if (invoiceType === 'cash' && (paidCash ?? 0) < totals.total) {
       return setError(ar.sales.errors.insufficientPaid);
     }
+    // confirmSalesInvoice rejects a credit invoice with no customer — caught
+    // here instead of letting the draft get created and fail at confirm,
+    // which used to surface the backend's raw English error message.
+    if (invoiceType === 'credit' && !customer) return setError(ar.sales.errors.noCustomer);
     if (!window.api) return setError(ar.status.noBridge);
 
     setSaving(true);
@@ -159,16 +233,24 @@ export function SalesScreen() {
       const invoiceId = await window.api.sales.create({
         warehouseId,
         invoiceType,
-        paidCash: paidCash ?? totals.total,
-        lines: cart.map((l, i) => ({
-          lineNo: i + 1,
-          itemId: l.item.id,
-          unitId: l.unitId,
-          unitFactor: l.unitFactor,
-          qtyInUnit: l.qty,
-          unitPrice: l.unitPrice,
-          discountPct: l.discountPct,
-        })),
+        customerId: invoiceType === 'credit' ? customer!.id : null,
+        // A credit invoice's total is owed on the customer's account, not
+        // paid in cash — recording it as paidCash: totals.total here would
+        // both mark the invoice fully paid AND post the full amount to the
+        // customer's ledger (postCreditSale), double-counting the money.
+        paidCash: invoiceType === 'cash' ? (paidCash ?? totals.total) : 0,
+        lines: cart.map((l, i) => {
+          const before = parseQty(l.qty) * l.unitPrice;
+          return {
+            lineNo: i + 1,
+            itemId: l.item.id,
+            unitId: l.unitId,
+            unitFactor: l.unitFactor,
+            qtyInUnit: parseQty(l.qty),
+            unitPrice: l.unitPrice,
+            discountAmt: Math.min(parseDiscountPiastres(l.discountEgp), before),
+          };
+        }),
       });
 
       await window.api.sales.confirm(invoiceId);
@@ -177,11 +259,19 @@ export function SalesScreen() {
       showToast(ar.sales.confirmed.replace('{serial}', String(invoice?.serial ?? invoiceId)));
       setCart([]);
       setPaidCash(null);
+      setCustomer(null);
       searchRef.current?.focus();
     } catch (err) {
       const message = (err as Error).message;
+      // The db-process boundary flattens every thrown error down to a bare
+      // string (see db-process/index.ts's catch), so InsufficientStockError
+      // can't be matched by class or `.name` here — only by the message
+      // shape it actually throws (packages/core/fefo.ts), not the plain
+      // "Insufficient stock" text this used to look for, which that error
+      // never contains and so never matched, leaking the raw English/SQL
+      // message to the pharmacist instead of a translated one.
       setError(
-        /Insufficient stock/.test(message)
+        /available across sellable batches/.test(message)
           ? ar.sales.errors.outOfStock
           : `${ar.sales.errors.confirmFailed}: ${message}`
       );
@@ -223,7 +313,7 @@ export function SalesScreen() {
       {error && <div className="alert alert--error">{error}</div>}
 
       {cart.length === 0 ? (
-        <p className="muted">{ar.sales.emptyCart}</p>
+        <EmptyState title={ar.sales.emptyCart} />
       ) : (
         <table className="datatable">
           <thead>
@@ -238,8 +328,8 @@ export function SalesScreen() {
           </thead>
           <tbody>
             {cart.map((l) => {
-              const before = l.qty * l.unitPrice;
-              const after = before - Math.round((before * l.discountPct) / 100);
+              const before = parseQty(l.qty) * l.unitPrice;
+              const after = before - Math.min(parseDiscountPiastres(l.discountEgp), before);
               return (
                 <tr key={l.key}>
                   <td>{l.item.nameAr}</td>
@@ -249,7 +339,7 @@ export function SalesScreen() {
                       dir="ltr"
                       inputMode="decimal"
                       value={l.qty}
-                      onChange={(e) => updateLine(l.key, { qty: Number(e.target.value) || 0 })}
+                      onChange={(e) => updateLine(l.key, { qty: e.target.value })}
                     />
                   </td>
                   <td dir="ltr">{fromPiastres(l.unitPrice)}</td>
@@ -258,8 +348,8 @@ export function SalesScreen() {
                       className="field field--xs"
                       dir="ltr"
                       inputMode="decimal"
-                      value={l.discountPct}
-                      onChange={(e) => updateLine(l.key, { discountPct: Number(e.target.value) || 0 })}
+                      value={l.discountEgp}
+                      onChange={(e) => updateLine(l.key, { discountEgp: toAsciiDigits(e.target.value) })}
                     />
                   </td>
                   <td dir="ltr">{fromPiastres(after)}</td>
@@ -282,7 +372,7 @@ export function SalesScreen() {
             <select
               className="field"
               value={invoiceType}
-              onChange={(e) => setInvoiceType(e.target.value as 'cash' | 'credit')}
+              onChange={(e) => selectInvoiceType(e.target.value as 'cash' | 'credit')}
             >
               <option value="cash">{ar.sales.cash}</option>
               <option value="credit">{ar.sales.credit}</option>
@@ -291,19 +381,45 @@ export function SalesScreen() {
           {invoiceType === 'cash' && (
             <label className="formfield">
               <span className="formfield__label">{ar.sales.paidCash}</span>
-              <input
-                className="field"
-                dir="ltr"
-                inputMode="decimal"
-                value={paidCash === null ? '' : fromPiastres(paidCash)}
-                onChange={(e) => {
-                  try {
-                    setPaidCash(e.target.value.trim() === '' ? null : toPiastres(e.target.value));
-                  } catch {
-                    /* ignore mid-typing invalid states */
-                  }
-                }}
-              />
+              <MoneyInput value={paidCash} onChange={setPaidCash} />
+            </label>
+          )}
+          {invoiceType === 'credit' && (
+            <label className="formfield">
+              <span className="formfield__label">
+                {ar.sales.customer}
+                <span className="req"> *</span>
+              </span>
+              {customer ? (
+                <div className="pos__customer-picked">
+                  <span>
+                    {customer.name} <span dir="ltr">#{customer.code}</span>
+                  </span>
+                  <button type="button" className="btn btn--sm" onClick={() => setCustomer(null)}>
+                    {ar.sales.changeCustomer}
+                  </button>
+                </div>
+              ) : (
+                <div className="field-wrap">
+                  <input
+                    className="field"
+                    placeholder={ar.sales.customerSearch}
+                    value={customerQuery}
+                    onChange={(e) => setCustomerQuery(e.target.value)}
+                  />
+                  {customerResults.length > 0 && (
+                    <ul className="autocomplete autocomplete--offset">
+                      {customerResults.map((c) => (
+                        <li key={c.id}>
+                          <button type="button" onClick={() => selectCustomer(c)}>
+                            <span>{c.name}</span> <span dir="ltr">#{c.code}</span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
             </label>
           )}
         </div>
@@ -320,7 +436,7 @@ export function SalesScreen() {
           type="button"
           className="btn btn--primary"
           onClick={() => void checkout()}
-          disabled={saving || cart.length === 0}
+          disabled={saving || cart.length === 0 || (invoiceType === 'credit' && !customer)}
         >
           {invoiceType === 'cash' ? ar.sales.confirmCash : ar.sales.confirmCredit}
         </button>

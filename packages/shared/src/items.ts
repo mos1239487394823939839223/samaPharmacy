@@ -8,6 +8,10 @@
 import { z } from 'zod';
 
 export const itemUnitSchema = z.object({
+  /** Set only for a unit that already exists in item_units — tells
+      updateItem to UPDATE that row in place instead of inserting a new
+      one. Omitted for a unit the user just added in this edit. */
+  id: z.number().int().positive().optional(),
   nameAr: z.string().min(1),
   factor: z.number().int().positive(),
   /** Piastres. */

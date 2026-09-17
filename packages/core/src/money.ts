@@ -10,6 +10,8 @@
  * perform their own arithmetic on money.
  */
 
+import { toAsciiDigits } from './arabic';
+
 /** Branded so a bare number cannot be passed where piastres are expected. */
 export type Piastres = number;
 
@@ -32,7 +34,7 @@ function assertSafeInteger(value: number, label: string): void {
  * failures are data-dependent and rare enough to reach production.
  */
 export function toPiastres(input: string | number): Piastres {
-  const text = typeof input === 'number' ? String(input) : input.trim();
+  const text = typeof input === 'number' ? String(input) : toAsciiDigits(input.trim());
 
   if (text === '') throw new RangeError('Empty money value');
 

@@ -44,6 +44,7 @@ import {
   deactivateSupplier,
   createPurchaseInvoice,
   getPurchaseInvoice,
+  getPurchaseInvoiceBySerial,
   getPurchaseLines,
   listPurchaseInvoices,
   confirmPurchaseInvoice,
@@ -56,6 +57,7 @@ import {
   getExpiryReport,
   createSalesInvoice,
   getSalesInvoice,
+  getSalesInvoiceBySerial,
   getSalesLines,
   listSalesInvoices,
   confirmSalesInvoice,
@@ -82,6 +84,7 @@ import {
   getCustomerBalance,
   getCustomerLedger,
   recordCustomerPayment,
+  getReceivablesSummary,
   createSalesReturn,
   getSalesReturn,
   getSalesReturnLines,
@@ -93,6 +96,7 @@ import {
   listPurchaseReturns,
   getReturnablePurchaseLines,
   getSalesReport,
+  getSalesTrend,
   getSalesReportInvoices,
   getSettings,
   updateSettings,
@@ -303,6 +307,9 @@ function dispatch(envelope: DbRequestEnvelope): DbResponseEnvelope {
         return ok({ ...invoice, lines: getPurchaseLines(conn, req.id) });
       }
 
+      case 'purchases.getBySerial':
+        return ok(getPurchaseInvoiceBySerial(requireDb(), req.serial) ?? null);
+
       case 'purchases.list':
         return ok(listPurchaseInvoices(requireDb(), req.limit, req.offset));
 
@@ -341,6 +348,9 @@ function dispatch(envelope: DbRequestEnvelope): DbResponseEnvelope {
         if (!invoice) return ok(null);
         return ok({ ...invoice, lines: getSalesLines(conn, req.id) });
       }
+
+      case 'sales.getBySerial':
+        return ok(getSalesInvoiceBySerial(requireDb(), req.serial) ?? null);
 
       case 'sales.list':
         return ok(listSalesInvoices(requireDb(), req.limit, req.offset));
@@ -429,6 +439,9 @@ function dispatch(envelope: DbRequestEnvelope): DbResponseEnvelope {
         recordCustomerPayment(requireDb(), req.id, req.amount, req.note);
         return ok(undefined);
 
+      case 'customers.receivablesSummary':
+        return ok(getReceivablesSummary(requireDb()));
+
       case 'salesReturns.create':
         return ok(createSalesReturn(requireDb(), salesReturnInputSchema.parse(req.input)));
 
@@ -466,6 +479,9 @@ function dispatch(envelope: DbRequestEnvelope): DbResponseEnvelope {
 
       case 'sales.reportInvoices':
         return ok(getSalesReportInvoices(requireDb(), req.from, req.to, req.limit));
+
+      case 'sales.trend':
+        return ok(getSalesTrend(requireDb(), req.from, req.to));
 
       case 'settings.get':
         return ok(getSettings(requireDb()));

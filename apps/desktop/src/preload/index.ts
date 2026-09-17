@@ -41,6 +41,7 @@ import {
   type CustomerRow,
   type CustomerDetail,
   type CustomerLedgerRow,
+  type ReceivablesSummary,
   type SalesReturnInput,
   type SalesReturnRow,
   type SalesReturnLineRow,
@@ -51,6 +52,7 @@ import {
   type ReturnablePurchaseLine,
   type SalesReportRow,
   type SalesReportInvoiceRow,
+  type SalesTrendPoint,
   type PharmacySettings,
   type PharmacySettingsInput,
 } from '@pharmacy/shared';
@@ -117,6 +119,7 @@ const api: RendererApi = {
         kind: 'purchases.get',
         id,
       }),
+    getBySerial: (serial) => send<PurchaseInvoiceRow | null>({ kind: 'purchases.getBySerial', serial }),
     list: (opts) =>
       send<PurchaseInvoiceRow[]>({ kind: 'purchases.list', limit: opts?.limit, offset: opts?.offset }),
     confirm: (id) => send<void>({ kind: 'purchases.confirm', id }),
@@ -137,6 +140,7 @@ const api: RendererApi = {
     create: (input: SalesInvoiceInput) => send<number>({ kind: 'sales.create', input }),
     get: (id) =>
       send<(SalesInvoiceRow & { lines: SalesLineRow[] }) | null>({ kind: 'sales.get', id }),
+    getBySerial: (serial) => send<SalesInvoiceRow | null>({ kind: 'sales.getBySerial', serial }),
     list: (opts) =>
       send<SalesInvoiceRow[]>({ kind: 'sales.list', limit: opts?.limit, offset: opts?.offset }),
     confirm: (id) => send<void>({ kind: 'sales.confirm', id }),
@@ -171,6 +175,8 @@ const api: RendererApi = {
     ledger: (id, limit) => send<CustomerLedgerRow[]>({ kind: 'customers.ledger', id, limit }),
     recordPayment: (id, amount, note) =>
       send<void>({ kind: 'customers.recordPayment', id, amount, note }),
+    receivablesSummary: () =>
+      send<ReceivablesSummary>({ kind: 'customers.receivablesSummary' }),
   },
 
   salesReturns: {
@@ -204,6 +210,7 @@ const api: RendererApi = {
     summary: (from, to) => send<SalesReportRow>({ kind: 'sales.report', from, to }),
     invoices: (from, to, limit) =>
       send<SalesReportInvoiceRow[]>({ kind: 'sales.reportInvoices', from, to, limit }),
+    trend: (from, to) => send<SalesTrendPoint[]>({ kind: 'sales.trend', from, to }),
   },
 
   settings: {

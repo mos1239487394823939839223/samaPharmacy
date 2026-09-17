@@ -24,6 +24,12 @@ describe('toPiastres', () => {
     expect(toPiastres('19,99')).toBe(1999);
   });
 
+  it('accepts Arabic-Indic digits, since staff switch keyboard language mid-shift', () => {
+    expect(toPiastres('٢٠٠')).toBe(20000);
+    expect(toPiastres('١٩.٩٩')).toBe(1999);
+    expect(toPiastres('٠.٥')).toBe(50);
+  });
+
   it('handles negatives for refunds', () => {
     expect(toPiastres('-19.99')).toBe(-1999);
   });

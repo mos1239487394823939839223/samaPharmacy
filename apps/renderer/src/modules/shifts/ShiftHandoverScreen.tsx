@@ -7,7 +7,7 @@
 
 import { useEffect, useState } from 'react';
 import type { ShiftRow, ShiftSalesSummary, CashTransactionRow } from '@pharmacy/shared';
-import { fromPiastres, toPiastres } from '@pharmacy/core';
+import { fromPiastres } from '@pharmacy/core';
 import { ar } from '../../i18n/ar';
 import { MoneyInput } from '../../components/MoneyInput';
 import { Stat } from '../../components/Stat';
@@ -71,6 +71,7 @@ export function ShiftHandoverScreen() {
   async function handleOpen() {
     if (!window.api || !warehouseId) return;
     setError(null);
+    if (openingFloat !== null && openingFloat < 0) return setError(ar.shifts.errors.negativeAmount);
     try {
       await window.api.shifts.open(warehouseId, openingFloat ?? 0);
       setOpeningFloat(null);
@@ -84,7 +85,11 @@ export function ShiftHandoverScreen() {
     if (!window.api || !shift || txAmount === null || txAmount <= 0) return;
     setError(null);
     try {
-      await window.api.shifts.recordCash(shift.id, txDirection, txAmount, txCategory.trim() || null);
+      // recordCash's 4th/5th params are category/note — this screen has no
+      // category selector, only the single "ملاحظة" field, which belongs in
+      // note. Passing it as category left the note column always null and
+      // put free text where a category taxonomy was meant to go.
+      await window.api.shifts.recordCash(shift.id, txDirection, txAmount, null, txCategory.trim() || null);
       setTxAmount(null);
       setTxCategory('');
       await load();
@@ -96,6 +101,13 @@ export function ShiftHandoverScreen() {
   async function handleClose() {
     if (!window.api || !shift || countedCash === null) return;
     setError(null);
+    if (countedCash < 0) return setError(ar.shifts.errors.negativeAmount);
+    // closeShift (packages/db/src/repositories/shifts.ts) rejects a non-zero
+    // variance with no note, but throws a raw English RangeError — checked
+    // here first so the pharmacist sees the Arabic message that already sits
+    // unused in the i18n file instead of that raw error.
+    const variance = countedCash - (expectedCash ?? 0);
+    if (variance !== 0 && !varianceNote.trim()) return setError(ar.shifts.varianceRequired);
     try {
       await window.api.shifts.close(shift.id, {
         countedCash,
@@ -129,7 +141,12 @@ export function ShiftHandoverScreen() {
             </label>
           </div>
           <div className="btn-row" style={{ marginBlockStart: 0 }}>
-            <button type="button" className="btn btn--primary" onClick={() => void handleOpen()}>
+            <button
+              type="button"
+              className="btn btn--primary"
+              onClick={() => void handleOpen()}
+              disabled={openingFloat !== null && openingFloat < 0}
+            >
               {ar.shifts.openShift}
             </button>
           </div>
@@ -227,7 +244,16 @@ export function ShiftHandoverScreen() {
           )}
         </div>
         <div className="btn-row">
-          <button type="button" className="btn btn--primary" onClick={() => void handleClose()} disabled={countedCash === null}>
+          <button
+            type="button"
+            className="btn btn--primary"
+            onClick={() => void handleClose()}
+            disabled={
+              countedCash === null ||
+              countedCash < 0 ||
+              (previewVariance !== null && previewVariance !== 0 && !varianceNote.trim())
+            }
+          >
             {ar.shifts.closeShift}
           </button>
         </div>

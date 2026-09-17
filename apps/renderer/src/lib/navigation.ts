@@ -9,6 +9,7 @@ import type { Shortcut } from './shortcuts';
 import { ar } from '../i18n/ar';
 
 export type ScreenId =
+  | 'dashboard'
   | 'sales.invoices'
   | 'sales.shiftHandover'
   | 'sales.returnByInvoice'
@@ -105,7 +106,10 @@ export const DRAWER_TREE: DrawerNode[] = [
       { label: ar.drawer.itemsIbnSina, screen: 'items.ibnSina' },
     ],
   },
-  { label: ar.drawer.warehouses, screen: 'warehouses' },
+  {
+    label: ar.drawer.warehouses,
+    children: [{ label: ar.drawer.warehousesList, screen: 'warehouses' }],
+  },
   {
     label: ar.drawer.sales,
     children: [
@@ -131,12 +135,16 @@ export const DRAWER_TREE: DrawerNode[] = [
   },
   {
     label: ar.drawer.settings,
-    children: [{ label: ar.drawer.settingsGeneral, screen: 'settings.general' }],
+    children: [
+      { label: ar.drawer.settingsGeneral, screen: 'settings.general' },
+      { label: ar.drawer.settingsConnection, screen: 'health' },
+    ],
   },
 ];
 
 /** Flat lookup of every screen's display label. */
 export const SCREEN_LABELS: Record<ScreenId, string> = {
+  dashboard: ar.dashboard.title,
   'sales.invoices': ar.drawer.salesInvoices,
   'sales.shiftHandover': ar.drawer.salesShiftHandover,
   'sales.returnByInvoice': ar.drawer.salesReturnByInvoice,

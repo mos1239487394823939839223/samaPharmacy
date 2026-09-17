@@ -11,7 +11,7 @@ export {
   allocate,
 } from './money';
 
-export { normalizeArabic, normalizeLatin, normalizeName } from './arabic';
+export { normalizeArabic, normalizeLatin, normalizeName, toAsciiDigits } from './arabic';
 
 export {
   type ItemUnit,

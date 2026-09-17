@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { normalizeArabic, normalizeLatin, normalizeName } from './arabic';
+import { normalizeArabic, normalizeLatin, normalizeName, toAsciiDigits } from './arabic';
 
 describe('normalizeArabic', () => {
   it('folds alef variants — the case blueprint §2.6 names', () => {
@@ -56,6 +56,33 @@ describe('normalizeArabic', () => {
 
   it('returns empty for empty input', () => {
     expect(normalizeArabic('')).toBe('');
+  });
+});
+
+describe('toAsciiDigits', () => {
+  it('converts Arabic-Indic digits', () => {
+    expect(toAsciiDigits('٠١٢٣٤٥٦٧٨٩')).toBe('0123456789');
+  });
+
+  it('converts Eastern Arabic-Indic (Persian/Urdu) digits', () => {
+    expect(toAsciiDigits('۰۱۲۳۴۵۶۷۸۹')).toBe('0123456789');
+  });
+
+  it('leaves ASCII digits untouched', () => {
+    expect(toAsciiDigits('12345')).toBe('12345');
+  });
+
+  it('converts digits embedded in a larger string, leaving the rest alone', () => {
+    expect(toAsciiDigits('فاتورة رقم ٦٢٣٤١')).toBe('فاتورة رقم 62341');
+  });
+
+  it('parses correctly with Number() after conversion', () => {
+    expect(Number(toAsciiDigits('١٢٣'))).toBe(123);
+    expect(Number(toAsciiDigits('  ٤٥.٥  '.trim()))).toBe(45.5);
+  });
+
+  it('returns empty for empty input', () => {
+    expect(toAsciiDigits('')).toBe('');
   });
 });
 

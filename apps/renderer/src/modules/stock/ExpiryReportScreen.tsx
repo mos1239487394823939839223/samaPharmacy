@@ -11,6 +11,17 @@ import type { ExpiryBucket, ExpiryReport, ExpiryBucketDays } from '@pharmacy/sha
 import { fromPiastres } from '@pharmacy/core';
 import { ar } from '../../i18n/ar';
 import { Stat } from '../../components/Stat';
+import { EmptyState, TableSkeleton } from '../../components/EmptyState';
+
+/** Badge color by urgency — expired is an error, the nearest bucket is a
+    warning, everything further out reads as a neutral/success fact rather
+    than something that needs action. */
+function bucketBadgeClass(bucket: ExpiryBucket): string {
+  if (bucket === 'expired') return 'badge badge--error';
+  if (bucket === 'd30') return 'badge badge--warning';
+  if (bucket === 'd60') return 'badge badge--info';
+  return 'badge badge--muted';
+}
 
 const BUCKETS: ExpiryBucket[] = ['expired', 'd30', 'd60', 'd90', 'd180', 'over180'];
 
@@ -56,7 +67,7 @@ export function ExpiryReportScreen() {
     try {
       setReport(await window.api.stock.expiryReport(asOf));
     } catch (err) {
-      setError((err as Error).message);
+      setError(`${ar.expiryReport.errors.loadFailed}: ${(err as Error).message}`);
     } finally {
       setLoading(false);
     }
@@ -94,7 +105,7 @@ export function ExpiryReportScreen() {
       {error && <div className="alert alert--error">{error}</div>}
 
       {loading ? (
-        <p className="muted">{ar.items.loading}</p>
+        <TableSkeleton cols={8} />
       ) : report ? (
         <>
           <div className="stats">
@@ -133,7 +144,7 @@ export function ExpiryReportScreen() {
           <div className="panel">
             <h2 className="section-heading">{ar.expiryReport.tableTitle}</h2>
             {rows.length === 0 ? (
-              <p className="muted">{ar.expiryReport.empty}</p>
+              <EmptyState title={ar.expiryReport.empty} />
             ) : (
               <table className="datatable">
                 <thead>
@@ -142,23 +153,30 @@ export function ExpiryReportScreen() {
                     <th>{ar.expiryReport.itemName}</th>
                     <th>{ar.expiryReport.batchNumber}</th>
                     <th>{ar.expiryReport.expiryDate}</th>
+                    <th />
                     <th>{ar.expiryReport.qtyOnHand}</th>
                     <th>{ar.expiryReport.unitCost}</th>
                     <th>{ar.expiryReport.value}</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((r) => (
-                    <tr key={r.batchId}>
-                      <td dir="ltr">{r.code}</td>
-                      <td>{r.nameAr}</td>
-                      <td dir="ltr">{r.batchNumber ?? '—'}</td>
-                      <td dir="ltr">{r.expiryDate}</td>
-                      <td dir="ltr">{r.qtyOnHand}</td>
-                      <td dir="ltr">{fromPiastres(r.unitCost)}</td>
-                      <td dir="ltr">{fromPiastres(r.value)}</td>
-                    </tr>
-                  ))}
+                  {rows.map((r) => {
+                    const labels = bucketLabels(report.bucketDays);
+                    return (
+                      <tr key={r.batchId}>
+                        <td dir="ltr">{r.code}</td>
+                        <td>{r.nameAr}</td>
+                        <td dir="ltr">{r.batchNumber ?? '—'}</td>
+                        <td dir="ltr">{r.expiryDate}</td>
+                        <td>
+                          <span className={bucketBadgeClass(r.bucket)}>{labels[r.bucket]}</span>
+                        </td>
+                        <td dir="ltr">{r.qtyOnHand}</td>
+                        <td dir="ltr">{fromPiastres(r.unitCost)}</td>
+                        <td dir="ltr">{fromPiastres(r.value)}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             )}

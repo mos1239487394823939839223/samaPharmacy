@@ -6,6 +6,7 @@
 import { useEffect, useState } from 'react';
 import type { WarehouseRow } from '@pharmacy/shared';
 import { ar } from '../../i18n/ar';
+import { EmptyState, TableSkeleton } from '../../components/EmptyState';
 
 export function WarehousesScreen() {
   const [rows, setRows] = useState<WarehouseRow[]>([]);
@@ -25,7 +26,7 @@ export function WarehousesScreen() {
     try {
       setRows(await window.api.warehouses.list());
     } catch (err) {
-      setError((err as Error).message);
+      setError(`${ar.warehouses.errors.loadFailed}: ${(err as Error).message}`);
     } finally {
       setLoading(false);
     }
@@ -43,7 +44,9 @@ export function WarehousesScreen() {
   }
 
   async function save() {
-    if (!window.api || !nameAr.trim()) return;
+    if (!window.api) return;
+    setError(null);
+    if (!nameAr.trim()) return setError(ar.warehouses.errors.nameRequired);
     try {
       if (editing === 'new') {
         await window.api.warehouses.create({ nameAr: nameAr.trim(), isDefault });
@@ -53,7 +56,7 @@ export function WarehousesScreen() {
       setEditing(null);
       await load();
     } catch (err) {
-      setError((err as Error).message);
+      setError(`${ar.warehouses.errors.saveFailed}: ${(err as Error).message}`);
     }
   }
 
@@ -64,7 +67,11 @@ export function WarehousesScreen() {
       await window.api.warehouses.deactivate(row.id);
       await load();
     } catch (err) {
-      setError((err as Error).message);
+      setError(
+        /Cannot deactivate the default warehouse/.test((err as Error).message)
+          ? ar.warehouses.cannotDeactivateDefault
+          : `${ar.warehouses.errors.deactivateFailed}: ${(err as Error).message}`
+      );
     }
   }
 
@@ -106,9 +113,9 @@ export function WarehousesScreen() {
       )}
 
       {loading ? (
-        <p className="muted">{ar.items.loading}</p>
+        <TableSkeleton cols={3} />
       ) : rows.length === 0 ? (
-        <p className="muted">{ar.warehouses.empty}</p>
+        <EmptyState title={ar.warehouses.empty} />
       ) : (
         <table className="datatable">
           <thead>

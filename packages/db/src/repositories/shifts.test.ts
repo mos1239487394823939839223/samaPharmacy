@@ -107,6 +107,11 @@ describe('computeExpectedCash', () => {
     // invoice is already excluded by status alone, which would let a bug
     // that drops the invoice_type filter (but keeps the status filter) pass
     // unnoticed. This isolates invoice_type as the property under test.
+    //
+    // paidCash is omitted (defaults to 0): createSalesInvoice now rejects a
+    // non-zero paidCash on a credit invoice outright (sales.test.ts), so a
+    // "stray" paid_cash value can no longer reach storage to test against —
+    // the guard itself is what used to be missing here.
     stockUp(100, 50);
     const customerId = createCustomer(db, { name: 'عميل آجل للوردية', mobile1: '0100000001' });
     const id = openShift(db, warehouseId, 30000);
@@ -114,7 +119,6 @@ describe('computeExpectedCash', () => {
       warehouseId,
       customerId,
       invoiceType: 'credit',
-      paidCash: 1000, // even with a stray paid_cash value on a credit sale
       lines: [{ lineNo: 1, itemId, unitId, unitFactor: 1, qtyInUnit: 5, unitPrice: 200 }],
     });
     confirmSalesInvoice(db, creditId);

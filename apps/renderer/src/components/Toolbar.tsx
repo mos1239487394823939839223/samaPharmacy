@@ -1,68 +1,56 @@
-import { MODULES, type ScreenId } from '../lib/navigation';
-import { formatShortcut } from '../lib/shortcuts';
 import { ar } from '../i18n/ar';
+import { MenuIcon, SearchIcon, BellIcon, PillIcon } from './icons';
+import type { ScreenId } from '../lib/navigation';
 
 interface Props {
   activeScreen: ScreenId;
-  showBadges: boolean;
   onNavigate: (screen: ScreenId) => void;
   onToggleDrawer: () => void;
-  onToggleBadges: () => void;
 }
 
 /**
- * Persistent top toolbar — blueprint §1.1.
- *
- * Always visible, even inside a form: staff can jump from a half-finished
- * customer record straight to a sale.
+ * Persistent top header — application identity, sidebar toggle, quick search
+ * and utility actions. Module navigation itself lives in the sidebar now;
+ * the header stays a light, uncluttered strip rather than a second row of
+ * large buttons duplicating that tree.
  */
-export function Toolbar({
-  activeScreen,
-  showBadges,
-  onNavigate,
-  onToggleDrawer,
-  onToggleBadges,
-}: Props) {
+export function Toolbar({ onToggleDrawer }: Props) {
   return (
-    <header className="toolbar">
-      <div className="toolbar__side">
-        <button
-          type="button"
-          className="toolbar__icon"
-          onClick={onToggleDrawer}
-          title={ar.shell.toggleDrawer}
-          aria-label={ar.shell.toggleDrawer}
-        >
-          ☰
-        </button>
+    <header className="header">
+      <button
+        type="button"
+        className="header__toggle"
+        onClick={onToggleDrawer}
+        title={ar.shell.toggleDrawer}
+        aria-label={ar.shell.toggleDrawer}
+      >
+        <MenuIcon />
+      </button>
+
+      <div className="header__brand">
+        <span className="header__logo">
+          <PillIcon className="icon--sm" />
+        </span>
       </div>
 
-      <nav className="toolbar__modules">
-        {MODULES.map((m) => {
-          const active = activeScreen === m.target;
-          return (
-            <button
-              key={m.id}
-              type="button"
-              className={active ? 'module module--active' : 'module'}
-              onClick={() => onNavigate(m.target)}
-            >
-              <span className="module__label">{m.label}</span>
-              {showBadges && (
-                <span className="module__badge" dir="ltr">
-                  {formatShortcut(m.shortcut)}
-                </span>
-              )}
-            </button>
-          );
-        })}
-      </nav>
+      <div className="header__search">
+        <span className="header__search-icon">
+          <SearchIcon className="icon--sm" />
+        </span>
+        <input className="field" placeholder={ar.shell.search} />
+      </div>
 
-      <div className="toolbar__side toolbar__side--end">
-        <label className="toolbar__toggle">
-          <input type="checkbox" checked={showBadges} onChange={onToggleBadges} />
-          <span>{ar.shell.showShortcutBadges}</span>
-        </label>
+      <div className="header__spacer" />
+
+      <div className="header__actions">
+        <button type="button" className="header__toggle" title={ar.shell.notifications} aria-label={ar.shell.notifications}>
+          <BellIcon />
+        </button>
+
+        <div className="header__user">
+          <span className="header__user-avatar">ص</span>
+          <span className="header__user-name">{ar.shell.pharmacist}</span>
+        </div>
       </div>
     </header>
   );

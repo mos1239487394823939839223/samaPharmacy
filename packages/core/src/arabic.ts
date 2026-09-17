@@ -21,6 +21,22 @@ const ARABIC_INDIC_DIGITS: Record<string, string> = {
 };
 
 /**
+ * Fold Arabic-Indic and Eastern Arabic-Indic digits to ASCII, leaving
+ * everything else untouched.
+ *
+ * Numeric inputs (invoice serials, quantities, prices) must parse correctly
+ * regardless of the Windows input language (CLAUDE.md rule 4 covers the same
+ * concern for barcode scanning) — a pharmacist switching keyboards mid-shift
+ * still expects "١٢٣" to behave exactly like "123". Unlike normalizeArabic,
+ * this never lowercases or folds letters: it is meant to run on numeric
+ * fields, not names.
+ */
+export function toAsciiDigits(input: string): string {
+  if (!input) return input;
+  return input.replace(/[٠-٩۰-۹]/g, (ch) => ARABIC_INDIC_DIGITS[ch] ?? ch);
+}
+
+/**
  * Fold letter variants that staff type interchangeably.
  *
  * ة→ه and ى→ي are deliberate: they lose a real orthographic distinction, but

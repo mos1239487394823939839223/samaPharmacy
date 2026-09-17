@@ -49,7 +49,7 @@ export function ImportWizard({ onClose, onImported }: Props) {
       setPreview(await window.api.import.preview(path));
       setPhase('ready');
     } catch (err) {
-      setError((err as Error).message);
+      setError(`${ar.items.import.errors.previewFailed}: ${(err as Error).message}`);
       setPhase('idle');
     }
   }
@@ -64,7 +64,7 @@ export function ImportWizard({ onClose, onImported }: Props) {
     try {
       setPreview(await window.api.import.preview(preview.filePath, mapping));
     } catch (err) {
-      setError((err as Error).message);
+      setError(`${ar.items.import.errors.previewFailed}: ${(err as Error).message}`);
     } finally {
       setPhase('ready');
     }
@@ -92,16 +92,20 @@ export function ImportWizard({ onClose, onImported }: Props) {
       setPhase('done');
       onImported();
     } catch (err) {
-      setError((err as Error).message);
+      setError(`${ar.items.import.errors.applyFailed}: ${(err as Error).message}`);
       setPhase('ready');
     }
   }
 
   async function exportRejects() {
     if (!preview || !window.api) return;
-    const csv = rejectedToCsv(preview.rejected, preview.headers);
-    const path = await window.api.import.saveRejects(csv);
-    if (path) setSavedPath(path);
+    try {
+      const csv = rejectedToCsv(preview.rejected, preview.headers);
+      const path = await window.api.import.saveRejects(csv);
+      if (path) setSavedPath(path);
+    } catch (err) {
+      setError(`${ar.items.import.errors.exportFailed}: ${(err as Error).message}`);
+    }
   }
 
   return (

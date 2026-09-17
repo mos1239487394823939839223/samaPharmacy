@@ -7,7 +7,7 @@
 
 import { useState } from 'react';
 import type { ReturnablePurchaseLine } from '@pharmacy/shared';
-import { fromPiastres } from '@pharmacy/core';
+import { fromPiastres, toAsciiDigits } from '@pharmacy/core';
 import { ar } from '../../i18n/ar';
 import { useToast } from '../../components/Toast';
 
@@ -29,8 +29,8 @@ export function PurchaseReturnByInvoiceScreen() {
     if (!window.api || !serial.trim()) return;
     setError(null);
     try {
-      const all = await window.api.purchases.list({ limit: 500 });
-      const match = all.find((inv) => String(inv.serial) === serial.trim());
+      const serialNum = Number(serial.trim());
+      const match = Number.isInteger(serialNum) ? await window.api.purchases.getBySerial(serialNum) : null;
       if (!match) return setError(ar.salesReturns.notFound);
 
       setInvoiceId(match.id);
@@ -53,6 +53,16 @@ export function PurchaseReturnByInvoiceScreen() {
 
     const toReturn = lines.filter((l) => Number(l.returnQty) > 0);
     if (toReturn.length === 0) return setError(ar.purchaseReturns.errors.noLines);
+
+    // createPurchaseReturn's only real bound is live batch.qtyOnHand, not
+    // receivedQtyBase — some of what was received may have already sold, so
+    // batchQtyOnHand (already fetched per line) is the correct cap here.
+    if (toReturn.some((l) => !Number.isInteger(Number(l.returnQty)))) {
+      return setError(ar.purchaseReturns.errors.qtyNotWhole);
+    }
+    if (toReturn.some((l) => Number(l.returnQty) > (l.batchQtyOnHand ?? 0))) {
+      return setError(ar.purchaseReturns.errors.qtyExceedsOnHand);
+    }
 
     try {
       const returnId = await window.api.purchaseReturns.create({
@@ -86,7 +96,7 @@ export function PurchaseReturnByInvoiceScreen() {
           placeholder={ar.purchaseReturns.invoiceSerial}
           dir="ltr"
           value={serial}
-          onChange={(e) => setSerial(e.target.value)}
+          onChange={(e) => setSerial(toAsciiDigits(e.target.value))}
           onKeyDown={(e) => e.key === 'Enter' && void findInvoice()}
         />
         <button type="button" className="btn btn--primary" onClick={() => void findInvoice()}>
@@ -122,7 +132,12 @@ export function PurchaseReturnByInvoiceScreen() {
                       dir="ltr"
                       inputMode="numeric"
                       value={l.returnQty}
-                      onChange={(e) => updateLine(l.batchId, { returnQty: e.target.value })}
+                      disabled={(l.batchQtyOnHand ?? 0) <= 0}
+                      onChange={(e) =>
+                        updateLine(l.batchId, {
+                          returnQty: toAsciiDigits(e.target.value).replace(/[^\d]/g, ''),
+                        })
+                      }
                     />
                   </td>
                   <td dir="ltr">{fromPiastres(l.unitCost)}</td>

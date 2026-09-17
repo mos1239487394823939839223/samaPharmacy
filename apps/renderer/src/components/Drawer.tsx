@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { DRAWER_TREE, type DrawerNode, type ScreenId } from '../lib/navigation';
 import { ar } from '../i18n/ar';
+import { ChevronDownIcon } from './icons';
 
 interface Props {
   open: boolean;
@@ -17,12 +18,6 @@ function readCollapsed(): Set<string> {
   } catch {
     return new Set();
   }
-}
-
-/** True if any leaf under this group is the active screen. */
-function containsActive(node: DrawerNode, activeScreen: ScreenId): boolean {
-  if (node.screen === activeScreen) return true;
-  return node.children?.some((child) => containsActive(child, activeScreen)) ?? false;
 }
 
 function Node({
@@ -44,49 +39,42 @@ function Node({
       <li>
         <button
           type="button"
-          className={active ? 'drawer__leaf drawer__leaf--active' : 'drawer__leaf'}
+          className={active ? 'sidebar__leaf sidebar__leaf--active' : 'sidebar__leaf'}
           onClick={() => node.screen && onNavigate(node.screen)}
         >
+          <span className="sidebar__leaf-dot" aria-hidden="true" />
           {node.label}
         </button>
       </li>
     );
   }
 
-  // A group holding the active screen never renders collapsed, even if the
-  // user collapsed it earlier — otherwise the drawer would silently hide
-  // where you currently are.
-  const isCollapsed = collapsed.has(node.label) && !containsActive(node, activeScreen);
+  // Purely user-controlled: a group can be collapsed even while it holds the
+  // active screen, so staff can tuck a section away without losing their
+  // place — the active leaf stays highlighted once the group reopens.
+  const isCollapsed = collapsed.has(node.label);
 
   return (
     <li>
       <button
         type="button"
-        className="drawer__group"
+        className="sidebar__group"
         onClick={() => onToggle(node.label)}
         aria-expanded={!isCollapsed}
       >
         <span>{node.label}</span>
         <span
           className={
-            isCollapsed ? 'drawer__group-chevron drawer__group-chevron--collapsed' : 'drawer__group-chevron'
+            isCollapsed ? 'sidebar__group-chevron sidebar__group-chevron--collapsed' : 'sidebar__group-chevron'
           }
           aria-hidden="true"
         >
-          <svg viewBox="0 0 16 16" fill="none">
-            <path
-              d="M4 6l4 4 4-4"
-              stroke="currentColor"
-              strokeWidth="1.75"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
+          <ChevronDownIcon />
         </span>
       </button>
-      <div className={isCollapsed ? 'drawer__children-wrap drawer__children-wrap--collapsed' : 'drawer__children-wrap'}>
-        <div className="drawer__children-inner">
-          <ul className="drawer__children">
+      <div className={isCollapsed ? 'sidebar__children-wrap sidebar__children-wrap--collapsed' : 'sidebar__children-wrap'}>
+        <div className="sidebar__children-inner">
+          <ul className="sidebar__children">
             {node.children.map((child) => (
               <Node
                 key={child.label + (child.screen ?? '')}
@@ -104,7 +92,7 @@ function Node({
   );
 }
 
-/** Collapsible side drawer — blueprint §1.1 tree. */
+/** Collapsible sidebar — the navigation tree, single source for every screen. */
 export function Drawer({ open, activeScreen, onNavigate }: Props) {
   const [collapsed, setCollapsed] = useState<Set<string>>(() => readCollapsed());
 
@@ -128,15 +116,16 @@ export function Drawer({ open, activeScreen, onNavigate }: Props) {
   }
 
   return (
-    <aside className="drawer">
+    <aside className="sidebar">
       <button
         type="button"
-        className={activeScreen === 'health' ? 'drawer__root drawer__root--active' : 'drawer__root'}
-        onClick={() => onNavigate('health')}
+        className={activeScreen === 'dashboard' ? 'sidebar__root sidebar__root--active' : 'sidebar__root'}
+        onClick={() => onNavigate('dashboard')}
       >
         {ar.drawer.home}
       </button>
-      <ul className="drawer__tree">
+
+      <ul className="sidebar__tree">
         {DRAWER_TREE.map((node) => (
           <Node
             key={node.label}

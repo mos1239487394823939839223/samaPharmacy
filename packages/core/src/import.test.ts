@@ -138,6 +138,16 @@ describe('validateRows', () => {
     expect(rejected[0]!.reason).toMatch(/أعلى/);
   });
 
+  it('rejects a negative sale price — publicPrice already guards this, salePrice must too', () => {
+    // A negative salePrice trivially passes the BR-4 "salePrice > publicPrice"
+    // check above (a negative number is never greater than a positive one),
+    // so it needs its own guard, mirroring publicPrice's existing one.
+    const m = { nameAr: 0, publicPrice: 1, salePrice: 2 };
+    const { rejected } = validateRows([['صنف', '', '-5.00']], m);
+    expect(rejected).toHaveLength(1);
+    expect(rejected[0]!.reason).toMatch(/سعر/);
+  });
+
   it('preserves leading zeros on barcodes', () => {
     const { accepted } = validateRows([['صنف', '', '0004567', '']], mapping);
     expect(accepted[0]!.barcode).toBe('0004567');

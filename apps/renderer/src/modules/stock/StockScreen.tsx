@@ -10,6 +10,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { ItemStockRow, BatchRow, StockMoveRow } from '@pharmacy/shared';
 import { fromPiastres } from '@pharmacy/core';
 import { ar } from '../../i18n/ar';
+import { EmptyState, TableSkeleton } from '../../components/EmptyState';
 
 type MoveTypeKey = keyof typeof ar.stock.moveType;
 
@@ -31,7 +32,7 @@ export function StockScreen() {
     try {
       setRows(await window.api.stock.search(q, 200));
     } catch (err) {
-      setError((err as Error).message);
+      setError(`${ar.stock.errors.loadFailed}: ${(err as Error).message}`);
     } finally {
       setLoading(false);
     }
@@ -75,9 +76,9 @@ export function StockScreen() {
       {error && <div className="alert alert--error">{error}</div>}
 
       {loading ? (
-        <p className="muted">{ar.items.loading}</p>
+        <TableSkeleton cols={6} />
       ) : rows.length === 0 ? (
-        <p className="muted">{query.trim() ? ar.stock.noResults : ar.stock.empty}</p>
+        <EmptyState title={query.trim() ? ar.stock.noResults : ar.stock.empty} />
       ) : (
         <table className="datatable">
           <thead>
@@ -95,7 +96,10 @@ export function StockScreen() {
               <tr key={r.itemId} onDoubleClick={() => setSelected(r)}>
                 <td dir="ltr">{r.code}</td>
                 <td>{r.nameAr}</td>
-                <td dir="ltr">{r.qtyOnHand}</td>
+                <td dir="ltr">
+                  {r.qtyOnHand}
+                  {r.qtyOnHand === 0 && <span className="badge badge--error"> {ar.stock.outOfStock}</span>}
+                </td>
                 <td dir="ltr">{r.nearestExpiry ?? ar.stock.noExpiry}</td>
                 <td dir="ltr">{fromPiastres(r.stockValue)}</td>
                 <td className="datatable__actions">
@@ -148,9 +152,9 @@ function BatchDetail({ item, onBack }: { item: ItemStockRow; onBack: () => void 
       </div>
 
       {loading ? (
-        <p className="muted">{ar.items.loading}</p>
+        <TableSkeleton cols={6} />
       ) : batches.length === 0 ? (
-        <p className="muted">{ar.stock.noBatches}</p>
+        <EmptyState title={ar.stock.noBatches} />
       ) : (
         <table className="datatable">
           <thead>
@@ -197,8 +201,8 @@ function BatchDetail({ item, onBack }: { item: ItemStockRow; onBack: () => void 
             <thead>
               <tr>
                 <th>{ar.purchases.invoiceDate}</th>
-                <th>نوع الحركة</th>
-                <th>الكمية</th>
+                <th>{ar.stock.moveTypeLabel}</th>
+                <th>{ar.stock.qtyDelta}</th>
                 <th>{ar.stock.unitCost}</th>
               </tr>
             </thead>

@@ -6,7 +6,7 @@
 
 import { useState } from 'react';
 import type { ReturnableLine } from '@pharmacy/shared';
-import { fromPiastres } from '@pharmacy/core';
+import { fromPiastres, toAsciiDigits } from '@pharmacy/core';
 import { ar } from '../../i18n/ar';
 import { useToast } from '../../components/Toast';
 
@@ -30,10 +30,8 @@ export function SalesReturnByInvoiceScreen() {
     if (!window.api || !serial.trim()) return;
     setError(null);
     try {
-      // list() has no serial filter yet; fetch a page and match client-side —
-      // acceptable at this scale, a dedicated lookup can follow later.
-      const all = await window.api.sales.list({ limit: 500 });
-      const match = all.find((inv) => String(inv.serial) === serial.trim());
+      const serialNum = Number(serial.trim());
+      const match = Number.isInteger(serialNum) ? await window.api.sales.getBySerial(serialNum) : null;
       if (!match) return setError(ar.salesReturns.notFound);
 
       setInvoiceId(match.id);
@@ -56,6 +54,24 @@ export function SalesReturnByInvoiceScreen() {
 
     const toReturn = lines.filter((l) => Number(l.returnQty) > 0);
     if (toReturn.length === 0) return setError(ar.salesReturns.errors.noLines);
+
+    // createSalesReturn (QA-001's over-return guard) rejects a qty above
+    // what remains returnable, and the zod schema requires qtyBase to be an
+    // integer — both checked here first so the pharmacist gets the Arabic
+    // message instead of the repository's raw English error after the whole
+    // return fails.
+    for (const l of toReturn) {
+      const qty = Number(l.returnQty);
+      if (!Number.isInteger(qty)) return setError(ar.salesReturns.errors.qtyNotWhole);
+      const remaining = l.soldQtyBase - l.alreadyReturnedQtyBase;
+      if (qty > remaining) return setError(ar.salesReturns.errors.qtyExceedsRemaining);
+    }
+
+    // recordCustomerPayment for refundMethod 'account' is only called when
+    // customerId is set — with no customer (a walk-in cash sale), the
+    // return would confirm successfully but silently apply no credit
+    // anywhere, which is worse than an error.
+    if (refundMethod === 'account' && !customerId) return setError(ar.salesReturns.errors.accountNeedsCustomer);
 
     try {
       const returnId = await window.api.salesReturns.create({
@@ -93,7 +109,7 @@ export function SalesReturnByInvoiceScreen() {
           placeholder={ar.salesReturns.invoiceSerial}
           dir="ltr"
           value={serial}
-          onChange={(e) => setSerial(e.target.value)}
+          onChange={(e) => setSerial(toAsciiDigits(e.target.value))}
           onKeyDown={(e) => e.key === 'Enter' && void findInvoice()}
         />
         <button type="button" className="btn btn--primary" onClick={() => void findInvoice()}>
@@ -131,8 +147,14 @@ export function SalesReturnByInvoiceScreen() {
                         dir="ltr"
                         inputMode="numeric"
                         value={l.returnQty}
-                        onChange={(e) => updateLine(l.sourceLineId, { returnQty: e.target.value })}
-                        max={remaining}
+                        disabled={remaining <= 0}
+                        onChange={(e) =>
+                          updateLine(l.sourceLineId, {
+                            // Base units only — no decimal point, matching
+                            // the schema's qtyBase: z.number().int().positive().
+                            returnQty: toAsciiDigits(e.target.value).replace(/[^\d]/g, ''),
+                          })
+                        }
                       />
                     </td>
                     <td dir="ltr">{fromPiastres(l.unitPrice)}</td>
@@ -155,7 +177,12 @@ export function SalesReturnByInvoiceScreen() {
               <select className="field" value={refundMethod} onChange={(e) => setRefundMethod(e.target.value as 'cash')}>
                 <option value="cash">{ar.salesReturns.cash}</option>
                 <option value="credit_note">{ar.salesReturns.creditNote}</option>
-                <option value="account">{ar.salesReturns.account}</option>
+                {/* recordCustomerPayment only fires when customerId is set —
+                    offering this option with no customer on the invoice
+                    would confirm the return with no ledger effect at all. */}
+                <option value="account" disabled={!customerId}>
+                  {ar.salesReturns.account}
+                </option>
               </select>
             </label>
             <label className="formfield">

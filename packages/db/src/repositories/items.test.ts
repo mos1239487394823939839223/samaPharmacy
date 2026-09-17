@@ -20,6 +20,11 @@ import {
   deactivateItem,
   nextSequence,
 } from './items';
+import { createSupplier } from './suppliers';
+import { getDefaultWarehouse } from './warehouses';
+import { createPurchaseInvoice, confirmPurchaseInvoice } from './purchases';
+import { createSalesInvoice } from './sales';
+import { migrate } from '../migrate';
 
 let db: Db;
 
@@ -32,6 +37,19 @@ beforeAll(() => {
 });
 
 afterAll(() => db.close());
+
+/** A separate, fully-migrated db (0001 + later migrations, incl. the seed
+    system user purchases/sales need for user_id) — the shared `db` above
+    only runs 0001 directly, which is enough for the item-only tests around
+    it but not for the purchase/sale flow the FK-regression tests below
+    need to set up. Isolated per test so it can't affect the shared one's
+    sequence counters or row ids. */
+function freshMigratedDb(): Db {
+  const fresh = new Database(':memory:') as Db;
+  fresh.pragma('foreign_keys = ON');
+  migrate(fresh, join(__dirname, '../../migrations'));
+  return fresh;
+}
 
 describe('sequences', () => {
   it('increments and does not reissue a value', () => {
@@ -133,6 +151,85 @@ describe('updateItem', () => {
     updateItem(db, id, { nameAr: 'صنف باركود', barcodes: ['222222'] });
     expect(getItemBarcodes(db, id)).toEqual(['222222']);
     expect(findByBarcode(db, '111111')).toBeUndefined();
+  });
+
+  it('saves a price change on an item that has already been sold, without a foreign key error', () => {
+    // Reproduces a real bug: replaceUnits used to DELETE + re-INSERT
+    // item_units on every save. Once an item had a confirmed sales line
+    // pointing at that unit's id, the DELETE violated the NOT NULL foreign
+    // key on sales_invoice_lines.unit_id and the whole save failed with
+    // "FOREIGN KEY constraint failed" — for something as ordinary as
+    // editing the selling price.
+    const fresh = freshMigratedDb();
+    try {
+      const id = createItem(fresh, {
+        nameAr: 'صنف تم بيعه',
+        units: [{ nameAr: 'قرص', factor: 1, salePrice: 500, isBase: true, isDefaultSale: true }],
+      });
+      const [unit] = getItemUnits(fresh, id) as { id: number }[];
+
+      const supplierId = createSupplier(fresh, { nameAr: 'مورد لصنف مباع' });
+      const warehouseId = getDefaultWarehouse(fresh).id;
+      const purchaseId = createPurchaseInvoice(fresh, {
+        supplierInvoiceNo: `SUP-${Math.random()}`,
+        supplierId,
+        warehouseId,
+        purchaseType: 'credit',
+        invoiceDate: '2026-01-01',
+        lines: [
+          { lineNo: 1, itemId: id, unitId: unit!.id, qtyInUnit: 10, qtyBase: 10, unitPurchasePrice: 300 },
+        ],
+      });
+      confirmPurchaseInvoice(fresh, purchaseId);
+
+      createSalesInvoice(fresh, {
+        warehouseId,
+        invoiceType: 'cash',
+        lines: [{ lineNo: 1, itemId: id, unitId: unit!.id, unitFactor: 1, qtyInUnit: 1, unitPrice: 500 }],
+      });
+
+      // The actual repro: changing only the selling price on an item that
+      // now has a confirmed purchase and a draft sale referencing its unit.
+      expect(() =>
+        updateItem(fresh, id, {
+          nameAr: 'صنف تم بيعه',
+          units: [{ id: unit!.id, nameAr: 'قرص', factor: 1, salePrice: 600, isBase: true, isDefaultSale: true }],
+        })
+      ).not.toThrow();
+
+      const [updatedUnit] = getItemUnits(fresh, id) as { id: number; salePrice: number }[];
+      // Same row, not a new one — the id every historical line points to.
+      expect(updatedUnit!.id).toBe(unit!.id);
+      expect(updatedUnit!.salePrice).toBe(600);
+    } finally {
+      fresh.close();
+    }
+  });
+
+  it('retires a removed unit instead of deleting it, so old lines stay valid', () => {
+    const id = createItem(db, {
+      nameAr: 'صنف بوحدتين',
+      units: [
+        { nameAr: 'قرص', factor: 1, salePrice: 100, isBase: true, isDefaultSale: true },
+        { nameAr: 'علبة', factor: 10, salePrice: 900, isBase: false },
+      ],
+    });
+    const [pill, box] = getItemUnits(db, id) as { id: number; nameAr: string }[];
+
+    // Save again with only the "قرص" unit — "علبة" was removed in the form.
+    updateItem(db, id, {
+      nameAr: 'صنف بوحدتين',
+      units: [{ id: pill!.id, nameAr: 'قرص', factor: 1, salePrice: 100, isBase: true, isDefaultSale: true }],
+    });
+
+    const allUnits = db
+      .prepare('SELECT id, allow_sale AS allowSale FROM item_units WHERE item_id = ?')
+      .all(id) as { id: number; allowSale: number }[];
+    // Both rows still exist (rule 9) ...
+    expect(allUnits.map((u) => u.id).sort()).toEqual([pill!.id, box!.id].sort());
+    // ... but the dropped one can no longer be sold.
+    expect(allUnits.find((u) => u.id === box!.id)!.allowSale).toBe(0);
+    expect(allUnits.find((u) => u.id === pill!.id)!.allowSale).toBe(1);
   });
 });
 

@@ -11,6 +11,7 @@ import type { SalesReportRow, SalesReportInvoiceRow } from '@pharmacy/shared';
 import { fromPiastres } from '@pharmacy/core';
 import { ar } from '../../i18n/ar';
 import { Stat } from '../../components/Stat';
+import { EmptyState, TableSkeleton } from '../../components/EmptyState';
 
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
@@ -36,6 +37,14 @@ export function SalesReportScreen() {
       setLoading(false);
       return;
     }
+    // An inverted range isn't rejected by getSalesReport — the query's own
+    // WHERE clause just matches nothing, so the user would see "0 invoices"
+    // and read that as "no sales happened" rather than "your date range is
+    // backwards." Caught here instead of letting that ambiguity through.
+    if (from > to) {
+      setError(ar.salesReport.errors.invalidRange);
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
@@ -46,7 +55,7 @@ export function SalesReportScreen() {
       setReport(summary);
       setInvoices(list);
     } catch (err) {
-      setError((err as Error).message);
+      setError(`${ar.salesReport.errors.loadFailed}: ${(err as Error).message}`);
     } finally {
       setLoading(false);
     }
@@ -94,7 +103,7 @@ export function SalesReportScreen() {
       {error && <div className="alert alert--error">{error}</div>}
 
       {loading ? (
-        <p className="muted">{ar.items.loading}</p>
+        <TableSkeleton cols={5} />
       ) : report ? (
         <>
           <div className="stats">
@@ -108,7 +117,7 @@ export function SalesReportScreen() {
           <div className="panel">
             <h2 className="section-heading">{ar.salesReport.invoiceList}</h2>
             {invoices.length === 0 ? (
-              <p className="muted">{ar.salesReport.empty}</p>
+              <EmptyState title={ar.salesReport.empty} />
             ) : (
               <table className="datatable">
                 <thead>

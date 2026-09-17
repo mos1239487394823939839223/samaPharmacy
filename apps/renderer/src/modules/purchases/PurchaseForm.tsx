@@ -10,17 +10,25 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ItemListRow, SupplierRow, WarehouseRow } from '@pharmacy/shared';
-import { fromPiastres, landedCost, toBaseUnits, type LandedCostLine } from '@pharmacy/core';
+import { fromPiastres, landedCost, toAsciiDigits, toBaseUnits, type LandedCostLine } from '@pharmacy/core';
 import { ar } from '../../i18n/ar';
 import { MoneyInput } from '../../components/MoneyInput';
 import { Stat } from '../../components/Stat';
 import { attachShortcuts } from '../../lib/shortcuts';
+
+interface UnitOption {
+  id: number;
+  nameAr: string;
+  factor: number;
+}
 
 interface DraftLine {
   key: number;
   item: ItemListRow | null;
   itemQuery: string;
   itemResults: ItemListRow[];
+  unitOptions: UnitOption[];
+  unitId: number | null;
   unitFactor: number;
   qtyInUnit: string;
   bonusInUnit: string;
@@ -37,6 +45,8 @@ const newLine = (): DraftLine => ({
   item: null,
   itemQuery: '',
   itemResults: [],
+  unitOptions: [],
+  unitId: null,
   unitFactor: 1,
   qtyInUnit: '',
   bonusInUnit: '',
@@ -125,14 +135,22 @@ export function PurchaseForm({ onSaved, onCancel }: Props) {
       item,
       itemQuery: item.nameAr,
       itemResults: [],
+      unitOptions: [],
+      unitId: null,
       // Default to the item's base unit factor; refined once units are
       // fetched. Purchase entry works in whatever unit the pharmacist types.
       unitFactor: 1,
     });
     if (!window.api) return;
     void window.api.items.get(item.id).then((detail) => {
+      const options = detail?.units.map((u) => ({ id: u.id, nameAr: u.nameAr, factor: u.factor })) ?? [];
       const defaultUnit = detail?.units.find((u) => u.isDefaultSale) ?? detail?.units[0];
-      if (defaultUnit) updateLine(key, { unitFactor: defaultUnit.factor });
+      // unit_id is a real foreign key to item_units (docs/schema.sql) — every
+      // item has its own distinct rows there, so this must carry the actual
+      // id resolved per item, never a hardcoded value that may belong to an
+      // unrelated item or not exist at all.
+      if (defaultUnit) updateLine(key, { unitOptions: options, unitId: defaultUnit.id, unitFactor: defaultUnit.factor });
+      else updateLine(key, { unitOptions: options });
     });
   }
 
@@ -140,7 +158,12 @@ export function PurchaseForm({ onSaved, onCancel }: Props) {
   // persisted rows by the exact same landedCost() call.
   const preview = useMemo(() => {
     const inputs: LandedCostLine[] = [];
-    const valid = lines.filter((l) => l.item && l.qtyInUnit && l.unitPurchasePrice != null);
+    // landedCost() throws for any line whose qtyBase + bonusBase is <= 0
+    // (packages/core/src/landed-cost.ts) — Number(l.qtyInUnit) > 0 excludes
+    // an entered "0" (a non-empty, and so previously truthy, string) before
+    // it reaches that call. Without this a typed "0" threw inside this
+    // useMemo on every render, crashing the whole form.
+    const valid = lines.filter((l) => l.item && Number(l.qtyInUnit) > 0 && l.unitPurchasePrice != null);
 
     for (const l of valid) {
       const qtyBase = toBaseUnits(Number(l.qtyInUnit), l.unitFactor);
@@ -173,6 +196,21 @@ export function PurchaseForm({ onSaved, onCancel }: Props) {
     if (!warehouseId) return setError(ar.purchases.errors.noWarehouse);
     const validLines = lines.filter((l) => l.item);
     if (validLines.length === 0) return setError(ar.purchases.errors.noLines);
+    // landedCost (run at confirm, and already guarded in the live preview
+    // above) rejects any line whose qty + bonus is zero — checked here too
+    // since a line can be added and left at qty "" or "0" without ever
+    // triggering the preview's own filter.
+    if (validLines.some((l) => Number(l.qtyInUnit) <= 0)) return setError(ar.purchases.errors.qtyRequired);
+    // unitId only resolves once items.get() returns (selectItemForLine); an
+    // item with no configured units at all would otherwise reach the
+    // NOT NULL unit_id foreign key with nothing to send.
+    if (validLines.some((l) => l.unitId == null)) return setError(ar.purchases.errors.itemRequired);
+    // Expiry drives FEFO allocation and the expiry report — a blank date on
+    // an item that does track expiry silently breaks both for that batch,
+    // with nothing else in the form or the repository catching it.
+    if (validLines.some((l) => !l.item!.noExpiry && !l.expiryDate)) {
+      return setError(ar.purchases.errors.expiryRequired);
+    }
     if (!window.api) return setError(ar.status.noBridge);
 
     setSaving(true);
@@ -189,7 +227,7 @@ export function PurchaseForm({ onSaved, onCancel }: Props) {
         lines: validLines.map((l, i) => ({
           lineNo: i + 1,
           itemId: l.item!.id,
-          unitId: 1,
+          unitId: l.unitId!,
           qtyInUnit: Number(l.qtyInUnit),
           qtyBase: toBaseUnits(Number(l.qtyInUnit), l.unitFactor),
           bonusInUnit: l.bonusInUnit ? Number(l.bonusInUnit) : 0,
@@ -338,6 +376,7 @@ export function PurchaseForm({ onSaved, onCancel }: Props) {
             <thead>
               <tr>
                 <th className="col--wide">{ar.purchases.grid.item}</th>
+                <th>{ar.purchases.grid.unit}</th>
                 <th>{ar.purchases.grid.qty}</th>
                 <th>{ar.purchases.grid.bonus}</th>
                 <th>{ar.purchases.grid.batchNumber}</th>
@@ -371,12 +410,30 @@ export function PurchaseForm({ onSaved, onCancel }: Props) {
                     )}
                   </td>
                   <td>
+                    <select
+                      className="field"
+                      value={line.unitId ?? ''}
+                      disabled={line.unitOptions.length === 0}
+                      onChange={(e) => {
+                        const chosen = line.unitOptions.find((u) => u.id === Number(e.target.value));
+                        if (chosen) updateLine(line.key, { unitId: chosen.id, unitFactor: chosen.factor });
+                      }}
+                    >
+                      {line.unitOptions.length === 0 && <option value="">—</option>}
+                      {line.unitOptions.map((u) => (
+                        <option key={u.id} value={u.id}>
+                          {u.nameAr}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+                  <td>
                     <input
                       className="field"
                       dir="ltr"
                       inputMode="decimal"
                       value={line.qtyInUnit}
-                      onChange={(e) => updateLine(line.key, { qtyInUnit: e.target.value })}
+                      onChange={(e) => updateLine(line.key, { qtyInUnit: toAsciiDigits(e.target.value) })}
                     />
                   </td>
                   <td>
@@ -385,7 +442,7 @@ export function PurchaseForm({ onSaved, onCancel }: Props) {
                       dir="ltr"
                       inputMode="decimal"
                       value={line.bonusInUnit}
-                      onChange={(e) => updateLine(line.key, { bonusInUnit: e.target.value })}
+                      onChange={(e) => updateLine(line.key, { bonusInUnit: toAsciiDigits(e.target.value) })}
                     />
                   </td>
                   <td>
@@ -417,7 +474,7 @@ export function PurchaseForm({ onSaved, onCancel }: Props) {
                       dir="ltr"
                       inputMode="decimal"
                       value={line.discountPct}
-                      onChange={(e) => updateLine(line.key, { discountPct: e.target.value })}
+                      onChange={(e) => updateLine(line.key, { discountPct: toAsciiDigits(e.target.value) })}
                     />
                   </td>
                   <td>
@@ -426,7 +483,7 @@ export function PurchaseForm({ onSaved, onCancel }: Props) {
                       dir="ltr"
                       inputMode="decimal"
                       value={line.taxPct}
-                      onChange={(e) => updateLine(line.key, { taxPct: e.target.value })}
+                      onChange={(e) => updateLine(line.key, { taxPct: toAsciiDigits(e.target.value) })}
                     />
                   </td>
                   <td dir="ltr" className="center">

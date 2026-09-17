@@ -88,3 +88,8 @@ export interface CustomerDetail extends CustomerRow {
   addresses: CustomerAddressRow[];
   tags: string[];
 }
+
+export interface ReceivablesSummary {
+  totalOwed: number;
+  customerCount: number;
+}

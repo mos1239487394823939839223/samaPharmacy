@@ -214,6 +214,7 @@ export function validateRows(
       } catch {
         return reject('bad_price');
       }
+      if (salePrice < 0) return reject('bad_price');
     }
 
     // BR-4: sale price may never exceed the EDA public price.

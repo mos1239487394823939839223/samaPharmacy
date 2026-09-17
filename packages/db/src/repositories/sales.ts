@@ -111,8 +111,24 @@ interface ComputedLine {
 
 function computeLineValues(line: SalesLineInput) {
   const valueBeforeDiscount = line.qtyInUnit * line.unitPrice;
+
+  // A discount subtracts from the line, never adds to it. A negative
+  // discountPct (or discountAmt) inverted that sign silently, inflating
+  // the invoice above its own subtotal instead of being rejected (found in
+  // performance/QA audit — QA-003). A discount over 100% is equally
+  // invalid: it would make valueAfterDiscount negative, i.e. the pharmacy
+  // paying the customer to take the item.
+  if (line.discountPct !== undefined && (line.discountPct < 0 || line.discountPct > 100)) {
+    throw new RangeError(`discountPct must be between 0 and 100, got ${line.discountPct}`);
+  }
   const discountAmt =
     line.discountAmt ?? Math.round((valueBeforeDiscount * (line.discountPct ?? 0)) / 100);
+  if (discountAmt < 0 || discountAmt > valueBeforeDiscount) {
+    throw new RangeError(
+      `discountAmt must be between 0 and the line's value before discount (${valueBeforeDiscount}), got ${discountAmt}`
+    );
+  }
+
   const valueAfterDiscount = valueBeforeDiscount - discountAmt;
   return { valueBeforeDiscount, discountAmt, valueAfterDiscount };
 }
@@ -159,8 +175,35 @@ export function createSalesInvoice(db: Db, input: SalesInvoiceInput): number {
       return { line, v, qtyBase, unitCost, expiryDate, allocation };
     });
 
+    // postCreditSale (below, at confirm) always posts the invoice's FULL
+    // total to the customer ledger — there is no partial-deposit-on-credit
+    // concept in this schema. So any non-zero paidCash on a credit invoice
+    // double-counts money: it would be recorded as collected in cash AND
+    // owed in full on the account. A UI bug that sent paidCash: total on a
+    // credit sale (fixed in SalesScreen.tsx) reached exactly this path with
+    // nothing here to catch it — enforced at the data layer now, not just
+    // by one caller getting it right.
+    if (data.invoiceType === 'credit' && (data.paidCash ?? 0) !== 0) {
+      throw new RangeError(
+        `paidCash must be 0 for a credit invoice, got ${data.paidCash} — the full total posts to the ` +
+          `customer ledger on confirm regardless, so any paidCash here would double-count the money`
+      );
+    }
+
+    // Same discount-sign/bounds guard as computeLineValues, applied to the
+    // whole-invoice extra discount (QA-003's fix extended to the header
+    // level — a negative extraDiscountPct/Amt would inflate the invoice
+    // exactly the same way a negative line discount did).
+    if (data.extraDiscountPct !== undefined && (data.extraDiscountPct < 0 || data.extraDiscountPct > 100)) {
+      throw new RangeError(`extraDiscountPct must be between 0 and 100, got ${data.extraDiscountPct}`);
+    }
     const extraDiscountAmt =
       data.extraDiscountAmt ?? Math.round((total * (data.extraDiscountPct ?? 0)) / 100);
+    if (extraDiscountAmt < 0 || extraDiscountAmt > total) {
+      throw new RangeError(
+        `extraDiscountAmt must be between 0 and the invoice subtotal after line discounts (${total}), got ${extraDiscountAmt}`
+      );
+    }
     total += data.extraCharge ?? 0;
     total -= extraDiscountAmt;
 
@@ -251,6 +294,28 @@ export function getSalesInvoice(db: Db, id: number): SalesInvoiceRow | undefined
        FROM sales_invoices WHERE id = ?`
     )
     .get(id) as SalesInvoiceRow | undefined;
+}
+
+/**
+ * Look up an invoice by its human-facing serial number directly, rather
+ * than fetching a page of recent invoices and scanning it client-side (the
+ * previous approach the sales-return-by-invoice screen used, capped at the
+ * most recent 500 — correct for a new pharmacy but silently unable to find
+ * an older invoice once volume passes that). serial is UNIQUE in the
+ * schema, so SQLite already maintains an index for it; this is an O(log n)
+ * lookup regardless of how much invoice history has accumulated.
+ */
+export function getSalesInvoiceBySerial(db: Db, serial: number): SalesInvoiceRow | undefined {
+  return db
+    .prepare(
+      `SELECT id, serial, warehouse_id AS warehouseId, customer_id AS customerId,
+              invoice_type AS invoiceType, status, subtotal,
+              line_discount_total AS lineDiscountTotal, extra_discount_amt AS extraDiscountAmt,
+              extra_charge AS extraCharge, total, paid_cash AS paidCash,
+              cost_total AS costTotal, notes, created_at AS createdAt, confirmed_at AS confirmedAt
+       FROM sales_invoices WHERE serial = ?`
+    )
+    .get(serial) as SalesInvoiceRow | undefined;
 }
 
 export function getSalesLines(db: Db, invoiceId: number): SalesLineRow[] {
@@ -405,6 +470,38 @@ export function getSalesReport(db: Db, from: string, to: string): SalesReportRow
     .get(from, to) as Omit<SalesReportRow, 'grossProfit'>;
 
   return { ...row, grossProfit: row.grandTotal - row.costTotal };
+}
+
+export interface SalesTrendPoint {
+  /** ISO date (YYYY-MM-DD), local to confirmed_at's stored value. */
+  date: string;
+  grandTotal: number;
+  invoiceCount: number;
+}
+
+/**
+ * Daily sales totals across a date range in one query — the dashboard's
+ * 7-day trend used to call getSalesReport once per day (N separate IPC
+ * round-trips and prepared-statement executions for what is really one
+ * GROUP BY). Same business definition as getSalesReport (confirmed
+ * invoices only, bucketed by confirmed_at), just grouped server-side
+ * instead of looped client-side. Days with no confirmed sales are not
+ * returned as a row — the caller fills gaps with zero, same as it already
+ * had to when a single getSalesReport call came back with invoiceCount 0.
+ */
+export function getSalesTrend(db: Db, from: string, to: string): SalesTrendPoint[] {
+  return db
+    .prepare(
+      `SELECT date(confirmed_at) AS date,
+              COALESCE(SUM(total), 0) AS grandTotal,
+              COUNT(*) AS invoiceCount
+       FROM sales_invoices
+       WHERE status = 'confirmed'
+         AND confirmed_at >= ? AND confirmed_at < datetime(?, '+1 day')
+       GROUP BY date(confirmed_at)
+       ORDER BY date(confirmed_at)`
+    )
+    .all(from, to) as SalesTrendPoint[];
 }
 
 export function getSalesReportInvoices(db: Db, from: string, to: string, limit = 500): SalesReportInvoiceRow[] {

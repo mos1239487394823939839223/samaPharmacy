@@ -13,6 +13,7 @@ import { Toolbar } from './components/Toolbar';
 import { Drawer } from './components/Drawer';
 import { Placeholder } from './components/Placeholder';
 import { HealthCheck } from './components/HealthCheck';
+import { Dashboard } from './components/Dashboard';
 import { ItemsScreen } from './modules/items/ItemsScreen';
 import { WarehousesScreen } from './modules/warehouses/WarehousesScreen';
 import { SuppliersScreen } from './modules/suppliers/SuppliersScreen';
@@ -45,7 +46,6 @@ declare global {
   }
 }
 
-const BADGES_KEY = 'ui.showShortcutBadges';
 const DRAWER_KEY = 'ui.drawerOpen';
 
 function readFlag(key: string, fallback: boolean): boolean {
@@ -57,10 +57,13 @@ function readFlag(key: string, fallback: boolean): boolean {
   }
 }
 
+// Shortcut-key badges on the item form's save/cancel buttons (e.g. "Ctrl+Shift+S")
+// — always shown; this is unrelated to sidebar navigation.
+const SHOW_FORM_SHORTCUT_BADGES = true;
+
 export function App() {
-  const [screen, setScreen] = useState<ScreenId>('health');
+  const [screen, setScreen] = useState<ScreenId>('dashboard');
   const [drawerOpen, setDrawerOpen] = useState(() => readFlag(DRAWER_KEY, true));
-  const [showBadges, setShowBadges] = useState(() => readFlag(BADGES_KEY, true));
 
   useEffect(() => {
     try {
@@ -69,14 +72,6 @@ export function App() {
       /* private mode or blocked storage — the toggle still works this session */
     }
   }, [drawerOpen]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(BADGES_KEY, String(showBadges));
-    } catch {
-      /* as above */
-    }
-  }, [showBadges]);
 
   const bindings = useMemo<ShortcutBinding[]>(
     () =>
@@ -93,23 +88,19 @@ export function App() {
   return (
     <ToastProvider>
       <div className="shell">
-        <Toolbar
-          activeScreen={screen}
-          showBadges={showBadges}
-          onNavigate={setScreen}
-          onToggleDrawer={() => setDrawerOpen((v) => !v)}
-          onToggleBadges={() => setShowBadges((v) => !v)}
-        />
+        <Toolbar activeScreen={screen} onNavigate={setScreen} onToggleDrawer={() => setDrawerOpen((v) => !v)} />
 
         <div className="shell__body">
           <Drawer open={drawerOpen} activeScreen={screen} onNavigate={setScreen} />
 
           <main className="shell__content">
             <h1 className="shell__heading">{SCREEN_LABELS[screen]}</h1>
-            {screen === 'health' ? (
+            {screen === 'dashboard' ? (
+              <Dashboard onNavigate={setScreen} />
+            ) : screen === 'health' ? (
               <HealthCheck />
             ) : screen === 'items.list' ? (
-              <ItemsScreen showBadges={showBadges} />
+              <ItemsScreen showBadges={SHOW_FORM_SHORTCUT_BADGES} />
             ) : screen === 'warehouses' ? (
               <WarehousesScreen />
             ) : screen === 'suppliers.list' ? (

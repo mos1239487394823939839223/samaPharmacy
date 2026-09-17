@@ -6,6 +6,7 @@
 
 import { useState } from 'react';
 import type { CustomerDetail } from '@pharmacy/shared';
+import { toAsciiDigits } from '@pharmacy/core';
 import { ar } from '../../i18n/ar';
 import { MoneyInput } from '../../components/MoneyInput';
 
@@ -46,29 +47,56 @@ export function CustomerForm({ existing, onSaved, onCancel }: Props) {
     setTagDraft('');
   }
 
+  /** Digits-only, at least 8 digits — after Arabic-Indic digits are folded to ASCII. */
+  function isValidMobile(v: string): boolean {
+    return /^\d{8,}$/.test(v);
+  }
+
+  /** Parses to a finite number in [0, 100]; used for all three discount fields. */
+  function parseDiscountPct(v: string): number | null {
+    const n = Number(v);
+    if (!Number.isFinite(n) || n < 0 || n > 100) return null;
+    return n;
+  }
+
   async function submit() {
     setError(null);
+
+    const mobile1Ascii = toAsciiDigits(mobile1.trim());
+    const mobile2Ascii = toAsciiDigits(mobile2.trim());
+    const pharmacyPhoneAscii = toAsciiDigits(pharmacyPhone.trim());
+
     if (!name.trim()) return setError(ar.customers.errors.nameRequired);
-    if (!mobile1.trim()) return setError(ar.customers.errors.mobileRequired);
+    if (!mobile1Ascii) return setError(ar.customers.errors.mobileRequired);
+    if (!isValidMobile(mobile1Ascii)) return setError(ar.customers.errors.mobileInvalid);
+    if (mobile2Ascii && !isValidMobile(mobile2Ascii)) return setError(ar.customers.errors.mobileInvalid);
+
+    const cashPct = parseDiscountPct(discountCashPct);
+    const creditPct = parseDiscountPct(discountCreditPct);
+    const invoicePct = parseDiscountPct(discountInvoicePct);
+    if (cashPct === null || creditPct === null || invoicePct === null) {
+      return setError(ar.customers.errors.discountInvalid);
+    }
+
     if (!window.api) return setError(ar.status.noBridge);
 
     setSaving(true);
     try {
       const input = {
         name: name.trim(),
-        mobile1: mobile1.trim(),
-        mobile2: mobile2.trim() || null,
+        mobile1: mobile1Ascii,
+        mobile2: mobile2Ascii || null,
         email: email.trim() || null,
         accountType,
         pharmacyOwnerName: pharmacyOwnerName.trim() || null,
-        pharmacyPhone: pharmacyPhone.trim() || null,
+        pharmacyPhone: pharmacyPhoneAscii || null,
         paymentMethod,
         openingBalance: openingBalance ?? 0,
-        creditLimit,
+        creditLimit: paymentMethod === 'credit' ? creditLimit : null,
         isVip,
-        discountCashPct: Number(discountCashPct) || 0,
-        discountCreditPct: Number(discountCreditPct) || 0,
-        discountInvoicePct: Number(discountInvoicePct) || 0,
+        discountCashPct: cashPct,
+        discountCreditPct: creditPct,
+        discountInvoicePct: invoicePct,
         tags,
         notes: notes.trim() || null,
       };
@@ -76,7 +104,11 @@ export function CustomerForm({ existing, onSaved, onCancel }: Props) {
       else await window.api.customers.create(input);
       onSaved();
     } catch (err) {
-      setError(`${ar.customers.errors.saveFailed}: ${(err as Error).message}`);
+      const message = (err as Error).message;
+      // A ZodError message is raw English JSON from the shared schema — the
+      // client-side checks above should catch the same issues first, so
+      // surfacing this means an unexpected shape slipped through them.
+      setError(message.startsWith('[') ? ar.customers.errors.saveFailedValidation : `${ar.customers.errors.saveFailed}: ${message}`);
     } finally {
       setSaving(false);
     }
@@ -114,11 +146,11 @@ export function CustomerForm({ existing, onSaved, onCancel }: Props) {
               {ar.customers.mobile1}
               <span className="req"> *</span>
             </span>
-            <input className="field" dir="ltr" value={mobile1} onChange={(e) => setMobile1(e.target.value)} />
+            <input className="field" dir="ltr" inputMode="tel" value={mobile1} onChange={(e) => setMobile1(toAsciiDigits(e.target.value))} />
           </label>
           <label className="formfield">
             <span className="formfield__label">{ar.customers.mobile2}</span>
-            <input className="field" dir="ltr" value={mobile2} onChange={(e) => setMobile2(e.target.value)} />
+            <input className="field" dir="ltr" inputMode="tel" value={mobile2} onChange={(e) => setMobile2(toAsciiDigits(e.target.value))} />
           </label>
           <label className="formfield">
             <span className="formfield__label">{ar.customers.email}</span>
@@ -149,7 +181,7 @@ export function CustomerForm({ existing, onSaved, onCancel }: Props) {
               </label>
               <label className="formfield">
                 <span className="formfield__label">{ar.customers.pharmacyPhone}</span>
-                <input className="field" dir="ltr" value={pharmacyPhone} onChange={(e) => setPharmacyPhone(e.target.value)} />
+                <input className="field" dir="ltr" inputMode="tel" value={pharmacyPhone} onChange={(e) => setPharmacyPhone(toAsciiDigits(e.target.value))} />
               </label>
             </div>
           </fieldset>
@@ -160,7 +192,15 @@ export function CustomerForm({ existing, onSaved, onCancel }: Props) {
           <div className="grid2">
             <label className="formfield">
               <span className="formfield__label">{ar.customers.paymentMethod}</span>
-              <select className="field" value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value as 'cash')}>
+              <select
+                className="field"
+                value={paymentMethod}
+                onChange={(e) => {
+                  const next = e.target.value as 'cash' | 'credit';
+                  setPaymentMethod(next);
+                  if (next === 'cash') setCreditLimit(null);
+                }}
+              >
                 <option value="cash">{ar.customers.cash}</option>
                 <option value="credit">{ar.customers.credit}</option>
               </select>
@@ -171,21 +211,26 @@ export function CustomerForm({ existing, onSaved, onCancel }: Props) {
             </label>
             <label className="formfield">
               <span className="formfield__label">{ar.customers.creditLimit}</span>
-              <MoneyInput value={creditLimit} onChange={setCreditLimit} placeholder={ar.customers.noLimit} />
+              <MoneyInput
+                value={paymentMethod === 'credit' ? creditLimit : null}
+                onChange={setCreditLimit}
+                placeholder={ar.customers.noLimit}
+                disabled={paymentMethod !== 'credit'}
+              />
             </label>
           </div>
           <div className="grid2 mt">
             <label className="formfield">
               <span className="formfield__label">{ar.customers.discountCashPct}</span>
-              <input className="field" dir="ltr" inputMode="decimal" value={discountCashPct} onChange={(e) => setDiscountCashPct(e.target.value)} />
+              <input className="field" dir="ltr" inputMode="decimal" value={discountCashPct} onChange={(e) => setDiscountCashPct(toAsciiDigits(e.target.value))} />
             </label>
             <label className="formfield">
               <span className="formfield__label">{ar.customers.discountCreditPct}</span>
-              <input className="field" dir="ltr" inputMode="decimal" value={discountCreditPct} onChange={(e) => setDiscountCreditPct(e.target.value)} />
+              <input className="field" dir="ltr" inputMode="decimal" value={discountCreditPct} onChange={(e) => setDiscountCreditPct(toAsciiDigits(e.target.value))} />
             </label>
             <label className="formfield">
               <span className="formfield__label">{ar.customers.discountInvoicePct}</span>
-              <input className="field" dir="ltr" inputMode="decimal" value={discountInvoicePct} onChange={(e) => setDiscountInvoicePct(e.target.value)} />
+              <input className="field" dir="ltr" inputMode="decimal" value={discountInvoicePct} onChange={(e) => setDiscountInvoicePct(toAsciiDigits(e.target.value))} />
             </label>
           </div>
         </fieldset>

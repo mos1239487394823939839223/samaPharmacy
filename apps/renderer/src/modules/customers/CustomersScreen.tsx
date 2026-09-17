@@ -8,6 +8,7 @@ import type { CustomerDetail, CustomerRow } from '@pharmacy/shared';
 import { fromPiastres } from '@pharmacy/core';
 import { ar } from '../../i18n/ar';
 import { CustomerForm } from './CustomerForm';
+import { EmptyState, TableSkeleton } from '../../components/EmptyState';
 
 type Mode = { view: 'list' } | { view: 'create' } | { view: 'edit'; customer: CustomerDetail };
 
@@ -29,7 +30,7 @@ export function CustomersScreen() {
     try {
       setRows(q.trim() ? await window.api.customers.search(q, 200) : await window.api.customers.list());
     } catch (err) {
-      setError((err as Error).message);
+      setError(`${ar.customers.errors.loadFailed}: ${(err as Error).message}`);
     } finally {
       setLoading(false);
     }
@@ -59,9 +60,13 @@ export function CustomersScreen() {
   async function toggleSuspend(row: CustomerRow) {
     if (!window.api) return;
     if (!row.isSuspended && !confirm(ar.customers.confirmSuspend)) return;
-    if (row.isSuspended) await window.api.customers.unsuspend(row.id);
-    else await window.api.customers.suspend(row.id);
-    void load(query);
+    try {
+      if (row.isSuspended) await window.api.customers.unsuspend(row.id);
+      else await window.api.customers.suspend(row.id);
+      void load(query);
+    } catch (err) {
+      setError(`${ar.customers.errors.suspendFailed}: ${(err as Error).message}`);
+    }
   }
 
   if (mode.view === 'create' || mode.view === 'edit') {
@@ -91,9 +96,9 @@ export function CustomersScreen() {
       {error && <div className="alert alert--error">{error}</div>}
 
       {loading ? (
-        <p className="muted">{ar.items.loading}</p>
+        <TableSkeleton cols={5} />
       ) : rows.length === 0 ? (
-        <p className="muted">{query.trim() ? ar.customers.noResults : ar.customers.empty}</p>
+        <EmptyState title={query.trim() ? ar.customers.noResults : ar.customers.empty} />
       ) : (
         <table className="datatable">
           <thead>
@@ -112,8 +117,8 @@ export function CustomersScreen() {
                 <td dir="ltr">{r.code}</td>
                 <td>
                   {r.name}
-                  {Boolean(r.isVip) && <span className="badge"> VIP</span>}
-                  {Boolean(r.isSuspended) && <span className="badge badge--muted"> {ar.customers.suspended}</span>}
+                  {Boolean(r.isVip) && <span className="badge badge--info"> VIP</span>}
+                  {Boolean(r.isSuspended) && <span className="badge badge--warning"> {ar.customers.suspended}</span>}
                 </td>
                 <td dir="ltr">{r.mobile1}</td>
                 <td>{r.paymentMethod === 'credit' ? ar.customers.credit : ar.customers.cash}</td>

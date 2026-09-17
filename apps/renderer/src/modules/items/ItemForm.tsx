@@ -7,7 +7,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import type { ItemDetail, ItemInput } from '@pharmacy/shared';
-import { validateUnitSet } from '@pharmacy/core';
+import { toAsciiDigits, validateUnitSet } from '@pharmacy/core';
 import { ar } from '../../i18n/ar';
 import { MoneyInput } from '../../components/MoneyInput';
 import { attachShortcuts, formatShortcut } from '../../lib/shortcuts';
@@ -17,6 +17,10 @@ import { loadScannerConfig } from '../../hardware/config';
 type Tab = 'basic' | 'pricing' | 'supplier' | 'settings';
 
 interface UnitRow {
+  /** Set for a unit loaded from an existing item — carried through to save
+      so the backend updates this row in place rather than recreating it
+      (a fresh row would break every past invoice line referencing it). */
+  id?: number;
   nameAr: string;
   factor: string;
   salePrice: number | null;
@@ -65,6 +69,7 @@ export function ItemForm({ existing, showBadges, onSaved, onCancel }: Props) {
   const [units, setUnits] = useState<UnitRow[]>(() =>
     existing?.units?.length
       ? existing.units.map((u) => ({
+          id: u.id,
           nameAr: u.nameAr,
           factor: String(u.factor),
           salePrice: u.salePrice,
@@ -155,6 +160,7 @@ export function ItemForm({ existing, showBadges, onSaved, onCancel }: Props) {
     const cleanUnits = units
       .filter((u) => u.nameAr.trim() !== '')
       .map((u) => ({
+        id: u.id,
         nameAr: u.nameAr.trim(),
         factor: Number(u.factor),
         salePrice: u.salePrice ?? 0,
@@ -186,6 +192,25 @@ export function ItemForm({ existing, showBadges, onSaved, onCancel }: Props) {
   function validate(input: ItemInput): string | null {
     if (!input.nameAr) return ar.items.errors.nameRequired;
 
+    if (
+      input.mainIngredientPct != null &&
+      (!Number.isFinite(input.mainIngredientPct) || input.mainIngredientPct < 0 || input.mainIngredientPct > 100)
+    ) {
+      return ar.items.errors.mainIngredientPctInvalid;
+    }
+
+    if (input.maxStock != null && input.maxStock < (input.minStock ?? 0)) {
+      return ar.items.errors.maxStockBelowMin;
+    }
+
+    if (input.barcodes && input.barcodes.length > 0) {
+      const seen = new Set<string>();
+      for (const b of input.barcodes) {
+        if (seen.has(b)) return ar.items.errors.duplicateBarcodeInForm;
+        seen.add(b);
+      }
+    }
+
     if (input.units && input.units.length > 0) {
       const unitErrors = validateUnitSet(
         input.units.map((u, i) => ({
@@ -195,7 +220,7 @@ export function ItemForm({ existing, showBadges, onSaved, onCancel }: Props) {
           isBase: u.isBase,
         }))
       );
-      if (unitErrors.length > 0) return ar.items.errors.needBaseUnit;
+      if (unitErrors.length > 0) return describeUnitError(unitErrors[0]!);
 
       // BR-4: sale price may never exceed the EDA public price. Compared per
       // base unit, since public_price is stored per base unit.
@@ -208,6 +233,25 @@ export function ItemForm({ existing, showBadges, onSaved, onCancel }: Props) {
     }
 
     return null;
+  }
+
+  /** Translates a validateUnitSet message (packages/core/src/units.ts) to the
+      matching Arabic string, so the form surfaces the specific failure
+      instead of one collapsed "define a base unit" message that misleads
+      when the real problem is a duplicate name or a bad factor. */
+  function describeUnitError(message: string): string {
+    if (message.startsWith('Duplicate unit name')) {
+      const name = message.match(/"([^"]*)"/)?.[1] ?? '';
+      return ar.items.errors.duplicateUnitName.replace('{name}', name);
+    }
+    if (message.includes('invalid factor')) {
+      const name = message.match(/"([^"]*)"/)?.[1] ?? '';
+      return ar.items.errors.invalidUnitFactor.replace('{name}', name);
+    }
+    if (/base units defined/.test(message)) {
+      return ar.items.errors.multipleBaseUnits;
+    }
+    return ar.items.errors.needBaseUnit;
   }
 
   async function submit() {
@@ -373,7 +417,7 @@ export function ItemForm({ existing, showBadges, onSaved, onCancel }: Props) {
                     dir="ltr"
                     inputMode="decimal"
                     value={mainIngredientPct}
-                    onChange={(e) => setMainIngredientPct(e.target.value)}
+                    onChange={(e) => setMainIngredientPct(toAsciiDigits(e.target.value))}
                   />
                 </Field>
               </div>
@@ -450,7 +494,7 @@ export function ItemForm({ existing, showBadges, onSaved, onCancel }: Props) {
                           dir="ltr"
                           inputMode="numeric"
                           value={u.factor}
-                          onChange={(e) => patchUnit(i, { factor: e.target.value })}
+                          onChange={(e) => patchUnit(i, { factor: toAsciiDigits(e.target.value) })}
                         />
                       </td>
                       <td>
@@ -557,7 +601,7 @@ export function ItemForm({ existing, showBadges, onSaved, onCancel }: Props) {
                 dir="ltr"
                 inputMode="numeric"
                 value={minStock}
-                onChange={(e) => setMinStock(e.target.value)}
+                onChange={(e) => setMinStock(toAsciiDigits(e.target.value))}
               />
             </Field>
             <Field label={ar.items.fields.maxStock}>
@@ -566,7 +610,7 @@ export function ItemForm({ existing, showBadges, onSaved, onCancel }: Props) {
                 dir="ltr"
                 inputMode="numeric"
                 value={maxStock}
-                onChange={(e) => setMaxStock(e.target.value)}
+                onChange={(e) => setMaxStock(toAsciiDigits(e.target.value))}
               />
             </Field>
             <div className="span2">

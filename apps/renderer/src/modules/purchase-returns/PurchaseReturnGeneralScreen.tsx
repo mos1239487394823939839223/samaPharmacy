@@ -6,7 +6,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import type { ItemListRow, SupplierRow } from '@pharmacy/shared';
-import { fromPiastres } from '@pharmacy/core';
+import { fromPiastres, toAsciiDigits } from '@pharmacy/core';
 import { ar } from '../../i18n/ar';
 import { Stat } from '../../components/Stat';
 import { useToast } from '../../components/Toast';
@@ -14,6 +14,7 @@ import { useToast } from '../../components/Toast';
 interface DraftLine {
   key: number;
   item: ItemListRow;
+  unitId: number | null;
   batchId: number | null;
   batches: Array<{ id: number; qtyOnHand: number; batchNumber: string | null; unitCost: number }>;
   qty: string;
@@ -79,14 +80,23 @@ export function PurchaseReturnGeneralScreen() {
 
   async function addItem(item: ItemListRow) {
     if (!window.api || !warehouseId) return;
-    const batches = await window.api.stock.batches(item.id);
+    const [detail, batches] = await Promise.all([
+      window.api.items.get(item.id),
+      window.api.stock.batches(item.id),
+    ]);
     const withStock = batches
       .filter((b) => b.warehouseId === warehouseId && b.qtyOnHand > 0 && b.isQuarantined === 0)
       .map((b) => ({ id: b.id, qtyOnHand: b.qtyOnHand, batchNumber: b.batchNumber, unitCost: b.unitCost }));
 
+    // unit_id is a real foreign key to item_units (docs/schema.sql) — every
+    // item has its own distinct rows there, so this must be resolved per
+    // item, never a hardcoded id that may belong to an unrelated item or not
+    // exist at all.
+    const unit = detail?.units.find((u) => u.isDefaultSale) ?? detail?.units[0];
+
     setLines((prev) => [
       ...prev,
-      { key: keySeq++, item, batchId: withStock[0]?.id ?? null, batches: withStock, qty: '' },
+      { key: keySeq++, item, unitId: unit?.id ?? null, batchId: withStock[0]?.id ?? null, batches: withStock, qty: '' },
     ]);
     setItemQuery('');
     setItemResults([]);
@@ -101,8 +111,20 @@ export function PurchaseReturnGeneralScreen() {
     setError(null);
     if (!supplier) return setError(ar.purchaseReturns.errors.noSupplier);
 
-    const valid = lines.filter((l) => l.batchId && Number(l.qty) > 0);
+    const valid = lines.filter((l) => l.batchId && l.unitId && Number(l.qty) > 0);
     if (valid.length === 0) return setError(ar.purchaseReturns.errors.noLines);
+
+    if (valid.some((l) => !Number.isInteger(Number(l.qty)))) return setError(ar.purchaseReturns.errors.qtyNotWhole);
+
+    // createPurchaseReturn's only real bound is live batch.qtyOnHand —
+    // checked here against the same batch list this screen already fetched
+    // and displays, so a return above what's on hand fails with the Arabic
+    // message instead of the repository's raw error.
+    const overQty = valid.find((l) => {
+      const batch = l.batches.find((b) => b.id === l.batchId);
+      return Number(l.qty) > (batch?.qtyOnHand ?? 0);
+    });
+    if (overQty) return setError(ar.purchaseReturns.errors.qtyExceedsOnHand);
 
     try {
       const returnId = await window.api.purchaseReturns.create({
@@ -112,7 +134,7 @@ export function PurchaseReturnGeneralScreen() {
         lines: valid.map((l) => ({
           itemId: l.item.id,
           batchId: l.batchId!,
-          unitId: 1,
+          unitId: l.unitId!,
           qtyInUnit: Number(l.qty),
           qtyBase: Number(l.qty),
         })),
@@ -220,7 +242,9 @@ export function PurchaseReturnGeneralScreen() {
                       dir="ltr"
                       inputMode="numeric"
                       value={l.qty}
-                      onChange={(e) => updateLine(l.key, { qty: e.target.value })}
+                      onChange={(e) =>
+                        updateLine(l.key, { qty: toAsciiDigits(e.target.value).replace(/[^\d]/g, '') })
+                      }
                     />
                   </td>
                   <td>

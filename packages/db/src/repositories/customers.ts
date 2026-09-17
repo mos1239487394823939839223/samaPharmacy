@@ -325,6 +325,45 @@ export function recordCustomerPayment(db: Db, customerId: number, amount: number
   ).run(customerId, amount, balanceAfter, note ?? null);
 }
 
+export interface ReceivablesSummary {
+  /** Sum of every active customer's current balance, floored at 0 per
+      customer — a customer in credit (negative balance) owes nothing, so
+      their balance does not offset what others owe (rule: this is what the
+      pharmacy is still owed, not a net position). */
+  totalOwed: number;
+  /** Count of active customers with a positive balance. */
+  customerCount: number;
+}
+
+/**
+ * Total outstanding customer debt across the whole customer list — the
+ * dashboard's "مستحقات العملاء" figure. Each customer's current balance is
+ * their latest customer_ledger row (falling back to opening_balance for a
+ * customer with no ledger activity yet), the same definition getCustomerBalance
+ * uses for one customer; this aggregates it across all of them in a single
+ * query rather than calling getCustomerBalance in a loop.
+ */
+export function getReceivablesSummary(db: Db): ReceivablesSummary {
+  const row = db
+    .prepare(
+      `SELECT
+         COALESCE(SUM(MAX(balance, 0)), 0) AS totalOwed,
+         COALESCE(SUM(CASE WHEN balance > 0 THEN 1 ELSE 0 END), 0) AS customerCount
+       FROM (
+         SELECT c.id,
+                COALESCE(
+                  (SELECT cl.balance_after FROM customer_ledger cl
+                   WHERE cl.customer_id = c.id ORDER BY cl.id DESC LIMIT 1),
+                  c.opening_balance
+                ) AS balance
+         FROM customers c
+         WHERE c.is_active = 1
+       )`
+    )
+    .get() as ReceivablesSummary;
+  return row;
+}
+
 export function getCustomerLedger(db: Db, customerId: number, limit = 200) {
   return db
     .prepare(

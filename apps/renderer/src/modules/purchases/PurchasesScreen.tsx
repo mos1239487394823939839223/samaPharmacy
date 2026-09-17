@@ -7,6 +7,7 @@ import type { PurchaseInvoiceRow } from '@pharmacy/shared';
 import { fromPiastres } from '@pharmacy/core';
 import { ar } from '../../i18n/ar';
 import { PurchaseForm } from './PurchaseForm';
+import { EmptyState, TableSkeleton } from '../../components/EmptyState';
 
 type Mode = { view: 'list' } | { view: 'form' };
 
@@ -15,6 +16,13 @@ const STATUS_LABEL: Record<string, string> = {
   held: ar.purchases.statusHeld,
   confirmed: ar.purchases.statusConfirmed,
   voided: ar.purchases.statusVoided,
+};
+
+const STATUS_BADGE: Record<string, string> = {
+  draft: 'badge badge--muted',
+  held: 'badge badge--warning',
+  confirmed: 'badge badge--success',
+  voided: 'badge badge--error',
 };
 
 export function PurchasesScreen() {
@@ -33,7 +41,7 @@ export function PurchasesScreen() {
     try {
       setRows(await window.api.purchases.list({ limit: 200 }));
     } catch (err) {
-      setError((err as Error).message);
+      setError(`${ar.purchases.errors.loadFailed}: ${(err as Error).message}`);
     } finally {
       setLoading(false);
     }
@@ -60,9 +68,9 @@ export function PurchasesScreen() {
       {error && <div className="alert alert--error">{error}</div>}
 
       {loading ? (
-        <p className="muted">{ar.items.loading}</p>
+        <TableSkeleton cols={5} />
       ) : rows.length === 0 ? (
-        <p className="muted">{ar.purchases.empty}</p>
+        <EmptyState title={ar.purchases.empty} />
       ) : (
         <table className="datatable">
           <thead>
@@ -81,7 +89,7 @@ export function PurchasesScreen() {
                 <td dir="ltr">{r.supplierInvoiceNo}</td>
                 <td dir="ltr">{r.invoiceDate}</td>
                 <td>
-                  <span className={r.status === 'confirmed' ? 'badge' : 'badge badge--muted'}>
+                  <span className={STATUS_BADGE[r.status] ?? 'badge badge--muted'}>
                     {STATUS_LABEL[r.status] ?? r.status}
                   </span>
                 </td>
