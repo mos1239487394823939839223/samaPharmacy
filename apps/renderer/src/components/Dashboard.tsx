@@ -14,7 +14,7 @@
 import { useEffect, useState } from 'react';
 import type { ScreenId } from '../lib/navigation';
 import type { SalesInvoiceRow, WarehouseRow } from '@pharmacy/shared';
-import { fromPiastres } from '@pharmacy/core';
+import { addDays, fromPiastres, todayLocal } from '@pharmacy/core';
 import { ar } from '../i18n/ar';
 import { EmptyState } from './EmptyState';
 import { SalesSparkline } from './SalesSparkline';
@@ -31,6 +31,7 @@ import {
   TruckIcon,
   RefreshIcon,
 } from './icons';
+import { errorText } from '../lib/errors';
 
 interface LowStockEntry {
   itemId: number;
@@ -69,17 +70,36 @@ interface ShiftCashState {
   cash: CashSnapshot | null;
 }
 
-const TREND_PERIODS = [7, 14, 30] as const;
-type TrendPeriod = (typeof TREND_PERIODS)[number];
+const TREND_PRESETS = [7, 14, 30] as const;
 
+// Local (Cairo) calendar dates — toISOString() is UTC and named yesterday
+// between midnight and 02:00/03:00.
 function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
+  return todayLocal();
 }
 
 function daysAgoIso(days: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() - days);
-  return d.toISOString().slice(0, 10);
+  return addDays(todayLocal(), -days);
+}
+
+/** Inclusive day count between two ISO dates — the span the trend chart
+    fills, so a same-day range is 1 point, not 0. */
+function daySpan(from: string, to: string): number {
+  const a = new Date(from + 'T00:00:00').getTime();
+  const b = new Date(to + 'T00:00:00').getTime();
+  return Math.floor((b - a) / 86_400_000) + 1;
+}
+
+function addDaysIso(iso: string, days: number): string {
+  return addDays(iso, days);
+}
+
+/** Short day/month, e.g. "٥/٣" localized by toLocaleDateString — used once a
+    custom range is wider than two weeks, where weekday names alone repeat
+    every 7 bars and stop identifying which day a bar actually is. */
+function shortDateLabel(iso: string): string {
+  const d = new Date(iso + 'T00:00:00');
+  return `${d.getDate()}/${d.getMonth() + 1}`;
 }
 
 /** Runs one dashboard data source in isolation: a rejected promise OR a
@@ -100,7 +120,8 @@ const WEEKDAY_SHORT = ['أحد', 'إثنين', 'ثلاثاء', 'أربعاء', '
 /** Human-relative Arabic time, e.g. "منذ 3 دقائق" — built from the invoice's
     own confirmedAt/createdAt timestamp, not a guess. */
 function relativeTime(iso: string): string {
-  const then = new Date(iso.includes('T') ? iso : iso.replace(' ', 'T') + 'Z').getTime();
+  // Stored timestamps are local wall-clock time (migration 0007), so no 'Z'.
+  const then = new Date(iso.includes('T') ? iso : iso.replace(' ', 'T')).getTime();
   const now = Date.now();
   const diffMin = Math.max(0, Math.floor((now - then) / 60000));
   if (diffMin < 1) return ar.dashboard.justNow;
@@ -139,11 +160,21 @@ export function Dashboard({ onNavigate }: { onNavigate: (screen: ScreenId) => vo
   const [shiftState, setShiftState] = useState<ShiftCashState | null>(null);
   const [shiftLoading, setShiftLoading] = useState(false);
 
-  // Trend period filter — a real GROUP BY range, not a client-side slice.
-  const [trendDays, setTrendDays] = useState<TrendPeriod>(7);
+  // Trend date-range filter — a real GROUP BY range, not a client-side
+  // slice. The 7/14/30 buttons are presets that set this same range; typing
+  // into the two date fields reaches any custom range the same way.
+  const [trendFrom, setTrendFrom] = useState(daysAgoIso(6));
+  const [trendTo, setTrendTo] = useState(todayIso());
   const [trend, setTrend] = useState<TrendPoint[]>([]);
   const [trendLoading, setTrendLoading] = useState(true);
   const [trendError, setTrendError] = useState(false);
+  const trendRangeInvalid = trendFrom > trendTo;
+  const activeTrendPreset = TREND_PRESETS.find((n) => trendFrom === daysAgoIso(n - 1) && trendTo === todayIso());
+
+  function applyTrendPreset(days: number) {
+    setTrendFrom(daysAgoIso(days - 1));
+    setTrendTo(todayIso());
+  }
 
   async function loadBase() {
     if (!window.api) {
@@ -156,19 +187,21 @@ export function Dashboard({ onNavigate }: { onNavigate: (screen: ScreenId) => vo
     try {
       const today = todayIso();
       const [salesSummary, lowStock, warehouses, recentAll, receivables] = await Promise.all([
-        window.api.salesReport.summary(today, today),
-        window.api.stock.lowStock(5),
+        // Each source is isolated: a cashier may not see reports or stock,
+        // and that must hide those cards, not fail the whole home page.
+        isolated(() => window.api!.salesReport.summary(today, today)),
+        isolated(() => window.api!.stock.lowStock(5)),
         window.api.warehouses.list(),
         isolated(() => window.api!.sales.list({ limit: 20 })),
         isolated(() => window.api!.customers.receivablesSummary()),
       ]);
 
       setBase({
-        todayInvoiceCount: salesSummary.invoiceCount,
-        todaySalesTotal: salesSummary.grandTotal,
-        todayProfit: salesSummary.grossProfit,
-        lowStockCount: lowStock.length,
-        lowStockSample: lowStock.slice(0, 5).map((r) => ({
+        todayInvoiceCount: salesSummary?.invoiceCount ?? 0,
+        todaySalesTotal: salesSummary?.grandTotal ?? 0,
+        todayProfit: salesSummary?.grossProfit ?? 0,
+        lowStockCount: lowStock?.length ?? 0,
+        lowStockSample: (lowStock ?? []).slice(0, 5).map((r) => ({
           itemId: r.itemId,
           nameAr: r.nameAr,
           qtyOnHand: r.qtyOnHand,
@@ -181,7 +214,7 @@ export function Dashboard({ onNavigate }: { onNavigate: (screen: ScreenId) => vo
       const defaultWarehouse = warehouses.find((w) => w.isDefault) ?? warehouses[0] ?? null;
       setWarehouseId((current) => current ?? defaultWarehouse?.id ?? null);
     } catch (err) {
-      setError((err as Error).message);
+      setError(errorText(err));
     } finally {
       setLoading(false);
     }
@@ -236,27 +269,30 @@ export function Dashboard({ onNavigate }: { onNavigate: (screen: ScreenId) => vo
     };
   }, [warehouseId]);
 
-  // Re-fetch the trend whenever the selected period changes — one grouped
-  // query (GROUP BY date(confirmed_at)) per range, not 7/14/30 separate
-  // calls and not a client-side slice of a fixed 30-day fetch. Measured:
-  // ~106ms for the old 7-separate-calls pattern against a 164k-invoice
-  // history vs. well under 1ms for one grouped call over the same range.
+  // Re-fetch the trend whenever the selected range changes — one grouped
+  // query (GROUP BY date(confirmed_at)) per range, not one call per day and
+  // not a client-side slice of a fixed 30-day fetch. Measured: ~106ms for a
+  // 7-separate-calls pattern against a 164k-invoice history vs. well under
+  // 1ms for one grouped call over the same range.
   useEffect(() => {
-    if (!window.api) return;
+    if (!window.api || trendRangeInvalid) return;
     let cancelled = false;
     setTrendLoading(true);
     setTrendError(false);
     void (async () => {
       try {
-        const from = daysAgoIso(trendDays - 1);
-        const to = todayIso();
-        const points = await window.api!.salesReport.trend(from, to);
+        const points = await window.api!.salesReport.trend(trendFrom, trendTo);
         if (cancelled) return;
         const byDate = new Map(points.map((p) => [p.date, p]));
-        const filled = Array.from({ length: trendDays }).map((_, i) => {
-          const d = daysAgoIso(trendDays - 1 - i);
-          const dow = new Date(d + 'T00:00:00').getDay();
-          return { dateIso: d, label: WEEKDAY_SHORT[dow]!, total: byDate.get(d)?.grandTotal ?? 0 };
+        const span = daySpan(trendFrom, trendTo);
+        // Weekday names ("سبت", "أحد"...) only identify a bar unambiguously
+        // within a single week — past 14 days they'd repeat every 7 bars, so
+        // wider custom ranges switch to a day/month label instead.
+        const useShortDate = span > 14;
+        const filled = Array.from({ length: span }).map((_, i) => {
+          const d = addDaysIso(trendFrom, i);
+          const label = useShortDate ? shortDateLabel(d) : WEEKDAY_SHORT[new Date(d + 'T00:00:00').getDay()]!;
+          return { dateIso: d, label, total: byDate.get(d)?.grandTotal ?? 0 };
         });
         setTrend(filled);
       } catch {
@@ -268,7 +304,7 @@ export function Dashboard({ onNavigate }: { onNavigate: (screen: ScreenId) => vo
     return () => {
       cancelled = true;
     };
-  }, [trendDays]);
+  }, [trendFrom, trendTo, trendRangeInvalid]);
 
   if (loading) {
     // Mirrors the real layout below one-for-one (hero row, trend panel,
@@ -385,24 +421,53 @@ export function Dashboard({ onNavigate }: { onNavigate: (screen: ScreenId) => vo
         </div>
       </div>
 
-      {/* Sales trend, with a real period filter */}
+      {/* Sales trend, with a real date-range filter */}
       <div className="panel">
         <div className="dash-panel-header">
           <h2 className="section-heading section-heading--inline">{ar.dashboard.salesTrend}</h2>
           <span className="dash-chart-tabs">
-            {TREND_PERIODS.map((n) => (
+            {TREND_PRESETS.map((n) => (
               <button
                 key={n}
                 type="button"
-                className={n === trendDays ? 'dash-chart-tab dash-chart-tab--active' : 'dash-chart-tab'}
-                onClick={() => setTrendDays(n)}
+                className={n === activeTrendPreset ? 'dash-chart-tab dash-chart-tab--active' : 'dash-chart-tab'}
+                onClick={() => applyTrendPreset(n)}
               >
                 {ar.dashboard.lastNDays.replace('{n}', String(n))}
               </button>
             ))}
           </span>
         </div>
-        {trendLoading ? (
+
+        <div className="dash-trend-range">
+          <label className="dash-trend-range__field">
+            <span className="dash-trend-range__label">{ar.salesReport.fromDate}</span>
+            <input
+              className="field field--sm field--date"
+              type="date"
+              dir="ltr"
+              value={trendFrom}
+              max={trendTo}
+              onChange={(e) => setTrendFrom(e.target.value)}
+            />
+          </label>
+          <label className="dash-trend-range__field">
+            <span className="dash-trend-range__label">{ar.salesReport.toDate}</span>
+            <input
+              className="field field--sm field--date"
+              type="date"
+              dir="ltr"
+              value={trendTo}
+              min={trendFrom}
+              max={todayIso()}
+              onChange={(e) => setTrendTo(e.target.value)}
+            />
+          </label>
+        </div>
+
+        {trendRangeInvalid ? (
+          <div className="alert alert--error">{ar.salesReport.errors.invalidRange}</div>
+        ) : trendLoading ? (
           <span className="skeleton" style={{ display: 'block', blockSize: '9rem', borderRadius: 'var(--radius-md)' }} />
         ) : trendError ? (
           <div className="dash-chart-empty">{ar.dashboard.salesTrendFailed}</div>
@@ -416,6 +481,7 @@ export function Dashboard({ onNavigate }: { onNavigate: (screen: ScreenId) => vo
           />
         )}
       </div>
+
 
       {/* Operations: inventory + recent activity side by side */}
       <h2 className="section-heading section-heading--inline">{ar.dashboard.operationsSection}</h2>

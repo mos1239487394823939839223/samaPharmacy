@@ -13,6 +13,7 @@ import { createSupplier } from './suppliers';
 import { getDefaultWarehouse } from './warehouses';
 import { createPurchaseInvoice, confirmPurchaseInvoice } from './purchases';
 import { createSalesInvoice, confirmSalesInvoice } from './sales';
+import { FUTURE_EXPIRY } from '../test-helpers';
 
 let db: Db;
 
@@ -46,7 +47,7 @@ describe('QA repro: double-confirm protection', () => {
       warehouseId,
       purchaseType: 'cash',
       invoiceDate: '2026-01-01',
-      lines: [{ lineNo: 1, itemId, unitId, qtyInUnit: 100, qtyBase: 100, unitPurchasePrice: 500 }],
+      lines: [{ lineNo: 1, itemId, unitId, qtyInUnit: 100, qtyBase: 100, unitPurchasePrice: 500, expiryDate: FUTURE_EXPIRY }],
     });
     confirmPurchaseInvoice(db, purchaseId);
     expect(batchQty(itemId, warehouseId)).toBe(100);
@@ -92,7 +93,7 @@ describe('QA repro: double-confirm protection', () => {
       warehouseId,
       purchaseType: 'cash',
       invoiceDate: '2026-01-01',
-      lines: [{ lineNo: 1, itemId, unitId, qtyInUnit: 100, qtyBase: 100, unitPurchasePrice: 500 }],
+      lines: [{ lineNo: 1, itemId, unitId, qtyInUnit: 100, qtyBase: 100, unitPurchasePrice: 500, expiryDate: FUTURE_EXPIRY }],
     });
 
     confirmPurchaseInvoice(db, purchaseId);

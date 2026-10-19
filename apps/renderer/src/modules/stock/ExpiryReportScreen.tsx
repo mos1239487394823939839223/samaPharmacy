@@ -8,10 +8,12 @@
 
 import { useEffect, useState } from 'react';
 import type { ExpiryBucket, ExpiryReport, ExpiryBucketDays } from '@pharmacy/shared';
-import { fromPiastres } from '@pharmacy/core';
+import { fromPiastres, todayLocal } from '@pharmacy/core';
 import { ar } from '../../i18n/ar';
 import { Stat } from '../../components/Stat';
 import { EmptyState, TableSkeleton } from '../../components/EmptyState';
+import { errorText } from '../../lib/errors';
+import { exportCsv } from '../../lib/csv';
 
 /** Badge color by urgency — expired is an error, the nearest bucket is a
     warning, everything further out reads as a neutral/success fact rather
@@ -45,16 +47,27 @@ function bucketLabels(bucketDays: ExpiryBucketDays): Record<ExpiryBucket, string
   };
 }
 
-function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
-}
 
 export function ExpiryReportScreen() {
-  const [asOf, setAsOf] = useState(todayIso());
+  const [asOf, setAsOf] = useState(() => todayLocal());
   const [report, setReport] = useState<ExpiryReport | null>(null);
   const [bucketFilter, setBucketFilter] = useState<ExpiryBucket | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  /** Write off every expired batch in one stock adjustment (reason: expiry). */
+  async function writeOff() {
+    if (!window.api || !window.confirm(ar.adjustments.writeOffConfirm)) return;
+    setError(null);
+    try {
+      const result = await window.api.adjustments.writeOffExpired();
+      setNotice(result ? ar.adjustments.writtenOff.replace('{count}', String(result.batchCount)) : ar.adjustments.nothingExpired);
+      await load();
+    } catch (err) {
+      setError(errorText(err));
+    }
+  }
 
   async function load() {
     if (!window.api) {
@@ -67,7 +80,7 @@ export function ExpiryReportScreen() {
     try {
       setReport(await window.api.stock.expiryReport(asOf));
     } catch (err) {
-      setError(`${ar.expiryReport.errors.loadFailed}: ${(err as Error).message}`);
+      setError(`${ar.expiryReport.errors.loadFailed}: ${errorText(err)}`);
     } finally {
       setLoading(false);
     }
@@ -99,10 +112,33 @@ export function ExpiryReportScreen() {
           <button type="button" className="btn btn--primary btn--sm" onClick={() => void load()}>
             {ar.expiryReport.apply}
           </button>
+          {(report?.summary.find((b) => b.bucket === 'expired')?.batchCount ?? 0) > 0 && (
+            <button type="button" className="btn btn--danger btn--sm" onClick={() => void writeOff()}>
+              {ar.adjustments.writeOffExpired}
+            </button>
+          )}
         </div>
       </div>
 
       {error && <div className="alert alert--error">{error}</div>}
+      {notice && <div className="alert alert--success">{notice}</div>}
+      {report && report.rows.length > 0 && (
+        <div className="btn-row" style={{ marginBlockStart: 0 }}>
+          <button
+            type="button"
+            className="btn btn--sm"
+            onClick={() =>
+              void exportCsv(
+                `expiry-${asOf}.csv`,
+                [ar.expiryReport.code, ar.expiryReport.itemName, ar.expiryReport.batchNumber, ar.expiryReport.expiryDate, ar.expiryReport.qtyOnHand, ar.expiryReport.unitCost, ar.expiryReport.value],
+                rows.map((r) => [r.code, r.nameAr, r.batchNumber ?? '', r.expiryDate, r.qtyOnHand, fromPiastres(r.unitCost), fromPiastres(r.value)])
+              ).then((msg) => msg && setNotice(msg))
+            }
+          >
+            {ar.exportCsv.button}
+          </button>
+        </div>
+      )}
 
       {loading ? (
         <TableSkeleton cols={8} />
@@ -146,7 +182,7 @@ export function ExpiryReportScreen() {
             {rows.length === 0 ? (
               <EmptyState title={ar.expiryReport.empty} />
             ) : (
-              <table className="datatable">
+              <div className="table-wrap"><table className="datatable">
                 <thead>
                   <tr>
                     <th>{ar.expiryReport.code}</th>
@@ -178,7 +214,7 @@ export function ExpiryReportScreen() {
                     );
                   })}
                 </tbody>
-              </table>
+              </table></div>
             )}
           </div>
         </>

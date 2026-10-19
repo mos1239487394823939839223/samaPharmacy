@@ -7,15 +7,32 @@
 
 import { normalizeName } from '@pharmacy/core';
 import type { Db } from '../connection';
+import { TODAY } from '../time';
 import { getExpiryBucketDays, type ExpiryBucketDays } from './settings';
+
+/**
+ * "Available" means exactly what the POS can sell (v_sellable_batches): not
+ * quarantined, and not expired as of today's LOCAL date — a batch expiring
+ * today is already unsellable (decision D10). Stock screen, low-stock list,
+ * purchase form and POS all use this one definition; expired and quarantined
+ * stock is reported separately instead of being folded into "on hand".
+ */
+const SELLABLE = `(b.is_quarantined = 0 AND (i.no_expiry = 1 OR b.expiry_date IS NULL OR b.expiry_date > ${TODAY}))`;
+const EXPIRED = `(b.is_quarantined = 0 AND i.no_expiry = 0 AND b.expiry_date IS NOT NULL AND b.expiry_date <= ${TODAY})`;
 
 export interface ItemStockRow {
   itemId: number;
   code: number;
   nameAr: string;
   warehouseId: number | null;
+  /** Sellable base units (see SELLABLE). */
   qtyOnHand: number;
+  /** Base units past expiry, still on the shelf until written off. */
+  expiredQty: number;
+  /** Base units in quarantine (fridge/damaged returns). */
+  quarantinedQty: number;
   nearestExpiry: string | null;
+  /** Value of the sellable quantity at cost. */
   stockValue: number;
 }
 
@@ -43,28 +60,45 @@ export interface StockMoveRow {
   at: string;
 }
 
+const STOCK_COLUMNS = `
+  COALESCE(SUM(CASE WHEN ${SELLABLE} THEN b.qty_on_hand END), 0) AS qtyOnHand,
+  COALESCE(SUM(CASE WHEN ${EXPIRED} THEN b.qty_on_hand END), 0) AS expiredQty,
+  COALESCE(SUM(CASE WHEN b.is_quarantined = 1 THEN b.qty_on_hand END), 0) AS quarantinedQty,
+  MIN(CASE WHEN ${SELLABLE} AND b.qty_on_hand > 0 THEN b.expiry_date END) AS nearestExpiry,
+  COALESCE(SUM(CASE WHEN ${SELLABLE} THEN b.qty_on_hand * b.unit_cost END), 0) AS stockValue`;
+
 /** Aggregate stock across all warehouses for a search box (items list style). */
-export function searchItemStock(db: Db, query: string, limit = 100): ItemStockRow[] {
+/**
+ * With no warehouseId, qtyOnHand is summed across every warehouse — a
+ * pharmacy with more than one store (main + front counter, say) would
+ * otherwise see one merged number with no way to tell how much sits in
+ * which warehouse. Passing warehouseId scopes both the batch join and the
+ * returned row's warehouseId to that one store, matching what the batch
+ * drill-down (getItemBatches) already exposes per row.
+ */
+export function searchItemStock(db: Db, query: string, limit = 100, warehouseId?: number): ItemStockRow[] {
   const norm = normalizeName(query);
-  const where = norm
-    ? `WHERE (i.name_ar_norm LIKE @like OR i.name_en_norm LIKE @like) AND i.is_active = 1`
-    : 'WHERE i.is_active = 1';
+  const conditions = [norm ? '(i.name_ar_norm LIKE @like OR i.name_en_norm LIKE @like)' : null, 'i.is_active = 1'].filter(
+    Boolean
+  );
+  const where = `WHERE ${conditions.join(' AND ')}`;
+  const batchJoin = warehouseId
+    ? 'LEFT JOIN batches b ON b.item_id = i.id AND b.warehouse_id = @warehouseId'
+    : 'LEFT JOIN batches b ON b.item_id = i.id';
 
   return db
     .prepare(
       `SELECT i.id AS itemId, i.code, i.name_ar AS nameAr,
-              NULL AS warehouseId,
-              COALESCE(SUM(b.qty_on_hand), 0) AS qtyOnHand,
-              MIN(CASE WHEN b.qty_on_hand > 0 THEN b.expiry_date END) AS nearestExpiry,
-              COALESCE(SUM(b.qty_on_hand * b.unit_cost), 0) AS stockValue
+              ${warehouseId ? '@warehouseId' : 'NULL'} AS warehouseId,
+              ${STOCK_COLUMNS}
        FROM items i
-       LEFT JOIN batches b ON b.item_id = i.id AND b.is_quarantined = 0
+       ${batchJoin}
        ${where}
        GROUP BY i.id
        ORDER BY i.name_ar
        LIMIT @limit`
     )
-    .all({ like: `%${norm}%`, limit }) as ItemStockRow[];
+    .all({ like: `%${norm}%`, limit, warehouseId: warehouseId ?? null }) as ItemStockRow[];
 }
 
 /** All batches for one item, across every warehouse, newest expiry-risk first. */
@@ -192,8 +226,9 @@ export function getExpiryReport(
       daysLeft: number;
     }>;
 
+  // Expiring today counts as expired: the POS stops selling it today (D10).
   function bucketOf(daysLeft: number): ExpiryBucket {
-    if (daysLeft < 0) return 'expired';
+    if (daysLeft <= 0) return 'expired';
     if (daysLeft <= bucketDays.d30) return 'd30';
     if (daysLeft <= bucketDays.d60) return 'd60';
     if (daysLeft <= bucketDays.d90) return 'd90';
@@ -235,18 +270,16 @@ export function getLowStockItems(db: Db, limit = 200): ItemStockRow[] {
     .prepare(
       `SELECT i.id AS itemId, i.code, i.name_ar AS nameAr,
               NULL AS warehouseId,
-              COALESCE(SUM(b.qty_on_hand), 0) AS qtyOnHand,
-              MIN(CASE WHEN b.qty_on_hand > 0 THEN b.expiry_date END) AS nearestExpiry,
-              COALESCE(SUM(b.qty_on_hand * b.unit_cost), 0) AS stockValue
+              ${STOCK_COLUMNS}
        FROM items i
-       LEFT JOIN batches b ON b.item_id = i.id AND b.is_quarantined = 0
+       LEFT JOIN batches b ON b.item_id = i.id
        WHERE i.is_active = 1
        GROUP BY i.id
        -- min_stock = 0 means the item is not stock-tracked (the schema
        -- default), not that any quantity above zero is acceptable. Without
        -- excluding it, every never-purchased item trips 0 <= 0 and the
        -- reorder list fills with items nobody meant to track.
-       HAVING i.min_stock > 0 AND COALESCE(SUM(b.qty_on_hand), 0) <= i.min_stock
+       HAVING i.min_stock > 0 AND qtyOnHand <= i.min_stock
        ORDER BY i.name_ar
        LIMIT ?`
     )

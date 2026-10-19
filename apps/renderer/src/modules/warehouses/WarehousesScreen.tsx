@@ -6,9 +6,12 @@
 import { useEffect, useState } from 'react';
 import type { WarehouseRow } from '@pharmacy/shared';
 import { ar } from '../../i18n/ar';
+import { useBusy } from '../../lib/useBusy';
 import { EmptyState, TableSkeleton } from '../../components/EmptyState';
+import { errorText } from '../../lib/errors';
 
 export function WarehousesScreen() {
+  const { busy, run } = useBusy();
   const [rows, setRows] = useState<WarehouseRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -26,7 +29,7 @@ export function WarehousesScreen() {
     try {
       setRows(await window.api.warehouses.list());
     } catch (err) {
-      setError(`${ar.warehouses.errors.loadFailed}: ${(err as Error).message}`);
+      setError(`${ar.warehouses.errors.loadFailed}: ${errorText(err)}`);
     } finally {
       setLoading(false);
     }
@@ -56,7 +59,7 @@ export function WarehousesScreen() {
       setEditing(null);
       await load();
     } catch (err) {
-      setError(`${ar.warehouses.errors.saveFailed}: ${(err as Error).message}`);
+      setError(`${ar.warehouses.errors.saveFailed}: ${errorText(err)}`);
     }
   }
 
@@ -68,9 +71,9 @@ export function WarehousesScreen() {
       await load();
     } catch (err) {
       setError(
-        /Cannot deactivate the default warehouse/.test((err as Error).message)
+        /Cannot deactivate the default warehouse/.test(errorText(err))
           ? ar.warehouses.cannotDeactivateDefault
-          : `${ar.warehouses.errors.deactivateFailed}: ${(err as Error).message}`
+          : `${ar.warehouses.errors.deactivateFailed}: ${errorText(err)}`
       );
     }
   }
@@ -102,7 +105,7 @@ export function WarehousesScreen() {
             </label>
           </div>
           <div className="btn-row">
-            <button type="button" className="btn btn--primary" onClick={() => void save()}>
+            <button type="button" className="btn btn--primary" disabled={busy} onClick={() => void run(save)}>
               {ar.items.actions.save}
             </button>
             <button type="button" className="btn" onClick={() => setEditing(null)}>
@@ -117,7 +120,7 @@ export function WarehousesScreen() {
       ) : rows.length === 0 ? (
         <EmptyState title={ar.warehouses.empty} />
       ) : (
-        <table className="datatable">
+        <div className="table-wrap"><table className="datatable">
           <thead>
             <tr>
               <th>{ar.warehouses.name}</th>
@@ -146,7 +149,7 @@ export function WarehousesScreen() {
               </tr>
             ))}
           </tbody>
-        </table>
+        </table></div>
       )}
     </div>
   );

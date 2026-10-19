@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import type { ExpiryBucketDays } from './settings';
 
 export interface ItemStockRow {
@@ -5,7 +6,12 @@ export interface ItemStockRow {
   code: number;
   nameAr: string;
   warehouseId: number | null;
+  /** Sellable base units (not expired, not quarantined). */
   qtyOnHand: number;
+  /** Base units past expiry still on the shelf until written off. */
+  expiredQty: number;
+  /** Base units in quarantine. */
+  quarantinedQty: number;
   nearestExpiry: string | null;
   stockValue: number;
 }
@@ -61,4 +67,45 @@ export interface ExpiryReport {
   rows: ExpiryBatchRow[];
   summary: ExpiryBucketSummary[];
   bucketDays: ExpiryBucketDays;
+}
+
+export const adjustmentReasons = ['damage', 'expiry', 'theft', 'correction', 'count'] as const;
+export type AdjustmentReason = (typeof adjustmentReasons)[number];
+
+export const stockAdjustmentInputSchema = z.object({
+  reasonCode: z.enum(adjustmentReasons),
+  note: z.string().max(500).nullable().optional(),
+  lines: z
+    .array(
+      z.object({
+        batchId: z.number().int().positive(),
+        /** Physical count of the batch in base units. */
+        countedQty: z.number().int().nonnegative().optional(),
+        /** Or the change itself in base units. */
+        qtyDelta: z.number().int().optional(),
+      })
+    )
+    .min(1)
+    .max(500),
+});
+export type StockAdjustmentInput = z.infer<typeof stockAdjustmentInputSchema>;
+
+export interface StockAdjustmentRow {
+  id: number;
+  at: string;
+  reasonCode: AdjustmentReason;
+  note: string | null;
+  lineCount: number;
+  qtyDelta: number;
+  valueDelta: number;
+}
+
+export interface AdjustmentMoveRow {
+  batchId: number;
+  itemId: number;
+  nameAr: string;
+  batchNumber: string | null;
+  expiryDate: string | null;
+  qtyDelta: number;
+  unitCost: number;
 }

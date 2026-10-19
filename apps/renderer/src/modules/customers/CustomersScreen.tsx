@@ -9,13 +9,15 @@ import { fromPiastres } from '@pharmacy/core';
 import { ar } from '../../i18n/ar';
 import { CustomerForm } from './CustomerForm';
 import { EmptyState, TableSkeleton } from '../../components/EmptyState';
+import { errorText } from '../../lib/errors';
+import { SearchInput } from '../../components/SearchInput';
 
 type Mode = { view: 'list' } | { view: 'create' } | { view: 'edit'; customer: CustomerDetail };
 
-export function CustomersScreen() {
+export function CustomersScreen({ initialQuery }: { initialQuery?: string } = {}) {
   const [mode, setMode] = useState<Mode>({ view: 'list' });
   const [rows, setRows] = useState<CustomerRow[]>([]);
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState(initialQuery ?? '');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const debounce = useRef<ReturnType<typeof setTimeout>>();
@@ -30,7 +32,7 @@ export function CustomersScreen() {
     try {
       setRows(q.trim() ? await window.api.customers.search(q, 200) : await window.api.customers.list());
     } catch (err) {
-      setError(`${ar.customers.errors.loadFailed}: ${(err as Error).message}`);
+      setError(`${ar.customers.errors.loadFailed}: ${errorText(err)}`);
     } finally {
       setLoading(false);
     }
@@ -65,7 +67,7 @@ export function CustomersScreen() {
       else await window.api.customers.suspend(row.id);
       void load(query);
     } catch (err) {
-      setError(`${ar.customers.errors.suspendFailed}: ${(err as Error).message}`);
+      setError(`${ar.customers.errors.suspendFailed}: ${errorText(err)}`);
     }
   }
 
@@ -82,7 +84,7 @@ export function CustomersScreen() {
   return (
     <div className="items">
       <div className="items__bar">
-        <input
+        <SearchInput
           className="field items__search"
           placeholder={ar.customers.search}
           value={query}
@@ -100,7 +102,7 @@ export function CustomersScreen() {
       ) : rows.length === 0 ? (
         <EmptyState title={query.trim() ? ar.customers.noResults : ar.customers.empty} />
       ) : (
-        <table className="datatable">
+        <div className="table-wrap"><table className="datatable">
           <thead>
             <tr>
               <th>{ar.customers.code}</th>
@@ -122,7 +124,7 @@ export function CustomersScreen() {
                 </td>
                 <td dir="ltr">{r.mobile1}</td>
                 <td>{r.paymentMethod === 'credit' ? ar.customers.credit : ar.customers.cash}</td>
-                <td dir="ltr">{fromPiastres(r.openingBalance)}</td>
+                <td dir="ltr" className={r.balance > 0 ? 'strong' : 'muted'}>{fromPiastres(r.balance)}</td>
                 <td className="datatable__actions">
                   <button type="button" className="btn btn--sm" onClick={() => void openEdit(r.id)}>
                     {ar.customers.edit}
@@ -134,7 +136,7 @@ export function CustomersScreen() {
               </tr>
             ))}
           </tbody>
-        </table>
+        </table></div>
       )}
     </div>
   );

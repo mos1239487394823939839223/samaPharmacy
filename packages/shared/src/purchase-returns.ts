@@ -5,7 +5,8 @@ export const purchaseReturnLineInputSchema = z.object({
   batchId: z.number().int().positive(),
   unitId: z.number().int().positive(),
   qtyInUnit: z.number().positive(),
-  qtyBase: z.number().int().positive(),
+  /** Ignored by the server — derived from the unit's factor. */
+  qtyBase: z.number().int().positive().optional(),
 });
 export type PurchaseReturnLineInput = z.infer<typeof purchaseReturnLineInputSchema>;
 
@@ -47,6 +48,8 @@ export interface ReturnablePurchaseLine {
   itemNameAr: string;
   batchId: number;
   unitId: number;
+  unitNameAr: string;
+  unitFactor: number;
   receivedQtyBase: number;
   receivedQtyInUnit: number;
   unitCost: number;

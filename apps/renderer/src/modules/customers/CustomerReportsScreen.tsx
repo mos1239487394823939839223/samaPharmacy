@@ -7,12 +7,16 @@ import { useEffect, useRef, useState } from 'react';
 import type { CustomerRow, CustomerLedgerRow } from '@pharmacy/shared';
 import { fromPiastres } from '@pharmacy/core';
 import { ar } from '../../i18n/ar';
+import { useBusy } from '../../lib/useBusy';
 import { MoneyInput } from '../../components/MoneyInput';
 import { Stat } from '../../components/Stat';
+import { errorText } from '../../lib/errors';
+import { SearchInput } from '../../components/SearchInput';
 
 type EntryTypeKey = keyof typeof ar.customers.entryTypes;
 
 export function CustomerReportsScreen() {
+  const { busy, run } = useBusy();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<CustomerRow[]>([]);
   const [selected, setSelected] = useState<CustomerRow | null>(null);
@@ -20,6 +24,8 @@ export function CustomerReportsScreen() {
   const [ledger, setLedger] = useState<CustomerLedgerRow[]>([]);
   const [paymentAmount, setPaymentAmount] = useState<number | null>(null);
   const [paymentNote, setPaymentNote] = useState('');
+  // Cash paid at the counter goes into the open shift's drawer; uncheck for a bank transfer.
+  const [paidInCash, setPaidInCash] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const debounce = useRef<ReturnType<typeof setTimeout>>();
 
@@ -33,7 +39,7 @@ export function CustomerReportsScreen() {
       window.api!.customers
         .search(query, 10)
         .then(setResults)
-        .catch((err) => setError(`${ar.customers.errors.loadFailed}: ${(err as Error).message}`));
+        .catch((err) => setError(`${ar.customers.errors.loadFailed}: ${errorText(err)}`));
     }, 120);
     return () => {
       if (debounce.current) clearTimeout(debounce.current);
@@ -57,27 +63,31 @@ export function CustomerReportsScreen() {
       setBalance(bal);
       setLedger(led);
     } catch (err) {
-      setError(`${ar.customers.errors.loadFailed}: ${(err as Error).message}`);
+      setError(`${ar.customers.errors.loadFailed}: ${errorText(err)}`);
     }
   }
 
   async function submitPayment() {
-    if (!selected || !window.api || paymentAmount === null || paymentAmount <= 0) return;
+    if (!selected || !window.api) return;
     setError(null);
+    if (paymentAmount === null || paymentAmount <= 0) return setError(ar.errors['payment.amountInvalid']);
+    // Paying more than is owed leaves the customer in credit — allowed (an
+    // advance), but never by a slipped digit.
+    if (paymentAmount > Math.max(balance ?? 0, 0) && !window.confirm(ar.customers.overpayConfirm.replace('{balance}', fromPiastres(balance ?? 0)))) return;
     try {
-      await window.api.customers.recordPayment(selected.id, paymentAmount, paymentNote.trim() || null);
+      await window.api.customers.recordPayment(selected.id, paymentAmount, paymentNote.trim() || null, paidInCash);
       setPaymentAmount(null);
       setPaymentNote('');
       await refresh(selected.id);
     } catch (err) {
-      setError(`${ar.customers.errors.paymentFailed}: ${(err as Error).message}`);
+      setError(errorText(err));
     }
   }
 
   return (
     <div className="stack">
       <div className="items__bar field-wrap">
-        <input
+        <SearchInput
           className="field items__search"
           placeholder={ar.customers.search}
           value={query}
@@ -130,8 +140,12 @@ export function CustomerReportsScreen() {
                   <input className="field" value={paymentNote} onChange={(e) => setPaymentNote(e.target.value)} />
                 </label>
               </div>
+              <label className="checkbox">
+                <input type="checkbox" checked={paidInCash} onChange={(e) => setPaidInCash(e.target.checked)} />
+                <span>{ar.customers.paidInCash}</span>
+              </label>
               <div className="btn-row">
-                <button type="button" className="btn btn--primary btn--sm" onClick={() => void submitPayment()}>
+                <button type="button" className="btn btn--primary btn--sm" disabled={busy} onClick={() => void run(submitPayment)}>
                   {ar.customers.recordPayment}
                 </button>
               </div>
@@ -143,7 +157,7 @@ export function CustomerReportsScreen() {
             {ledger.length === 0 ? (
               <p className="muted">—</p>
             ) : (
-              <table className="datatable">
+              <div className="table-wrap"><table className="datatable">
                 <thead>
                   <tr>
                     <th>{ar.customers.ledgerDate}</th>
@@ -166,7 +180,7 @@ export function CustomerReportsScreen() {
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </table></div>
             )}
           </div>
         </>

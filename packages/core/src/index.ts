@@ -9,7 +9,12 @@ export {
   multiplyMoney,
   percentOf,
   allocate,
+  lineValue,
 } from './money';
+
+export { DomainError, ensure, type ErrorParams } from './errors';
+export { todayLocal, toLocalIsoDate, addDays, isIsoDate } from './dates';
+export { maxUnitPrice, boxFactorOf, proRataShare } from './pricing';
 
 export { normalizeArabic, normalizeLatin, normalizeName, toAsciiDigits } from './arabic';
 
@@ -44,3 +49,4 @@ export {
   type FefoBatch,
   type FefoAllocation,
 } from './fefo';
+export { encodeCode128B, code128Svg } from './code128';

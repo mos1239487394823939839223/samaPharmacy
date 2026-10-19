@@ -13,6 +13,8 @@
  * concurrent access.
  */
 
+import { DomainError } from './errors';
+
 export interface FefoBatch {
   batchId: number;
   qtyOnHand: number;
@@ -28,12 +30,16 @@ export interface FefoAllocation {
   expiryDate: string | null;
 }
 
-export class InsufficientStockError extends Error {
+export class InsufficientStockError extends DomainError {
   constructor(
     public readonly requested: number,
     public readonly available: number
   ) {
-    super(`Requested ${requested} base units but only ${available} available across sellable batches`);
+    super(
+      'stock.insufficient',
+      `Requested ${requested} base units but only ${available} available across sellable batches`,
+      { requested, available }
+    );
     this.name = 'InsufficientStockError';
   }
 }

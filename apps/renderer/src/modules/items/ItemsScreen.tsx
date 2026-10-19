@@ -13,14 +13,16 @@ import { ar } from '../../i18n/ar';
 import { ItemForm } from './ItemForm';
 import { ImportWizard } from './ImportWizard';
 import { EmptyState, TableSkeleton } from '../../components/EmptyState';
+import { errorText } from '../../lib/errors';
+import { SearchInput } from '../../components/SearchInput';
 
 type Mode = { view: 'list' } | { view: 'create' } | { view: 'edit'; item: ItemDetail } | { view: 'import' };
 
-export function ItemsScreen({ showBadges }: { showBadges: boolean }) {
+export function ItemsScreen({ showBadges, initialQuery }: { showBadges: boolean; initialQuery?: string }) {
   const [mode, setMode] = useState<Mode>({ view: 'list' });
   const [rows, setRows] = useState<ItemListRow[]>([]);
   const [total, setTotal] = useState(0);
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState(initialQuery ?? '');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -43,7 +45,7 @@ export function ItemsScreen({ showBadges }: { showBadges: boolean }) {
       setRows(list);
       setTotal(count);
     } catch (err) {
-      setError(`${ar.items.errors.loadFailed}: ${(err as Error).message}`);
+      setError(`${ar.items.errors.loadFailed}: ${errorText(err)}`);
     } finally {
       setLoading(false);
     }
@@ -81,7 +83,7 @@ export function ItemsScreen({ showBadges }: { showBadges: boolean }) {
       await window.api.items.deactivate(id);
       void load(query);
     } catch (err) {
-      setError(`${ar.items.errors.deactivateFailed}: ${(err as Error).message}`);
+      setError(`${ar.items.errors.deactivateFailed}: ${errorText(err)}`);
     }
   }
 
@@ -108,23 +110,23 @@ export function ItemsScreen({ showBadges }: { showBadges: boolean }) {
   return (
     <div className="items">
       <div className="items__bar">
-        <input
+        <SearchInput
           ref={searchRef}
           className="field items__search"
           placeholder={ar.items.search}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
-        <button
-          type="button"
-          className="btn btn--primary"
-          onClick={() => setMode({ view: 'create' })}
-        >
-          {ar.items.add}
-        </button>
-        <button type="button" className="btn" onClick={() => setMode({ view: 'import' })}>
-          {ar.items.import.open}
-        </button>
+                    <button
+              type="button"
+              className="btn btn--primary"
+              onClick={() => setMode({ view: 'create' })}
+            >
+              {ar.items.add}
+            </button>
+            <button type="button" className="btn" onClick={() => setMode({ view: 'import' })}>
+              {ar.items.import.open}
+            </button>
         <span className="items__count">
           {ar.items.count}: <span dir="ltr">{total}</span>
         </span>
@@ -137,7 +139,7 @@ export function ItemsScreen({ showBadges }: { showBadges: boolean }) {
       ) : rows.length === 0 ? (
         <EmptyState title={query.trim() ? ar.items.noResults : ar.items.empty} />
       ) : (
-        <table className="datatable">
+        <div className="table-wrap"><table className="datatable">
           <thead>
             <tr>
               <th>{ar.items.fields.code}</th>
@@ -157,25 +159,25 @@ export function ItemsScreen({ showBadges }: { showBadges: boolean }) {
                 <td dir="ltr">{r.publicPrice === null ? '—' : fromPiastres(r.publicPrice)}</td>
                 <td>{r.shelfLocation ?? '—'}</td>
                 <td className="datatable__actions">
-                  <button
-                    type="button"
-                    className="btn btn--sm"
-                    onClick={() => void openEdit(r.id)}
-                  >
-                    {ar.items.edit}
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn--danger btn--sm"
-                    onClick={() => void deactivate(r.id)}
-                  >
-                    {ar.items.deactivate}
-                  </button>
+                                        <button
+                        type="button"
+                        className="btn btn--sm"
+                        onClick={() => void openEdit(r.id)}
+                      >
+                        {ar.items.edit}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn--danger btn--sm"
+                        onClick={() => void deactivate(r.id)}
+                      >
+                        {ar.items.deactivate}
+                      </button>
                 </td>
               </tr>
             ))}
           </tbody>
-        </table>
+        </table></div>
       )}
     </div>
   );

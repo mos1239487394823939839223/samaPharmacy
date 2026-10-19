@@ -11,11 +11,23 @@
  * would kill the process and take the handle with it.
  */
 
-import path from 'node:path';
+import fs from 'node:fs';
 import {
   openDatabase,
   migrate,
   appliedVersions,
+  pendingMigrations,
+  backupDatabase,
+  listBackups,
+  verifyBackup,
+  getBackupSettings,
+  checkoutSalesInvoice,
+  recordSupplierPayment,
+  getSupplierLedger,
+  createStockAdjustment,
+  listStockAdjustments,
+  getStockAdjustmentMoves,
+  writeOffExpired,
   sqliteVersion,
   createItem,
   updateItem,
@@ -100,10 +112,47 @@ import {
   getSalesReportInvoices,
   getSettings,
   updateSettings,
+  listAudit,
+  listNarcoticsRegister,
+  narcoticsReconciliation,
+  fixNarcoticsEntry,
+  getInvoicePrescription,
+  holdSalesInvoice,
+  listHeldInvoices,
+  resumeHeldInvoice,
+  searchSalesInvoices,
+  getReceiptData,
+  getPrintableDocument,
+  findAlternatives,
+  unitPriceIssues,
+  fixUnitPrices,
+  getPharmacyProfile,
+  getPrinterSettings,
+  listInsuranceCompanies,
+  createInsuranceCompany,
+  updateInsuranceCompany,
+  setInsuranceCompanyActive,
+  listExclusions,
+  setExclusion,
+  unclaimedInvoices,
+  createClaim,
+  listClaims,
+  getClaimLines,
+  submitClaim,
+  settleClaim,
+  insuranceReceivables,
   type Db,
 } from '@pharmacy/db';
-import { guessMapping, validateRows, type ImportField } from '@pharmacy/core';
+import { auditRequest, OPERATOR_ID } from './access';
+import { DomainError, guessMapping, validateRows, type ImportField } from '@pharmacy/core';
 import {
+  encodeAppError,
+  customerPaymentSchema,
+  supplierPaymentSchema,
+  openShiftSchema,
+  closeShiftSchema,
+  cashTransactionSchema,
+  stockAdjustmentInputSchema,
   itemInputSchema,
   warehouseInputSchema,
   supplierInputSchema,
@@ -113,13 +162,18 @@ import {
   salesReturnInputSchema,
   purchaseReturnInputSchema,
   pharmacySettingsInputSchema,
+  prescriptionSchema,
+  insuranceCompanyInputSchema,
+  claimSettlementSchema,
 } from '@pharmacy/shared';
 import type {
   DbRequestEnvelope,
   DbResponseEnvelope,
   PingResult,
   MigrateResult,
+  BackupStatus,
 } from '@pharmacy/shared';
+import { z } from 'zod';
 
 // utilityProcess exposes the parent port on process.parentPort.
 declare const process: NodeJS.Process & {
@@ -132,17 +186,105 @@ declare const process: NodeJS.Process & {
 interface Config {
   databasePath: string;
   migrationsDir: string;
+  /** Primary backup folder (userData/backups). */
+  backupDir: string;
 }
 
 let db: Db | null = null;
 let config: Config | null = null;
+let backupTimer: ReturnType<typeof setInterval> | null = null;
+let lastBackupError: string | null = null;
 
-function init(cfg: Config): void {
-  config = cfg;
+function openAndMigrate(cfg: Config): void {
   db = openDatabase(cfg.databasePath);
+  // A database that already holds data is backed up before any pending
+  // migration touches it — 0006 rebuilds the batches table.
+  const pending = pendingMigrations(db, cfg.migrationsDir);
+  if (pending.length > 0 && appliedVersions(db).length > 0) {
+    runBackup('pre-migration');
+  }
   // Apply pending migrations at startup so the schema is never behind the code.
   migrate(db, cfg.migrationsDir);
 }
+
+function init(cfg: Config): void {
+  config = cfg;
+  openAndMigrate(cfg);
+  scheduleBackups();
+}
+
+/** Back up now. Never throws — a failed backup must not take down a sale. */
+function runBackup(reason: 'auto' | 'close' | 'manual' | 'pre-migration' | 'before-restore'): void {
+  if (!db || !config) return;
+  try {
+    const settings = getBackupSettings(db);
+    const result = backupDatabase(db, config.backupDir, {
+      secondaryDir: settings.secondaryDir,
+      keep: settings.keep,
+      reason,
+    });
+    lastBackupError = result.errors[0] ? `${result.errors[0].dir}: ${result.errors[0].message}` : null;
+  } catch (err) {
+    lastBackupError = (err as Error).message;
+    if (reason === 'manual' || reason === 'before-restore') throw err;
+  }
+}
+
+function scheduleBackups(): void {
+  if (backupTimer) clearInterval(backupTimer);
+  if (!db) return;
+  const hours = getBackupSettings(db).intervalHours;
+  backupTimer = setInterval(() => runBackup('auto'), hours * 60 * 60 * 1000);
+}
+
+function backupStatus(): BackupStatus {
+  if (!db || !config) throw new Error('Database not initialized');
+  const settings = getBackupSettings(db);
+  let secondaryBackups: BackupStatus['secondaryBackups'] = [];
+  try {
+    secondaryBackups = settings.secondaryDir ? listBackups(settings.secondaryDir) : [];
+  } catch {
+    secondaryBackups = [];
+  }
+  return {
+    primaryDir: config.backupDir,
+    backups: listBackups(config.backupDir),
+    secondaryBackups,
+    lastError: lastBackupError,
+  };
+}
+
+/**
+ * Replace the live database with a backup. The candidate is verified first,
+ * and the current database is itself backed up ('before-restore') so a
+ * restore can always be undone. The restored file is then migrated forward.
+ */
+function restoreFrom(filePath: string): void {
+  if (!db || !config) throw new Error('Database not initialized');
+  verifyBackup(filePath);
+  runBackup('before-restore');
+  db.close();
+  db = null;
+  for (const suffix of ['-wal', '-shm']) fs.rmSync(config.databasePath + suffix, { force: true });
+  fs.copyFileSync(filePath, config.databasePath);
+  openAndMigrate(config);
+  scheduleBackups();
+}
+
+function shutdown(): void {
+  if (backupTimer) clearInterval(backupTimer);
+  if (!db) return;
+  runBackup('close');
+  try {
+    db.pragma('wal_checkpoint(TRUNCATE)');
+  } finally {
+    db.close();
+    db = null;
+  }
+}
+
+const idSchema = z.number().int().positive();
+const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
 function handlePing(): PingResult {
   if (!db || !config) throw new Error('Database not initialized');
@@ -168,11 +310,39 @@ function requireDb(): Db {
   return db;
 }
 
+/** The record as it was before an update — kept in the audit log next to the new values. */
+function captureBefore(conn: Db, req: DbRequestEnvelope['request']): unknown {
+  switch (req.kind) {
+    case 'items.update':
+      return { ...getItem(conn, req.id), units: getItemUnits(conn, req.id) };
+    case 'customers.update':
+      return getCustomer(conn, req.id);
+    case 'suppliers.update':
+      return getSupplier(conn, req.id);
+    case 'settings.update':
+      return getSettings(conn);
+    default:
+      return undefined;
+  }
+}
+
 function dispatch(envelope: DbRequestEnvelope): DbResponseEnvelope {
-  const ok = (data: unknown): DbResponseEnvelope => ({ id: envelope.id, ok: true, data });
+  const req = envelope.request;
+  let before: unknown;
+  const ok = (data: unknown): DbResponseEnvelope => {
+    // Audit is written after the operation succeeded; a failed write is not
+    // logged as having happened.
+    if (db) auditRequest(db, req, data, before);
+    return { id: envelope.id, ok: true, data };
+  };
 
   try {
-    const req = envelope.request;
+    // Every id that names a row is validated at the boundary, like every input.
+    if ('id' in req && req.id !== undefined) idSchema.parse(req.id);
+    if (req.kind !== 'ping' && req.kind !== 'migrate') before = captureBefore(requireDb(), req);
+    // One pharmacy, no user accounts (decision D18): every write is made and
+    // approved by the single built-in operator, and recorded in the audit log.
+    const userId = OPERATOR_ID;
 
     switch (req.kind) {
       case 'ping':
@@ -203,7 +373,7 @@ function dispatch(envelope: DbRequestEnvelope): DbResponseEnvelope {
         return ok(createItem(requireDb(), itemInputSchema.parse(req.input)));
 
       case 'items.update': {
-        updateItem(requireDb(), req.id, itemInputSchema.parse(req.input));
+        updateItem(requireDb(), req.id, itemInputSchema.parse(req.input), userId);
         return ok(undefined);
       }
 
@@ -295,10 +465,17 @@ function dispatch(envelope: DbRequestEnvelope): DbResponseEnvelope {
         deactivateSupplier(requireDb(), req.id);
         return ok(undefined);
 
+      case 'suppliers.recordPayment': {
+        const p = supplierPaymentSchema.parse({ id: req.id, amount: req.amount, note: req.note });
+        recordSupplierPayment(requireDb(), p.id, p.amount, p.note);
+        return ok(undefined);
+      }
+
+      case 'suppliers.ledger':
+        return ok(getSupplierLedger(requireDb(), req.id, req.limit));
+
       case 'purchases.create':
-        return ok(
-          createPurchaseInvoice(requireDb(), purchaseInvoiceInputSchema.parse(req.input))
-        );
+        return ok(createPurchaseInvoice(requireDb(), purchaseInvoiceInputSchema.parse(req.input), userId));
 
       case 'purchases.get': {
         const conn = requireDb();
@@ -314,7 +491,7 @@ function dispatch(envelope: DbRequestEnvelope): DbResponseEnvelope {
         return ok(listPurchaseInvoices(requireDb(), req.limit, req.offset));
 
       case 'purchases.confirm':
-        confirmPurchaseInvoice(requireDb(), req.id);
+        confirmPurchaseInvoice(requireDb(), req.id, userId);
         return ok(undefined);
 
       case 'purchases.void':
@@ -322,7 +499,7 @@ function dispatch(envelope: DbRequestEnvelope): DbResponseEnvelope {
         return ok(undefined);
 
       case 'stock.search':
-        return ok(searchItemStock(requireDb(), req.query, req.limit));
+        return ok(searchItemStock(requireDb(), req.query, req.limit, req.warehouseId));
 
       case 'stock.batches':
         return ok(getItemBatches(requireDb(), req.itemId));
@@ -337,10 +514,31 @@ function dispatch(envelope: DbRequestEnvelope): DbResponseEnvelope {
         return ok(getLowStockItems(requireDb(), req.limit));
 
       case 'stock.expiryReport':
-        return ok(getExpiryReport(requireDb(), req.asOf));
+        return ok(getExpiryReport(requireDb(), z.string().regex(/^\d{4}-\d{2}-\d{2}$/).parse(req.asOf)));
+
+      case 'adjustments.create':
+        return ok(
+          createStockAdjustment(
+            requireDb(),
+            { ...stockAdjustmentInputSchema.parse(req.input), approvedBy: userId },
+            userId
+          )
+        );
+
+      case 'adjustments.list':
+        return ok(listStockAdjustments(requireDb(), req.limit));
+
+      case 'adjustments.moves':
+        return ok(getStockAdjustmentMoves(requireDb(), req.id));
+
+      case 'adjustments.writeOffExpired':
+        return ok(writeOffExpired(requireDb(), req.warehouseId, userId));
 
       case 'sales.create':
-        return ok(createSalesInvoice(requireDb(), salesInvoiceInputSchema.parse(req.input)));
+        return ok(createSalesInvoice(requireDb(), salesInvoiceInputSchema.parse(req.input), userId));
+
+      case 'sales.checkout':
+        return ok(checkoutSalesInvoice(requireDb(), salesInvoiceInputSchema.parse(req.input), userId));
 
       case 'sales.get': {
         const conn = requireDb();
@@ -356,7 +554,7 @@ function dispatch(envelope: DbRequestEnvelope): DbResponseEnvelope {
         return ok(listSalesInvoices(requireDb(), req.limit, req.offset));
 
       case 'sales.confirm':
-        confirmSalesInvoice(requireDb(), req.id);
+        confirmSalesInvoice(requireDb(), req.id, userId);
         return ok(undefined);
 
       case 'sales.void':
@@ -372,20 +570,22 @@ function dispatch(envelope: DbRequestEnvelope): DbResponseEnvelope {
       case 'shifts.list':
         return ok(listShifts(requireDb(), req.limit));
 
-      case 'shifts.open':
-        return ok(openShift(requireDb(), req.warehouseId, req.openingFloat));
+      case 'shifts.open': {
+        const p = openShiftSchema.parse({ warehouseId: req.warehouseId, openingFloat: req.openingFloat });
+        return ok(openShift(requireDb(), p.warehouseId, p.openingFloat, userId));
+      }
 
       case 'shifts.close':
-        closeShift(requireDb(), req.id, req.input);
+        closeShift(requireDb(), req.id, closeShiftSchema.parse(req.input));
         return ok(undefined);
 
       case 'shifts.computeExpectedCash':
         return ok(computeExpectedCash(requireDb(), req.id));
 
-      case 'shifts.recordCash':
-        return ok(
-          recordCashTransaction(requireDb(), req.shiftId, req.direction, req.amount, req.category, req.note)
-        );
+      case 'shifts.recordCash': {
+        const p = cashTransactionSchema.parse(req);
+        return ok(recordCashTransaction(requireDb(), p.shiftId, p.direction, p.amount, p.category, p.note, userId));
+      }
 
       case 'shifts.cashTransactions':
         return ok(getShiftCashTransactions(requireDb(), req.shiftId));
@@ -435,15 +635,22 @@ function dispatch(envelope: DbRequestEnvelope): DbResponseEnvelope {
       case 'customers.ledger':
         return ok(getCustomerLedger(requireDb(), req.id, req.limit));
 
-      case 'customers.recordPayment':
-        recordCustomerPayment(requireDb(), req.id, req.amount, req.note);
+      case 'customers.recordPayment': {
+        const p = customerPaymentSchema.parse({ id: req.id, amount: req.amount, note: req.note, cash: req.cash });
+        recordCustomerPayment(requireDb(), p.id, p.amount, p.note, { cash: p.cash, userId });
         return ok(undefined);
+      }
 
       case 'customers.receivablesSummary':
         return ok(getReceivablesSummary(requireDb()));
 
       case 'salesReturns.create':
-        return ok(createSalesReturn(requireDb(), salesReturnInputSchema.parse(req.input)));
+      {
+        const input = salesReturnInputSchema.parse(req.input);
+        return ok(
+          createSalesReturn(requireDb(), { ...input, approvedBy: input.sourceInvoiceId ? null : userId }, userId)
+        );
+      }
 
       case 'salesReturns.get': {
         const conn = requireDb();
@@ -459,7 +666,7 @@ function dispatch(envelope: DbRequestEnvelope): DbResponseEnvelope {
         return ok(getReturnableLines(requireDb(), req.invoiceId));
 
       case 'purchaseReturns.create':
-        return ok(createPurchaseReturn(requireDb(), purchaseReturnInputSchema.parse(req.input)));
+        return ok(createPurchaseReturn(requireDb(), purchaseReturnInputSchema.parse(req.input), userId));
 
       case 'purchaseReturns.get': {
         const conn = requireDb();
@@ -483,16 +690,158 @@ function dispatch(envelope: DbRequestEnvelope): DbResponseEnvelope {
       case 'sales.trend':
         return ok(getSalesTrend(requireDb(), req.from, req.to));
 
+      case 'audit.list':
+        return ok(listAudit(requireDb(), { from: req.from, to: req.to, entity: req.entity, limit: req.limit }));
+
+      // ---------------- narcotics ----------------
+      case 'narcotics.register':
+        return ok(listNarcoticsRegister(requireDb(), { itemId: req.itemId, from: req.from, to: req.to, limit: req.limit }));
+
+      case 'narcotics.reconciliation':
+        return ok(narcoticsReconciliation(requireDb()));
+
+      case 'narcotics.fix':
+        return ok(
+          fixNarcoticsEntry(
+            requireDb(),
+            req.id,
+            prescriptionSchema.parse(req.details),
+            z.string().trim().min(1).max(300).parse(req.reason),
+            userId,
+            userId
+          )
+        );
+
+      case 'sales.prescription':
+        return ok(getInvoicePrescription(requireDb(), req.id) ?? null);
+
+      // ---------------- till ----------------
+      case 'sales.hold':
+        return ok(holdSalesInvoice(requireDb(), salesInvoiceInputSchema.parse(req.input), userId));
+
+      case 'sales.held':
+        return ok(listHeldInvoices(requireDb(), idSchema.parse(req.warehouseId)));
+
+      case 'sales.resume':
+        return ok(resumeHeldInvoice(requireDb(), req.id));
+
+      case 'sales.search':
+        return ok(
+          searchSalesInvoices(requireDb(), {
+            from: req.from,
+            to: req.to,
+            serial: req.serial,
+            status: req.status,
+            limit: req.limit,
+          })
+        );
+
+      case 'documents.get':
+        return ok(
+          getPrintableDocument(
+            requireDb(),
+            z.enum(['sale', 'purchase', 'salesReturn', 'purchaseReturn']).parse(req.doc),
+            idSchema.parse(req.id)
+          )
+        );
+
+      case 'sales.receipt':
+        return ok({
+          receipt: getReceiptData(requireDb(), req.id),
+          pharmacy: getPharmacyProfile(requireDb()),
+          printer: getPrinterSettings(requireDb()),
+        });
+
+      case 'items.alternatives':
+        return ok(findAlternatives(requireDb(), req.id, idSchema.parse(req.warehouseId)));
+
+      case 'items.unitPriceIssues':
+        return ok(unitPriceIssues(requireDb()));
+
+      case 'items.fixUnitPrices':
+        return ok(fixUnitPrices(requireDb(), z.array(idSchema).min(1).parse(req.itemIds), userId));
+
+      // ---------------- insurance ----------------
+      case 'insurance.companies':
+        return ok(listInsuranceCompanies(requireDb(), req.includeInactive));
+
+      case 'insurance.createCompany':
+        return ok(createInsuranceCompany(requireDb(), insuranceCompanyInputSchema.parse(req.input)));
+
+      case 'insurance.updateCompany':
+        updateInsuranceCompany(requireDb(), req.id, insuranceCompanyInputSchema.parse(req.input));
+        return ok(undefined);
+
+      case 'insurance.setCompanyActive':
+        setInsuranceCompanyActive(requireDb(), req.id, z.boolean().parse(req.active));
+        return ok(undefined);
+
+      case 'insurance.exclusions':
+        return ok(listExclusions(requireDb(), req.id));
+
+      case 'insurance.setExclusion':
+        setExclusion(requireDb(), req.id, idSchema.parse(req.itemId), z.boolean().parse(req.excluded));
+        return ok(undefined);
+
+      case 'insurance.unclaimed':
+        return ok(unclaimedInvoices(requireDb(), idSchema.parse(req.companyId), isoDate.parse(req.from), isoDate.parse(req.to)));
+
+      case 'insurance.createClaim':
+        return ok(createClaim(requireDb(), idSchema.parse(req.companyId), isoDate.parse(req.from), isoDate.parse(req.to), userId));
+
+      case 'insurance.claims':
+        return ok(listClaims(requireDb(), req.companyId));
+
+      case 'insurance.claimLines':
+        return ok(getClaimLines(requireDb(), req.id));
+
+      case 'insurance.submitClaim':
+        submitClaim(requireDb(), req.id);
+        return ok(undefined);
+
+      case 'insurance.settleClaim':
+        settleClaim(requireDb(), req.id, claimSettlementSchema.parse(req.input));
+        return ok(undefined);
+
+      case 'insurance.receivables':
+        return ok(insuranceReceivables(requireDb()));
+
       case 'settings.get':
         return ok(getSettings(requireDb()));
 
-      case 'settings.update':
-        return ok(updateSettings(requireDb(), pharmacySettingsInputSchema.parse(req.input)));
+      case 'settings.update': {
+        const updated = updateSettings(requireDb(), pharmacySettingsInputSchema.parse(req.input));
+        if (req.input.backup?.intervalHours !== undefined) scheduleBackups();
+        return ok(updated);
+      }
+
+      case 'backup.status':
+        return ok(backupStatus());
+
+      case 'backup.run':
+        runBackup('manual');
+        return ok(backupStatus());
+
+      case 'backup.restore': {
+        const file = z.string().min(1).parse(req.filePath);
+        restoreFrom(file);
+        return ok(true);
+      }
 
       // Handled in the main process, which owns the window and the filesystem.
       // Listed so the exhaustiveness check below stays meaningful.
       case 'import.pickFile':
+      case 'import.bundledCatalog':
       case 'import.saveRejects':
+      case 'backup.pickFolder':
+      case 'print.receipt':
+      case 'print.test':
+      case 'print.status':
+      case 'print.retryFailed':
+      case 'print.openDrawer':
+      case 'print.listPrinters':
+      case 'print.document':
+      case 'file.saveCsv':
         return {
           id: envelope.id,
           ok: false,
@@ -509,13 +858,38 @@ function dispatch(envelope: DbRequestEnvelope): DbResponseEnvelope {
       }
     }
   } catch (err) {
-    return { id: envelope.id, ok: false, error: (err as Error).message };
+    return toErrorEnvelope(envelope.id, err);
   }
+}
+
+/**
+ * Every failure crosses the boundary with a code the renderer can translate:
+ * DomainErrors keep theirs, zod failures become 'validation', and anything
+ * else is 'internal' with the English text kept for diagnostics.
+ */
+function toErrorEnvelope(id: number, err: unknown): DbResponseEnvelope {
+  let code = 'internal';
+  let params: Record<string, string | number | null> = {};
+  let message = (err as Error)?.message ?? String(err);
+  if (err instanceof DomainError) {
+    code = err.code;
+    params = err.params;
+  } else if (err instanceof z.ZodError) {
+    code = 'validation';
+    const issue = err.issues[0];
+    params = { field: issue ? issue.path.join('.') : '' };
+    message = issue ? `${issue.path.join('.')}: ${issue.message}` : message;
+  } else if (/immutable:/.test(message)) {
+    code = 'immutable';
+  }
+  const error = encodeAppError({ code, params, message });
+  return { id, ok: false, error, code, params };
 }
 
 process.parentPort.on('message', (message) => {
   const payload = message.data as
     | { type: 'init'; config: Config }
+    | { type: 'shutdown' }
     | { type: 'request'; envelope: DbRequestEnvelope };
 
   if (payload.type === 'init') {
@@ -524,6 +898,15 @@ process.parentPort.on('message', (message) => {
       process.parentPort.postMessage({ type: 'ready' });
     } catch (err) {
       process.parentPort.postMessage({ type: 'init-failed', error: (err as Error).message });
+    }
+    return;
+  }
+
+  if (payload.type === 'shutdown') {
+    try {
+      shutdown();
+    } finally {
+      process.parentPort.postMessage({ type: 'shutdown-done' });
     }
     return;
   }

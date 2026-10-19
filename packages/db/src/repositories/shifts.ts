@@ -8,7 +8,9 @@
  * this repository never updates a closed shift's totals.
  */
 
+import { DomainError } from '@pharmacy/core';
 import type { Db } from '../connection';
+import { NOW } from '../time';
 
 export interface ShiftRow {
   id: number;
@@ -63,16 +65,22 @@ export function listShifts(db: Db, limit = 100): ShiftRow[] {
 
 /** Refuses to open a second shift on a warehouse that already has one open. */
 export function openShift(db: Db, warehouseId: number, openingFloat: number, userId = 1): number {
-  const existing = getOpenShift(db, warehouseId);
-  if (existing) {
-    throw new Error(
-      `Warehouse ${warehouseId} already has an open shift (#${existing.id}). Close it before opening a new one.`
-    );
+  if (!Number.isInteger(openingFloat) || openingFloat < 0) {
+    throw new DomainError('shift.amountInvalid', `Opening float must be a non-negative integer, got ${openingFloat}`);
   }
-  const result = db
-    .prepare('INSERT INTO shifts (user_id, warehouse_id, opening_float) VALUES (?, ?, ?)')
-    .run(userId, warehouseId, openingFloat);
-  return Number(result.lastInsertRowid);
+  return db.transaction(() => {
+    const existing = getOpenShift(db, warehouseId);
+    if (existing) {
+      throw new DomainError(
+        'shift.alreadyOpen',
+        `Warehouse ${warehouseId} already has an open shift (#${existing.id}). Close it before opening a new one.`
+      );
+    }
+    const result = db
+      .prepare(`INSERT INTO shifts (user_id, warehouse_id, opening_float, opened_at) VALUES (?, ?, ?, ${NOW})`)
+      .run(userId, warehouseId, openingFloat);
+    return Number(result.lastInsertRowid);
+  })();
 }
 
 /**
@@ -83,8 +91,10 @@ export function openShift(db: Db, warehouseId: number, openingFloat: number, use
  */
 export function computeExpectedCash(db: Db, shiftId: number): number {
   const shift = getShift(db, shiftId);
-  if (!shift) throw new Error(`Shift ${shiftId} not found`);
+  if (!shift) throw new DomainError('shift.notFound', `Shift ${shiftId} not found`);
 
+  // paid_cash is the cash kept for the invoice (its total) — never the note
+  // the customer handed over (that is cash_tendered, migration 0006).
   const cashSales = db
     .prepare(
       `SELECT COALESCE(SUM(paid_cash), 0) AS s FROM sales_invoices
@@ -122,21 +132,26 @@ export interface CloseShiftInput {
 export function closeShift(db: Db, shiftId: number, input: CloseShiftInput): void {
   const run = db.transaction(() => {
     const shift = getShift(db, shiftId);
-    if (!shift) throw new Error(`Shift ${shiftId} not found`);
-    if (shift.status === 'closed') throw new Error(`Shift ${shiftId} is already closed`);
+    if (!shift) throw new DomainError('shift.notFound', `Shift ${shiftId} not found`);
+    if (shift.status === 'closed') throw new DomainError('shift.closed', `Shift ${shiftId} is already closed`);
+    if (!Number.isInteger(input.countedCash) || input.countedCash < 0) {
+      throw new DomainError('shift.amountInvalid', `Counted cash must be a non-negative integer, got ${input.countedCash}`);
+    }
 
     const expectedCash = computeExpectedCash(db, shiftId);
     const variance = input.countedCash - expectedCash;
 
     if (variance !== 0 && !input.varianceNote?.trim()) {
-      throw new Error(
-        `Variance of ${variance} piastres requires a note explaining it before the shift can close.`
+      throw new DomainError(
+        'shift.varianceNoteRequired',
+        `Variance of ${variance} piastres requires a note explaining it before the shift can close.`,
+        { variance }
       );
     }
 
     db.prepare(
       `UPDATE shifts SET
-         status = 'closed', closed_at = datetime('now'),
+         status = 'closed', closed_at = ${NOW},
          expected_cash = ?, counted_cash = ?, variance = ?,
          variance_note = ?, handed_to = ?
        WHERE id = ?`
@@ -163,15 +178,24 @@ export function recordCashTransaction(
   userId = 1
 ): number {
   const shift = getShift(db, shiftId);
-  if (!shift) throw new Error(`Shift ${shiftId} not found`);
+  if (!shift) throw new DomainError('shift.notFound', `Shift ${shiftId} not found`);
   if (shift.status === 'closed') {
-    throw new Error(`Shift ${shiftId} is closed (rule 9/BR-10) — cannot record a cash movement against it`);
+    throw new DomainError('shift.closed', `Shift ${shiftId} is closed (rule 9/BR-10) — cannot record a cash movement against it`);
   }
-  if (amount <= 0) throw new RangeError(`Cash transaction amount must be positive, got ${amount}`);
+  if (!Number.isInteger(amount) || amount <= 0) {
+    throw new DomainError('shift.amountInvalid', `Cash transaction amount must be positive, got ${amount}`);
+  }
+  // The drawer cannot pay out money it does not hold.
+  if (direction === 'out') {
+    const available = computeExpectedCash(db, shiftId);
+    if (amount > available) {
+      throw new DomainError('shift.insufficientCash', `Cash out ${amount} exceeds drawer cash ${available}`, { available });
+    }
+  }
 
   const result = db
     .prepare(
-      'INSERT INTO cash_transactions (shift_id, direction, amount, category, note, user_id) VALUES (?, ?, ?, ?, ?, ?)'
+      `INSERT INTO cash_transactions (shift_id, direction, amount, category, note, user_id, at) VALUES (?, ?, ?, ?, ?, ?, ${NOW})`
     )
     .run(shiftId, direction, amount, category ?? null, note ?? null, userId);
   return Number(result.lastInsertRowid);

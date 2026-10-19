@@ -12,8 +12,8 @@ export const itemUnitSchema = z.object({
       updateItem to UPDATE that row in place instead of inserting a new
       one. Omitted for a unit the user just added in this edit. */
   id: z.number().int().positive().optional(),
-  nameAr: z.string().min(1),
-  factor: z.number().int().positive(),
+  nameAr: z.string().trim().min(1).max(40),
+  factor: z.number().int().positive().max(100000),
   /** Piastres. */
   salePrice: z.number().int().nonnegative(),
   isBase: z.boolean(),
@@ -23,7 +23,7 @@ export const itemUnitSchema = z.object({
 
 export const itemInputSchema = z.object({
   itemTypeId: z.number().int().nullable().optional(),
-  nameAr: z.string().min(1),
+  nameAr: z.string().trim().min(1).max(300),
   nameEn: z.string().nullable().optional(),
   internationalCode: z.string().nullable().optional(),
   origin: z.enum(['local', 'imported']).optional(),
@@ -31,7 +31,7 @@ export const itemInputSchema = z.object({
   itemNature: z.string().nullable().optional(),
   scientificName: z.string().nullable().optional(),
   mainIngredientId: z.number().int().nullable().optional(),
-  mainIngredientPct: z.number().nullable().optional(),
+  mainIngredientPct: z.number().min(0).max(100).nullable().optional(),
   scheduleClass: z.enum(['none', 'table1', 'table2', 'table3']).optional(),
   storageCondition: z.enum(['room', 'fridge', 'freezer']).optional(),
   noExpiry: z.boolean().optional(),
@@ -41,7 +41,7 @@ export const itemInputSchema = z.object({
   publicPrice: z.number().int().nonnegative().nullable().optional(),
   minStock: z.number().int().nonnegative().optional(),
   maxStock: z.number().int().nonnegative().nullable().optional(),
-  barcodes: z.array(z.string().min(1)).optional(),
+  barcodes: z.array(z.string().trim().min(1).max(64)).max(50).optional(),
   units: z.array(itemUnitSchema).optional(),
   scientificGroupIds: z.array(z.number().int()).optional(),
 });
@@ -86,6 +86,17 @@ export interface ImportProgressEvent {
 }
 
 export interface ItemDetail extends ItemListRow {
+  itemTypeId: number | null;
+  manufacturerId: number | null;
+  mainIngredientId: number | null;
+  internationalCode: string | null;
+  origin: string;
+  itemNature: string | null;
+  scientificName: string | null;
+  mainIngredientPct: number | null;
+  requiresPrescription: number;
+  minStock: number;
+  maxStock: number | null;
   barcodes: string[];
   units: Array<{
     id: number;

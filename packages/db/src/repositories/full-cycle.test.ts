@@ -25,6 +25,7 @@ import { createSalesInvoice, confirmSalesInvoice } from './sales';
 import { createSalesReturn, getReturnableLines } from './sales-returns';
 import { createPurchaseReturn } from './purchase-returns';
 import { getItemBatches, verifyBatchLedger } from './stock';
+import { FUTURE_EXPIRY } from '../test-helpers';
 
 let db: Db;
 
@@ -53,7 +54,7 @@ describe('full business cycle: purchase -> sale -> sales return -> purchase retu
       warehouseId,
       purchaseType: 'credit',
       invoiceDate: '2026-01-01',
-      lines: [{ lineNo: 1, itemId, unitId, qtyInUnit: 100, qtyBase: 100, unitPurchasePrice: 500 }],
+      lines: [{ lineNo: 1, itemId, unitId, qtyInUnit: 100, qtyBase: 100, unitPurchasePrice: 500, expiryDate: FUTURE_EXPIRY }],
     });
     confirmPurchaseInvoice(db, purchaseId);
 

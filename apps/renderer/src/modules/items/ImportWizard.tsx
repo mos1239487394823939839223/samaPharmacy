@@ -11,6 +11,7 @@ import type { ImportPreview, ImportProgressEvent } from '@pharmacy/shared';
 import { IMPORTABLE_FIELDS, REQUIRED_FIELDS, rejectedToCsv, type ImportField } from '@pharmacy/core';
 import { ar } from '../../i18n/ar';
 import { Stat } from '../../components/Stat';
+import { errorText } from '../../lib/errors';
 
 type Phase = 'idle' | 'previewing' | 'ready' | 'applying' | 'done';
 
@@ -38,10 +39,10 @@ export function ImportWizard({ onClose, onImported }: Props) {
     return () => unsubscribe.current?.();
   }, []);
 
-  async function pickFile() {
+  async function pickFile(bundled = false) {
     if (!window.api) return setError(ar.status.noBridge);
     setError(null);
-    const path = await window.api.import.pickFile();
+    const path = bundled ? await window.api.import.bundledCatalog() : await window.api.import.pickFile();
     if (!path) return;
 
     setPhase('previewing');
@@ -49,7 +50,7 @@ export function ImportWizard({ onClose, onImported }: Props) {
       setPreview(await window.api.import.preview(path));
       setPhase('ready');
     } catch (err) {
-      setError(`${ar.items.import.errors.previewFailed}: ${(err as Error).message}`);
+      setError(`${ar.items.import.errors.previewFailed}: ${errorText(err)}`);
       setPhase('idle');
     }
   }
@@ -64,7 +65,7 @@ export function ImportWizard({ onClose, onImported }: Props) {
     try {
       setPreview(await window.api.import.preview(preview.filePath, mapping));
     } catch (err) {
-      setError(`${ar.items.import.errors.previewFailed}: ${(err as Error).message}`);
+      setError(`${ar.items.import.errors.previewFailed}: ${errorText(err)}`);
     } finally {
       setPhase('ready');
     }
@@ -92,7 +93,7 @@ export function ImportWizard({ onClose, onImported }: Props) {
       setPhase('done');
       onImported();
     } catch (err) {
-      setError(`${ar.items.import.errors.applyFailed}: ${(err as Error).message}`);
+      setError(`${ar.items.import.errors.applyFailed}: ${errorText(err)}`);
       setPhase('ready');
     }
   }
@@ -104,7 +105,7 @@ export function ImportWizard({ onClose, onImported }: Props) {
       const path = await window.api.import.saveRejects(csv);
       if (path) setSavedPath(path);
     } catch (err) {
-      setError(`${ar.items.import.errors.exportFailed}: ${(err as Error).message}`);
+      setError(`${ar.items.import.errors.exportFailed}: ${errorText(err)}`);
     }
   }
 
@@ -122,7 +123,17 @@ export function ImportWizard({ onClose, onImported }: Props) {
         >
           {ar.items.import.pickFile}
         </button>
+        <button
+          type="button"
+          className="btn"
+          onClick={() => void pickFile(true)}
+          disabled={phase === 'applying' || phase === 'previewing'}
+          title={ar.items.import.catalogHint}
+        >
+          {ar.items.import.catalog}
+        </button>
       </div>
+      {phase === 'idle' && <p className="hint">{ar.items.import.catalogHint}</p>}
 
       {error && <div className="alert alert--error">{error}</div>}
       {summary && <div className="alert alert--info">{summary}</div>}
@@ -182,7 +193,7 @@ export function ImportWizard({ onClose, onImported }: Props) {
           {preview.rejected.length > 0 && (
             <fieldset className="fieldset">
               <legend>{ar.items.import.rejectedTitle}</legend>
-              <table className="subtable">
+              <div className="table-wrap"><table className="subtable">
                 <thead>
                   <tr>
                     <th>{ar.items.import.rowNumber}</th>
@@ -197,7 +208,7 @@ export function ImportWizard({ onClose, onImported }: Props) {
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </table></div>
               {preview.totalRows - preview.acceptedCount > preview.rejected.length && (
                 <p className="hint">
                   {fill(ar.items.import.moreRejects, { shown: preview.rejected.length })}

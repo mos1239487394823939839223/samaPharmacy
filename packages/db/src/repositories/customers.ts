@@ -8,9 +8,12 @@
  * one a sale actually applies is decided at the POS, not here.
  */
 
-import { normalizeName } from '@pharmacy/core';
+import { DomainError, normalizeName } from '@pharmacy/core';
 import type { Db } from '../connection';
+import { NOW } from '../time';
 import { nextSequence } from './items';
+import { getOpenShift, recordCashTransaction } from './shifts';
+import { getDefaultWarehouse } from './warehouses';
 
 export interface CustomerAddressInput {
   deliveryAddress?: string | null;
@@ -59,6 +62,8 @@ export interface CustomerRow {
   mobile2: string | null;
   email: string | null;
   pharmacyOwnerName: string | null;
+  pharmacyPhone: string | null;
+  notes: string | null;
   accountType: string;
   paymentMethod: string;
   openingBalance: number;
@@ -70,16 +75,22 @@ export interface CustomerRow {
   discountInvoicePct: number;
   sellAtCost: number;
   isActive: number;
+  /** Current balance from the ledger — positive means the customer owes the pharmacy. */
+  balance: number;
 }
 
 const SELECT = `
   SELECT id, code, name, mobile1, mobile2, email,
-         pharmacy_owner_name AS pharmacyOwnerName, account_type AS accountType,
+         pharmacy_owner_name AS pharmacyOwnerName, pharmacy_phone AS pharmacyPhone,
+         account_type AS accountType, notes,
          payment_method AS paymentMethod, opening_balance AS openingBalance,
          credit_limit AS creditLimit, is_vip AS isVip, is_suspended AS isSuspended,
          discount_cash_pct AS discountCashPct, discount_credit_pct AS discountCreditPct,
          discount_invoice_pct AS discountInvoicePct, sell_at_cost AS sellAtCost,
-         is_active AS isActive
+         is_active AS isActive,
+         COALESCE((SELECT cl.balance_after FROM customer_ledger cl
+                   WHERE cl.customer_id = customers.id ORDER BY cl.id DESC LIMIT 1),
+                  opening_balance) AS balance
   FROM customers
 `;
 
@@ -169,12 +180,12 @@ export function createCustomer(db: Db, input: CustomerInput): number {
            installment_company, installment_tier, payment_method, opening_balance,
            credit_limit, insurance_number, is_vip, print_name_on_invoice, sell_at_cost,
            discount_cash_pct, discount_credit_pct, discount_invoice_pct,
-           gender, marital_status, birth_date, has_children, children_count, notes
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+           gender, marital_status, birth_date, has_children, children_count, notes, created_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${NOW})`
       )
       .run(
         code,
-        data.name,
+        data.name.trim(),
         normalizeName(data.name),
         data.mobile1,
         data.mobile2 ?? null,
@@ -207,8 +218,8 @@ export function createCustomer(db: Db, input: CustomerInput): number {
 
     if (data.openingBalance) {
       db.prepare(
-        `INSERT INTO customer_ledger (customer_id, entry_type, debit, credit, balance_after, note)
-         VALUES (?, 'opening', ?, 0, ?, 'رصيد افتتاحي')`
+        `INSERT INTO customer_ledger (customer_id, entry_type, debit, credit, balance_after, note, at)
+         VALUES (?, 'opening', ?, 0, ?, 'رصيد افتتاحي', ${NOW})`
       ).run(customerId, data.openingBalance, data.openingBalance);
     }
 
@@ -222,7 +233,39 @@ export function createCustomer(db: Db, input: CustomerInput): number {
 }
 
 export function updateCustomer(db: Db, id: number, input: CustomerInput): void {
-  const run = db.transaction((data: CustomerInput) => {
+  const run = db.transaction((patch: CustomerInput) => {
+    // A field the caller did not send keeps its stored value. The form edits
+    // a subset of the columns; writing the rest as null wiped the insurance
+    // number, birth date and the sell-at-cost flag on every save.
+    const stored = db.prepare('SELECT * FROM customers WHERE id = ?').get(id) as Record<string, unknown> | undefined;
+    if (!stored) throw new DomainError('customer.notFound', `Customer ${id} not found`, { id });
+    const flag = (v: unknown) => v === 1;
+    const data: CustomerInput = {
+      ...patch,
+      mobile2: patch.mobile2 !== undefined ? patch.mobile2 : (stored.mobile2 as string | null),
+      email: patch.email !== undefined ? patch.email : (stored.email as string | null),
+      pharmacyOwnerName: patch.pharmacyOwnerName !== undefined ? patch.pharmacyOwnerName : (stored.pharmacy_owner_name as string | null),
+      pharmacyPhone: patch.pharmacyPhone !== undefined ? patch.pharmacyPhone : (stored.pharmacy_phone as string | null),
+      accountType: patch.accountType ?? (stored.account_type as CustomerInput['accountType']),
+      parentCustomerId: patch.parentCustomerId !== undefined ? patch.parentCustomerId : (stored.parent_customer_id as number | null),
+      installmentCompany: patch.installmentCompany !== undefined ? patch.installmentCompany : (stored.installment_company as string | null),
+      installmentTier: patch.installmentTier !== undefined ? patch.installmentTier : (stored.installment_tier as string | null),
+      paymentMethod: patch.paymentMethod ?? (stored.payment_method as CustomerInput['paymentMethod']),
+      creditLimit: patch.creditLimit !== undefined ? patch.creditLimit : (stored.credit_limit as number | null),
+      insuranceNumber: patch.insuranceNumber !== undefined ? patch.insuranceNumber : (stored.insurance_number as string | null),
+      isVip: patch.isVip ?? flag(stored.is_vip),
+      printNameOnInvoice: patch.printNameOnInvoice ?? flag(stored.print_name_on_invoice),
+      sellAtCost: patch.sellAtCost ?? flag(stored.sell_at_cost),
+      discountCashPct: patch.discountCashPct ?? (stored.discount_cash_pct as number),
+      discountCreditPct: patch.discountCreditPct ?? (stored.discount_credit_pct as number),
+      discountInvoicePct: patch.discountInvoicePct ?? (stored.discount_invoice_pct as number),
+      gender: patch.gender !== undefined ? patch.gender : (stored.gender as CustomerInput['gender']),
+      maritalStatus: patch.maritalStatus !== undefined ? patch.maritalStatus : (stored.marital_status as string | null),
+      birthDate: patch.birthDate !== undefined ? patch.birthDate : (stored.birth_date as string | null),
+      hasChildren: patch.hasChildren ?? flag(stored.has_children),
+      childrenCount: patch.childrenCount !== undefined ? patch.childrenCount : (stored.children_count as number | null),
+      notes: patch.notes !== undefined ? patch.notes : (stored.notes as string | null),
+    };
     db.prepare(
       `UPDATE customers SET
          name = ?, name_norm = ?, mobile1 = ?, mobile2 = ?, email = ?,
@@ -235,7 +278,7 @@ export function updateCustomer(db: Db, id: number, input: CustomerInput): void {
          children_count = ?, notes = ?
        WHERE id = ?`
     ).run(
-      data.name,
+      data.name.trim(),
       normalizeName(data.name),
       data.mobile1,
       data.mobile2 ?? null,
@@ -280,7 +323,15 @@ export function unsuspendCustomer(db: Db, id: number): void {
   db.prepare('UPDATE customers SET is_suspended = 0 WHERE id = ?').run(id);
 }
 
+/**
+ * A customer who still owes (or is owed) money is not deactivated: it would
+ * drop them out of every list while the debt is still real.
+ */
 export function deactivateCustomer(db: Db, id: number): void {
+  const balance = getCustomerBalance(db, id);
+  if (balance !== 0) {
+    throw new DomainError('customer.hasBalance', `Customer ${id} has a non-zero balance (${balance})`, { balance });
+  }
   db.prepare('UPDATE customers SET is_active = 0 WHERE id = ?').run(id);
 }
 
@@ -294,35 +345,85 @@ export function deactivateCustomer(db: Db, id: number): void {
  */
 export function postCreditSale(db: Db, customerId: number, amount: number, refId: number): void {
   const customer = getCustomer(db, customerId);
-  if (!customer) throw new Error(`Customer ${customerId} not found`);
+  if (!customer) throw new DomainError('customer.notFound', `Customer ${customerId} not found`);
   if (customer.isSuspended) {
-    throw new Error(`Customer ${customer.name} (#${customer.code}) is suspended — cannot extend credit`);
+    throw new DomainError(
+      'customer.suspended',
+      `Customer ${customer.name} (#${customer.code}) is suspended — cannot extend credit`,
+      { name: customer.name }
+    );
   }
 
   const balanceBefore = getCustomerBalance(db, customerId);
   const balanceAfter = balanceBefore + amount;
 
   if (customer.creditLimit !== null && balanceAfter > customer.creditLimit) {
-    throw new Error(
+    throw new DomainError(
+      'customer.creditLimit',
       `Credit limit exceeded for ${customer.name} (#${customer.code}): balance would be ` +
-        `${balanceAfter}, limit is ${customer.creditLimit}`
+        `${balanceAfter}, limit is ${customer.creditLimit}`,
+      { name: customer.name, balance: balanceAfter, limit: customer.creditLimit }
     );
   }
 
   db.prepare(
-    `INSERT INTO customer_ledger (customer_id, entry_type, debit, credit, balance_after, ref_table, ref_id)
-     VALUES (?, 'sale', ?, 0, ?, 'sales_invoices', ?)`
+    `INSERT INTO customer_ledger (customer_id, entry_type, debit, credit, balance_after, ref_table, ref_id, at)
+     VALUES (?, 'sale', ?, 0, ?, 'sales_invoices', ?, ${NOW})`
   ).run(customerId, amount, balanceAfter, refId);
 }
 
-export function recordCustomerPayment(db: Db, customerId: number, amount: number, note?: string | null): void {
-  if (amount <= 0) throw new RangeError(`Payment amount must be positive, got ${amount}`);
-  const balanceBefore = getCustomerBalance(db, customerId);
-  const balanceAfter = balanceBefore - amount;
+export interface PaymentOptions {
+  /**
+   * Cash paid at the counter enters the drawer: it is recorded as a cash-in
+   * on the warehouse's open shift so shift close expects it (otherwise every
+   * collected payment surfaced as an unexplained overage). Default true.
+   */
+  cash?: boolean;
+  /** Warehouse whose open shift receives the cash; the default warehouse when omitted. */
+  warehouseId?: number;
+  userId?: number;
+}
+
+export function recordCustomerPayment(
+  db: Db,
+  customerId: number,
+  amount: number,
+  note?: string | null,
+  options: PaymentOptions = {}
+): void {
+  if (!Number.isInteger(amount) || amount <= 0) {
+    throw new DomainError('payment.amountInvalid', `Payment amount must be a positive integer, got ${amount}`);
+  }
+  db.transaction(() => {
+    const customer = getCustomer(db, customerId);
+    if (!customer) throw new DomainError('customer.notFound', `Customer ${customerId} not found`);
+    const balanceAfter = getCustomerBalance(db, customerId) - amount;
+    db.prepare(
+      `INSERT INTO customer_ledger (customer_id, entry_type, debit, credit, balance_after, note, at)
+       VALUES (?, 'payment', 0, ?, ?, ?, ${NOW})`
+    ).run(customerId, amount, balanceAfter, note ?? null);
+
+    if (options.cash !== false) {
+      const warehouseId = options.warehouseId ?? getDefaultWarehouse(db).id;
+      const shift = getOpenShift(db, warehouseId);
+      if (shift) {
+        recordCashTransaction(db, shift.id, 'in', amount, 'customer_payment', `سداد ${customer.name} #${customer.code}`, options.userId ?? 1);
+      }
+    }
+  })();
+}
+
+/**
+ * Credit a customer's account for a sales return (refund method "على الحساب").
+ * A distinct 'return' entry linked to the return — not disguised as a payment.
+ */
+export function postCustomerReturnCredit(db: Db, customerId: number, amount: number, returnId: number, note: string): void {
+  if (amount <= 0) return;
+  const balanceAfter = getCustomerBalance(db, customerId) - amount;
   db.prepare(
-    `INSERT INTO customer_ledger (customer_id, entry_type, debit, credit, balance_after, note)
-     VALUES (?, 'payment', 0, ?, ?, ?)`
-  ).run(customerId, amount, balanceAfter, note ?? null);
+    `INSERT INTO customer_ledger (customer_id, entry_type, debit, credit, balance_after, ref_table, ref_id, note, at)
+     VALUES (?, 'return', 0, ?, ?, 'sales_returns', ?, ?, ${NOW})`
+  ).run(customerId, amount, balanceAfter, returnId, note);
 }
 
 export interface ReceivablesSummary {
@@ -331,7 +432,7 @@ export interface ReceivablesSummary {
       their balance does not offset what others owe (rule: this is what the
       pharmacy is still owed, not a net position). */
   totalOwed: number;
-  /** Count of active customers with a positive balance. */
+  /** Count of customers with a positive balance (deactivated ones included — their debt is still owed). */
   customerCount: number;
 }
 
@@ -357,7 +458,6 @@ export function getReceivablesSummary(db: Db): ReceivablesSummary {
                   c.opening_balance
                 ) AS balance
          FROM customers c
-         WHERE c.is_active = 1
        )`
     )
     .get() as ReceivablesSummary;

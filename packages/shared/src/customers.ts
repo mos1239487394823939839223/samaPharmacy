@@ -10,8 +10,8 @@ export const customerAddressInputSchema = z.object({
 export type CustomerAddressInput = z.infer<typeof customerAddressInputSchema>;
 
 export const customerInputSchema = z.object({
-  name: z.string().min(1),
-  mobile1: z.string().min(1),
+  name: z.string().trim().min(1).max(200),
+  mobile1: z.string().trim().min(1).max(30),
   mobile2: z.string().nullable().optional(),
   email: z.string().nullable().optional(),
   pharmacyOwnerName: z.string().nullable().optional(),
@@ -23,20 +23,20 @@ export const customerInputSchema = z.object({
   paymentMethod: z.enum(['cash', 'credit']).optional(),
   /** Piastres. */
   openingBalance: z.number().int().optional(),
-  creditLimit: z.number().int().nullable().optional(),
+  creditLimit: z.number().int().nonnegative().nullable().optional(),
   insuranceNumber: z.string().nullable().optional(),
   isVip: z.boolean().optional(),
   printNameOnInvoice: z.boolean().optional(),
   sellAtCost: z.boolean().optional(),
-  discountCashPct: z.number().nonnegative().optional(),
-  discountCreditPct: z.number().nonnegative().optional(),
-  discountInvoicePct: z.number().nonnegative().optional(),
+  discountCashPct: z.number().min(0).max(100).optional(),
+  discountCreditPct: z.number().min(0).max(100).optional(),
+  discountInvoicePct: z.number().min(0).max(100).optional(),
   gender: z.enum(['male', 'female']).nullable().optional(),
   maritalStatus: z.string().nullable().optional(),
-  birthDate: z.string().nullable().optional(),
+  birthDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
   hasChildren: z.boolean().optional(),
-  childrenCount: z.number().int().nullable().optional(),
-  notes: z.string().nullable().optional(),
+  childrenCount: z.number().int().nonnegative().nullable().optional(),
+  notes: z.string().max(2000).nullable().optional(),
   addresses: z.array(customerAddressInputSchema).optional(),
   tags: z.array(z.string()).optional(),
 });
@@ -50,6 +50,8 @@ export interface CustomerRow {
   mobile2: string | null;
   email: string | null;
   pharmacyOwnerName: string | null;
+  pharmacyPhone: string | null;
+  notes: string | null;
   accountType: string;
   paymentMethod: string;
   openingBalance: number;
@@ -61,6 +63,8 @@ export interface CustomerRow {
   discountInvoicePct: number;
   sellAtCost: number;
   isActive: number;
+  /** Current balance — positive means the customer owes the pharmacy. */
+  balance: number;
 }
 
 export interface CustomerAddressRow {
@@ -93,3 +97,12 @@ export interface ReceivablesSummary {
   totalOwed: number;
   customerCount: number;
 }
+
+export const customerPaymentSchema = z.object({
+  id: z.number().int().positive(),
+  /** Piastres. */
+  amount: z.number().int().positive(),
+  note: z.string().max(500).nullable().optional(),
+  /** Paid in cash at the counter (recorded in the open shift). Default true. */
+  cash: z.boolean().optional(),
+});

@@ -22,6 +22,9 @@ import {
 } from '../../hardware/config';
 import { createScanner, type ScannerConfig } from '../../hardware/scanner';
 import { useToast } from '../../components/Toast';
+import { errorText } from '../../lib/errors';
+import { useBusy } from '../../lib/useBusy';
+import { savePharmacyName, usePharmacyName } from '../../lib/pharmacyName';
 
 export function SettingsScreen() {
   const [settings, setSettings] = useState<PharmacySettings | null>(null);
@@ -59,7 +62,7 @@ export function SettingsScreen() {
       setD180(String(s.expiryBucketDays.d180));
       setReturnWindowDays(String(s.salesReturnWindowDays));
     } catch (err) {
-      setError((err as Error).message);
+      setError(errorText(err));
     } finally {
       setLoading(false);
     }
@@ -79,12 +82,12 @@ export function SettingsScreen() {
       d90: Number(d90),
       d180: Number(d180),
     };
-    if (!(bucketDays.d30 > 0 && bucketDays.d30 < bucketDays.d60 && bucketDays.d60 < bucketDays.d90 && bucketDays.d90 < bucketDays.d180)) {
+    if (!(Object.values(bucketDays).every((n) => Number.isInteger(n) && n <= 3650) && bucketDays.d30 > 0 && bucketDays.d30 < bucketDays.d60 && bucketDays.d60 < bucketDays.d90 && bucketDays.d90 < bucketDays.d180)) {
       setError(ar.settings.expiryOrderError);
       return;
     }
     const windowDays = Number(returnWindowDays);
-    if (!(Number.isInteger(windowDays) && windowDays > 0)) {
+    if (!(Number.isInteger(windowDays) && windowDays > 0 && windowDays <= 365)) {
       setError(ar.settings.returnWindowError);
       return;
     }
@@ -118,7 +121,7 @@ export function SettingsScreen() {
       saveScannerConfig(scanner);
       showToast(ar.settings.saved);
     } catch (err) {
-      setError(`${ar.settings.saveFailed}: ${(err as Error).message}`);
+      setError(`${ar.settings.saveFailed}: ${errorText(err)}`);
     } finally {
       setSaving(false);
     }
@@ -150,7 +153,9 @@ export function SettingsScreen() {
     <div className="stack">
       {error && <div className="alert alert--error">{error}</div>}
 
-      <fieldset className="fieldset" style={{ marginBlockStart: 0 }}>
+      <PharmacyNameCard />
+
+      <fieldset className="fieldset">
         <legend>{ar.settings.expirySection}</legend>
         <p className="hint">{ar.settings.expiryHint}</p>
         <div className="grid2">
@@ -315,5 +320,50 @@ export function SettingsScreen() {
         </button>
       </div>
     </div>
+  );
+}
+
+/** اسم الصيدلية — shown in the header and printed on every receipt and invoice. */
+function PharmacyNameCard() {
+  const stored = usePharmacyName();
+  const [draft, setDraft] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const { showToast } = useToast();
+  const { busy, run } = useBusy();
+  const value = draft ?? stored ?? '';
+
+  async function save() {
+    setError(null);
+    if (!value.trim()) return setError(ar.settings.pharmacyNameRequired);
+    try {
+      await savePharmacyName(value);
+      setDraft(null);
+      showToast(ar.settings.saved);
+    } catch (err) {
+      setError(errorText(err));
+    }
+  }
+
+  return (
+    <fieldset className="fieldset" style={{ marginBlockStart: 0 }}>
+      <legend>{ar.settings.pharmacySection}</legend>
+      <p className="hint">{ar.settings.pharmacyHint}</p>
+      {error && <div className="alert alert--error">{error}</div>}
+      <div className="btn-row" style={{ alignItems: 'flex-end', marginBlockStart: 0 }}>
+        <label className="formfield" style={{ flex: '1 1 18rem' }}>
+          <span className="formfield__label">{ar.shell.pharmacyName}</span>
+          <input
+            className="field"
+            value={value}
+            maxLength={120}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => (e.code === 'Enter' || e.code === 'NumpadEnter') && void run(save)}
+          />
+        </label>
+        <button type="button" className="btn btn--primary" disabled={busy || draft === null} onClick={() => void run(save)}>
+          {ar.items.actions.save}
+        </button>
+      </div>
+    </fieldset>
   );
 }

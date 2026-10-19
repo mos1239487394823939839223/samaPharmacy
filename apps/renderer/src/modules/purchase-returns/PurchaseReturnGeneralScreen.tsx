@@ -8,12 +8,17 @@ import { useEffect, useRef, useState } from 'react';
 import type { ItemListRow, SupplierRow } from '@pharmacy/shared';
 import { fromPiastres, toAsciiDigits } from '@pharmacy/core';
 import { ar } from '../../i18n/ar';
+import { useBusy } from '../../lib/useBusy';
 import { Stat } from '../../components/Stat';
 import { useToast } from '../../components/Toast';
+import { errorText } from '../../lib/errors';
+import { baseQty, describeQty, type UnitOption } from '../../lib/units';
+import { SearchInput } from '../../components/SearchInput';
 
 interface DraftLine {
   key: number;
   item: ItemListRow;
+  units: UnitOption[];
   unitId: number | null;
   batchId: number | null;
   batches: Array<{ id: number; qtyOnHand: number; batchNumber: string | null; unitCost: number }>;
@@ -22,7 +27,10 @@ interface DraftLine {
 
 let keySeq = 1;
 
+const unitOfLine = (l: DraftLine) => l.units.find((u) => u.id === l.unitId);
+
 export function PurchaseReturnGeneralScreen() {
+  const { busy, run } = useBusy();
   const [warehouseId, setWarehouseId] = useState<number | null>(null);
   const [supplierQuery, setSupplierQuery] = useState('');
   const [supplierResults, setSupplierResults] = useState<SupplierRow[]>([]);
@@ -32,6 +40,8 @@ export function PurchaseReturnGeneralScreen() {
   const [lines, setLines] = useState<DraftLine[]>([]);
   const [reason, setReason] = useState('');
   const [error, setError] = useState<string | null>(null);
+  /** The return just saved — offered for printing until the next one. */
+  const [lastReturnId, setLastReturnId] = useState<number | null>(null);
   const { showToast } = useToast();
   const supplierDebounce = useRef<ReturnType<typeof setTimeout>>();
   const itemDebounce = useRef<ReturnType<typeof setTimeout>>();
@@ -92,11 +102,14 @@ export function PurchaseReturnGeneralScreen() {
     // item has its own distinct rows there, so this must be resolved per
     // item, never a hardcoded id that may belong to an unrelated item or not
     // exist at all.
-    const unit = detail?.units.find((u) => u.isDefaultSale) ?? detail?.units[0];
+    const units = (detail?.units ?? [])
+      .map((u) => ({ id: u.id, nameAr: u.nameAr, factor: u.factor }))
+      .sort((a, b) => b.factor - a.factor);
+    const unit = detail?.units.find((u) => u.isDefaultSale) ?? units[0];
 
     setLines((prev) => [
       ...prev,
-      { key: keySeq++, item, unitId: unit?.id ?? null, batchId: withStock[0]?.id ?? null, batches: withStock, qty: '' },
+      { key: keySeq++, item, units, unitId: unit?.id ?? null, batchId: withStock[0]?.id ?? null, batches: withStock, qty: '' },
     ]);
     setItemQuery('');
     setItemResults([]);
@@ -111,18 +124,16 @@ export function PurchaseReturnGeneralScreen() {
     setError(null);
     if (!supplier) return setError(ar.purchaseReturns.errors.noSupplier);
 
-    const valid = lines.filter((l) => l.batchId && l.unitId && Number(l.qty) > 0);
+    const valid = lines.filter((l) => l.batchId && l.unitId && baseQty(l.qty, unitOfLine(l)) !== 0);
     if (valid.length === 0) return setError(ar.purchaseReturns.errors.noLines);
 
-    if (valid.some((l) => !Number.isInteger(Number(l.qty)))) return setError(ar.purchaseReturns.errors.qtyNotWhole);
+    if (valid.some((l) => baseQty(l.qty, unitOfLine(l)) === null)) return setError(ar.purchaseReturns.errors.qtyNotWhole);
 
-    // createPurchaseReturn's only real bound is live batch.qtyOnHand —
-    // checked here against the same batch list this screen already fetched
-    // and displays, so a return above what's on hand fails with the Arabic
-    // message instead of the repository's raw error.
+    // The real bound is what is still on the shelf in the batch (the server
+    // checks it too).
     const overQty = valid.find((l) => {
       const batch = l.batches.find((b) => b.id === l.batchId);
-      return Number(l.qty) > (batch?.qtyOnHand ?? 0);
+      return (baseQty(l.qty, unitOfLine(l)) ?? 0) > (batch?.qtyOnHand ?? 0);
     });
     if (overQty) return setError(ar.purchaseReturns.errors.qtyExceedsOnHand);
 
@@ -135,21 +146,21 @@ export function PurchaseReturnGeneralScreen() {
           itemId: l.item.id,
           batchId: l.batchId!,
           unitId: l.unitId!,
-          qtyInUnit: Number(l.qty),
-          qtyBase: Number(l.qty),
+          qtyInUnit: Number(toAsciiDigits(l.qty)),
         })),
       });
+      setLastReturnId(returnId);
       const created = await window.api.purchaseReturns.get(returnId);
       showToast(ar.purchaseReturns.confirmed.replace('{serial}', String(created?.serial ?? returnId)));
       setLines([]);
     } catch (err) {
-      setError(`${ar.purchaseReturns.errors.createFailed}: ${(err as Error).message}`);
+      setError(errorText(err));
     }
   }
 
   const totalCost = lines.reduce((s, l) => {
     const batch = l.batches.find((b) => b.id === l.batchId);
-    return s + Number(l.qty || 0) * (batch?.unitCost ?? 0);
+    return s + (baseQty(l.qty, unitOfLine(l)) ?? 0) * (batch?.unitCost ?? 0);
   }, 0);
 
   return (
@@ -160,7 +171,7 @@ export function PurchaseReturnGeneralScreen() {
             {ar.purchaseReturns.supplier}
             <span className="req"> *</span>
           </span>
-          <input
+          <SearchInput
             className="field"
             placeholder={ar.purchaseReturns.supplierSearch}
             value={supplierQuery}
@@ -184,7 +195,7 @@ export function PurchaseReturnGeneralScreen() {
       </div>
 
       <div className="items__bar field-wrap">
-        <input
+        <SearchInput
           className="field items__search"
           placeholder={ar.purchaseReturns.itemSearch}
           value={itemQuery}
@@ -204,14 +215,26 @@ export function PurchaseReturnGeneralScreen() {
       </div>
 
       {error && <div className="alert alert--error">{error}</div>}
+      {lastReturnId && (
+        <div className="btn-row" style={{ marginBlockStart: 0 }}>
+          <button
+            type="button"
+            className="btn btn--sm"
+            onClick={() => void window.api!.print.document('purchaseReturn', lastReturnId).catch((err) => setError(errorText(err)))}
+          >
+            {ar.print.lastReturn}
+          </button>
+        </div>
+      )}
 
       {lines.length > 0 && (
-        <table className="subtable">
+        <div className="table-wrap"><table className="subtable">
           <thead>
             <tr>
               <th>{ar.items.fields.nameAr}</th>
               <th>{ar.purchaseReturns.batch}</th>
               <th>{ar.purchaseReturns.onHandQty}</th>
+              <th>{ar.purchaseReturns.unit}</th>
               <th>{ar.purchaseReturns.returnQty}</th>
               <th />
             </tr>
@@ -235,16 +258,27 @@ export function PurchaseReturnGeneralScreen() {
                       ))}
                     </select>
                   </td>
-                  <td dir="ltr">{batch?.qtyOnHand ?? 0}</td>
+                  <td>{describeQty(batch?.qtyOnHand ?? 0, l.units)}</td>
+                  <td>
+                    <select
+                      className="field field--sm"
+                      value={l.unitId ?? ''}
+                      onChange={(e) => updateLine(l.key, { unitId: Number(e.target.value) })}
+                    >
+                      {l.units.map((u) => (
+                        <option key={u.id} value={u.id}>
+                          {u.nameAr}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
                   <td>
                     <input
                       className="field field--sm"
                       dir="ltr"
-                      inputMode="numeric"
+                      inputMode="decimal"
                       value={l.qty}
-                      onChange={(e) =>
-                        updateLine(l.key, { qty: toAsciiDigits(e.target.value).replace(/[^\d]/g, '') })
-                      }
+                      onChange={(e) => updateLine(l.key, { qty: toAsciiDigits(e.target.value) })}
                     />
                   </td>
                   <td>
@@ -256,7 +290,7 @@ export function PurchaseReturnGeneralScreen() {
               );
             })}
           </tbody>
-        </table>
+        </table></div>
       )}
 
       <label className="formfield formfield--narrow mt">
@@ -269,7 +303,7 @@ export function PurchaseReturnGeneralScreen() {
       </div>
 
       <div className="btn-row" style={{ marginBlockStart: 0 }}>
-        <button type="button" className="btn btn--primary" onClick={() => void submit()} disabled={lines.length === 0}>
+        <button type="button" className="btn btn--primary" onClick={() => void run(submit)} disabled={busy || lines.length === 0}>
           {ar.purchaseReturns.confirm}
         </button>
       </div>

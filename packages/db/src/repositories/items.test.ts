@@ -25,6 +25,7 @@ import { getDefaultWarehouse } from './warehouses';
 import { createPurchaseInvoice, confirmPurchaseInvoice } from './purchases';
 import { createSalesInvoice } from './sales';
 import { migrate } from '../migrate';
+import { FUTURE_EXPIRY } from '../test-helpers';
 
 let db: Db;
 
@@ -137,6 +138,27 @@ describe('normalized search', () => {
   it('returns nothing for an empty query instead of every row', () => {
     expect(searchItems(db, '   ')).toEqual([]);
   });
+
+  it('finds an item by its exact barcode, even though the barcode shares no characters with the name', () => {
+    // Reproduces a real bug: a pharmacist adds a barcode to an item (اضافة
+    // باركود اخر للصنف, saved fine), then later types or slow-scans that
+    // same barcode into any plain item-search box (purchase invoice lines,
+    // item list, sales-return lookup) expecting the item to come up — and
+    // gets nothing. name_ar_norm/name_en_norm/ingredient_norm never contain
+    // digits, so a 13-digit EAN could never match them no matter how the
+    // text is normalized; only findByBarcode (used on a genuine fast-scan
+    // event) ever looked at item_barcodes. A search box has to cover both.
+    createItem(db, { nameAr: 'دواء بباركود', barcodes: ['6221032101778'] });
+    const hits = searchItems(db, '6221032101778');
+    expect(hits.some((h) => h.nameAr === 'دواء بباركود')).toBe(true);
+  });
+
+  it('does not partial-match a barcode substring against an unrelated item', () => {
+    createItem(db, { nameAr: 'صنف باركود كامل', barcodes: ['6221032101779'] });
+    // Only a fragment of the real barcode — must not surface the item, or
+    // every short numeric search would flood results with false hits.
+    expect(searchItems(db, '622103').some((h) => h.nameAr === 'صنف باركود كامل')).toBe(false);
+  });
 });
 
 describe('updateItem', () => {
@@ -177,7 +199,7 @@ describe('updateItem', () => {
         purchaseType: 'credit',
         invoiceDate: '2026-01-01',
         lines: [
-          { lineNo: 1, itemId: id, unitId: unit!.id, qtyInUnit: 10, qtyBase: 10, unitPurchasePrice: 300 },
+          { lineNo: 1, itemId: id, unitId: unit!.id, qtyInUnit: 10, qtyBase: 10, unitPurchasePrice: 300, expiryDate: FUTURE_EXPIRY },
         ],
       });
       confirmPurchaseInvoice(fresh, purchaseId);
@@ -204,6 +226,63 @@ describe('updateItem', () => {
     } finally {
       fresh.close();
     }
+  });
+
+  it('does not wipe internationalCode/origin/itemNature/scientificName/mainIngredientPct/minStock/maxStock on an edit-and-resave round trip', () => {
+    // Reproduces a real bug: getItem's SELECT omitted these columns, so
+    // ItemForm's state for them always started blank when opening an
+    // existing item to edit — the "اضافة/تعديل صنف" screen never showed
+    // the saved value, and re-saving that form (e.g. just to fix the
+    // Arabic name) silently overwrote the real stored value with null/
+    // default. Rule: nothing typed once should be lost by editing
+    // something else on the same record.
+    const id = createItem(db, {
+      nameAr: 'صنف بكود دولي',
+      internationalCode: '5901234123457',
+      origin: 'imported',
+      itemNature: 'مسكن',
+      scientificName: 'Paracetamol',
+      mainIngredientPct: 65,
+      requiresPrescription: true,
+      minStock: 5,
+      maxStock: 200,
+    });
+
+    // Simulates ItemForm loading the item to edit it.
+    const loaded = getItem(db, id);
+    expect(loaded).toBeDefined();
+    expect(loaded!.internationalCode).toBe('5901234123457');
+    expect(loaded!.origin).toBe('imported');
+    expect(loaded!.itemNature).toBe('مسكن');
+    expect(loaded!.scientificName).toBe('Paracetamol');
+    expect(loaded!.mainIngredientPct).toBe(65);
+    expect(loaded!.requiresPrescription).toBe(1);
+    expect(loaded!.minStock).toBe(5);
+    expect(loaded!.maxStock).toBe(200);
+
+    // Re-save with everything the form loaded, only the Arabic name changed
+    // — exactly what a real edit-and-save does.
+    updateItem(db, id, {
+      nameAr: 'صنف بكود دولي - معدّل',
+      internationalCode: loaded!.internationalCode,
+      origin: loaded!.origin as 'local' | 'imported',
+      itemNature: loaded!.itemNature,
+      scientificName: loaded!.scientificName,
+      mainIngredientPct: loaded!.mainIngredientPct,
+      requiresPrescription: Boolean(loaded!.requiresPrescription),
+      minStock: loaded!.minStock,
+      maxStock: loaded!.maxStock,
+    });
+
+    const reloaded = getItem(db, id);
+    expect(reloaded!.internationalCode).toBe('5901234123457');
+    expect(reloaded!.origin).toBe('imported');
+    expect(reloaded!.itemNature).toBe('مسكن');
+    expect(reloaded!.scientificName).toBe('Paracetamol');
+    expect(reloaded!.mainIngredientPct).toBe(65);
+    expect(reloaded!.requiresPrescription).toBe(1);
+    expect(reloaded!.minStock).toBe(5);
+    expect(reloaded!.maxStock).toBe(200);
   });
 
   it('retires a removed unit instead of deleting it, so old lines stay valid', () => {

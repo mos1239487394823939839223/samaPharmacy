@@ -1,5 +1,5 @@
 export { openDatabase, sqliteVersion, type Db } from './connection';
-export { migrate, appliedVersions, loadMigrations, type Migration } from './migrate';
+export { migrate, appliedVersions, loadMigrations, pendingMigrations, type Migration } from './migrate';
 export * from './repositories/items';
 export * from './repositories/import';
 export * from './repositories/warehouses';
@@ -12,3 +12,11 @@ export * from './repositories/customers';
 export * from './repositories/sales-returns';
 export * from './repositories/purchase-returns';
 export * from './repositories/settings';
+export * from './repositories/stock-adjustments';
+export { backupDatabase, listBackups, pruneBackups, verifyBackup, type BackupFile, type BackupResult, type BackupReason } from './backup';
+export { NOW, TODAY } from './time';
+export * from './repositories/users';
+export * from './repositories/narcotics';
+export * from './repositories/catalog-tools';
+export * from './repositories/printable';
+export * from './repositories/insurance';

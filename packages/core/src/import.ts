@@ -21,7 +21,8 @@ export type ImportField =
   | 'unitName'
   | 'unitFactor'
   | 'salePrice'
-  | 'minStock';
+  | 'minStock'
+  | 'baseUnitName';
 
 export const REQUIRED_FIELDS: ImportField[] = ['nameAr'];
 
@@ -36,6 +37,7 @@ export const IMPORTABLE_FIELDS: ImportField[] = [
   'unitFactor',
   'salePrice',
   'minStock',
+  'baseUnitName',
 ];
 
 /** Column name → field, for the common spellings seen in supplier exports. */
@@ -50,6 +52,7 @@ const HEADER_HINTS: Record<ImportField, string[]> = {
   unitFactor: ['factor', 'المعامل', 'pack size'],
   salePrice: ['sale price', 'سعر البيع'],
   minStock: ['min stock', 'الحد الأدنى'],
+  baseUnitName: ['الوحدة الصغرى', 'base unit', 'smallest unit'],
 };
 
 /**
@@ -128,6 +131,8 @@ export interface ParsedRow {
   unitFactor: number | null;
   salePrice: number | null;
   minStock: number;
+  /** Name of the smallest unit (قرص / كبسولة / لبوس) when the box holds several. */
+  baseUnitName: string | null;
 }
 
 export interface RejectedRow {
@@ -250,6 +255,7 @@ export function validateRows(
       scientificName: cell(row, mapping.scientificName) || null,
       shelfLocation: cell(row, mapping.shelfLocation) || null,
       unitName: cell(row, mapping.unitName) || null,
+      baseUnitName: cell(row, mapping.baseUnitName) || null,
       unitFactor,
       salePrice,
       minStock,

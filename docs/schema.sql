@@ -1,5 +1,9 @@
 -- ============================================================
 -- Pharmacy Management System — SQLite schema
+-- Timestamps: written as datetime('now','localtime') by the application
+-- (decision D16); column DEFAULTs below are not relied on.
+-- Migration 0008 adds triggers making ledgers append-only and posted
+-- invoices immutable.
 -- Conventions:
 --   money      INTEGER, piastres (100 = 1 EGP). Never REAL.
 --   quantity   INTEGER, base units (tablets/ml). Never packs.
@@ -285,7 +289,8 @@ CREATE TABLE batches (
   received_at    TEXT NOT NULL DEFAULT (datetime('now')),
   source_line_id INTEGER,                  -- purchase_invoice_lines.id
   is_quarantined INTEGER NOT NULL DEFAULT 0,
-  UNIQUE (item_id, warehouse_id, batch_number, expiry_date, unit_cost)
+  -- is_quarantined is part of the key: a quarantine twin of a batch must coexist with it (migration 0006)
+  UNIQUE (item_id, warehouse_id, batch_number, expiry_date, unit_cost, is_quarantined)
 );
 CREATE INDEX ix_batches_item_expiry ON batches(item_id, expiry_date);
 CREATE INDEX ix_batches_expiry      ON batches(expiry_date) WHERE qty_on_hand > 0;
@@ -345,7 +350,8 @@ CREATE TABLE sales_invoices (
   extra_discount_amt INTEGER NOT NULL DEFAULT 0,   -- قيمة الخصم الإضافي
   extra_charge       INTEGER NOT NULL DEFAULT 0,   -- مبلغ إضافي
   total              INTEGER NOT NULL DEFAULT 0,   -- الاجمالي
-  paid_cash          INTEGER NOT NULL DEFAULT 0,   -- المدفوع كاش
+  paid_cash          INTEGER NOT NULL DEFAULT 0,   -- cash kept in the drawer: total for cash, 0 for credit
+  cash_tendered      INTEGER,                      -- المبلغ المستلم (for change); migration 0006
   cost_total         INTEGER NOT NULL DEFAULT 0,   -- snapshot for margin reporting
 
   notes              TEXT,
@@ -626,7 +632,7 @@ FROM batches b
 JOIN items i ON i.id = b.item_id
 WHERE b.qty_on_hand > 0
   AND b.is_quarantined = 0
-  AND (i.no_expiry = 1 OR b.expiry_date > date('now'))
+  AND (i.no_expiry = 1 OR b.expiry_date IS NULL OR b.expiry_date > date('now','localtime'))
 ORDER BY b.expiry_date ASC, b.id ASC;
 
 -- ============================================================
@@ -644,3 +650,45 @@ INSERT INTO sequences (name, next_value) VALUES
   ('narcotics', 1);
 
 INSERT INTO warehouses (name_ar, is_default) VALUES ('المخزن الرئيسي', 1);
+
+
+-- ============================================================
+-- ADDED BY MIGRATIONS 0009–0012 (see packages/db/migrations)
+-- ============================================================
+
+-- 0010: BR-7 prescription behind every sale of a scheduled item (one per invoice).
+CREATE TABLE prescriptions (
+  id                  INTEGER PRIMARY KEY,
+  invoice_id          INTEGER NOT NULL UNIQUE REFERENCES sales_invoices(id),
+  prescription_no     TEXT NOT NULL,
+  prescription_date   TEXT,
+  doctor_name         TEXT NOT NULL,
+  doctor_syndicate_no TEXT NOT NULL,
+  patient_name        TEXT NOT NULL,
+  patient_id_no       TEXT NOT NULL,   -- 14-digit national ID
+  notes               TEXT,
+  created_at          TEXT NOT NULL,
+  user_id             INTEGER NOT NULL REFERENCES users(id)
+);
+-- narcotics_register gains: reason TEXT, prescription_id INTEGER REFERENCES prescriptions(id)
+-- sales_invoices gains: held_at TEXT
+
+-- 0011: insurance (decision D19)
+CREATE TABLE insurance_companies (
+  id INTEGER PRIMARY KEY, name_ar TEXT NOT NULL, name_norm TEXT NOT NULL, phone TEXT, contact_name TEXT,
+  coverage_pct REAL NOT NULL, max_per_invoice INTEGER, requires_approval_no INTEGER NOT NULL DEFAULT 0,
+  notes TEXT, is_active INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL
+);
+CREATE TABLE insurance_exclusions (company_id INTEGER NOT NULL, item_id INTEGER NOT NULL, PRIMARY KEY (company_id, item_id));
+-- sales_invoices gains: insurance_company_id, insurance_member_no, insurance_approval_no, insurance_share INTEGER
+-- sales_returns gains: insurance_portion INTEGER
+CREATE TABLE insurance_claims (
+  id INTEGER PRIMARY KEY, serial INTEGER NOT NULL UNIQUE, company_id INTEGER NOT NULL, period_from TEXT NOT NULL,
+  period_to TEXT NOT NULL, status TEXT NOT NULL CHECK (status IN ('draft','submitted','settled')),
+  total_claimed INTEGER NOT NULL, total_paid INTEGER, total_rejected INTEGER, notes TEXT,
+  created_at TEXT NOT NULL, submitted_at TEXT, settled_at TEXT, user_id INTEGER NOT NULL
+);
+CREATE TABLE insurance_claim_lines (
+  id INTEGER PRIMARY KEY, claim_id INTEGER NOT NULL, invoice_id INTEGER NOT NULL UNIQUE,
+  amount INTEGER NOT NULL, rejected INTEGER NOT NULL DEFAULT 0, rejected_reason TEXT
+);

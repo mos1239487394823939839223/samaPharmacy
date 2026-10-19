@@ -4,23 +4,25 @@ export const purchaseLineInputSchema = z.object({
   lineNo: z.number().int().positive(),
   itemId: z.number().int().positive(),
   unitId: z.number().int().positive(),
-  qtyInUnit: z.number().positive(),
-  qtyBase: z.number().int().positive(),
+  qtyInUnit: z.number().positive().max(1000000),
+  /** Ignored by the server — derived from the unit's factor. */
+  qtyBase: z.number().int().positive().optional(),
   bonusInUnit: z.number().nonnegative().optional(),
+  /** Ignored by the server — derived from the unit's factor. */
   bonusBase: z.number().int().nonnegative().optional(),
-  batchNumber: z.string().nullable().optional(),
+  batchNumber: z.string().max(60).nullable().optional(),
   expiryDate: z.string().nullable().optional(),
   /** Piastres. */
   unitPurchasePrice: z.number().int().nonnegative(),
-  discountPct: z.number().nonnegative().optional(),
+  discountPct: z.number().min(0).max(100).optional(),
   discountAmt: z.number().int().nonnegative().optional(),
-  taxPct: z.number().nonnegative().optional(),
+  taxPct: z.number().min(0).max(100).optional(),
   taxAmt: z.number().int().nonnegative().optional(),
 });
 export type PurchaseLineInput = z.infer<typeof purchaseLineInputSchema>;
 
 export const purchaseInvoiceInputSchema = z.object({
-  supplierInvoiceNo: z.string().min(1),
+  supplierInvoiceNo: z.string().trim().min(1).max(60),
   supplierId: z.number().int().positive(),
   warehouseId: z.number().int().positive(),
   purchaseType: z.enum(['cash', 'credit']),
@@ -29,9 +31,9 @@ export const purchaseInvoiceInputSchema = z.object({
   /** Piastres. */
   expenses: z.number().int().nonnegative().optional(),
   extraDiscountAmt: z.number().int().nonnegative().optional(),
-  extraDiscountPct: z.number().nonnegative().optional(),
-  notes: z.string().nullable().optional(),
-  lines: z.array(purchaseLineInputSchema).min(1),
+  extraDiscountPct: z.number().min(0).max(100).optional(),
+  notes: z.string().max(1000).nullable().optional(),
+  lines: z.array(purchaseLineInputSchema).min(1).max(1000),
 });
 export type PurchaseInvoiceInput = z.infer<typeof purchaseInvoiceInputSchema>;
 

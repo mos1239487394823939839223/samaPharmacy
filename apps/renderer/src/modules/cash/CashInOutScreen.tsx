@@ -18,6 +18,8 @@ import { MoneyInput } from '../../components/MoneyInput';
 import { Stat } from '../../components/Stat';
 import { useToast } from '../../components/Toast';
 import { EmptyState } from '../../components/EmptyState';
+import { errorCode, errorText } from '../../lib/errors';
+import { useRefreshOnActivate } from '../../lib/workspace';
 
 const CATEGORIES = [
   { value: 'petty_cash', label: ar.cashInOut.categories.pettyCash },
@@ -40,6 +42,7 @@ export function CashInOutScreen() {
   const [amount, setAmount] = useState<number | null>(null);
   const [category, setCategory] = useState(CATEGORIES[0]!.value);
   const [note, setNote] = useState('');
+  const [saving, setSaving] = useState(false);
 
   async function load() {
     if (!window.api) {
@@ -65,7 +68,7 @@ export function CashInOutScreen() {
         setTransactions(tx);
       }
     } catch (err) {
-      setError((err as Error).message);
+      setError(errorText(err));
     } finally {
       setLoading(false);
     }
@@ -74,12 +77,18 @@ export function CashInOutScreen() {
   useEffect(() => {
     void load();
   }, []);
+  useRefreshOnActivate(() => void load());
 
   async function submit() {
-    if (!window.api || !shift) return;
+    if (!window.api || !shift || saving) return;
     setError(null);
     if (amount === null || amount <= 0) return setError(ar.cashInOut.errors.invalidAmount);
+    if (direction === 'out' && expectedCash !== null && amount > expectedCash) {
+      return setError(ar.errors['shift.insufficientCash'].replace('{available}', fromPiastres(expectedCash)));
+    }
+    if (category === 'other' && !note.trim()) return setError(ar.cashInOut.errors.noteRequired);
 
+    setSaving(true);
     try {
       await window.api.shifts.recordCash(shift.id, direction, amount, category, note.trim() || null);
       showToast(direction === 'in' ? ar.cashInOut.cashIn : ar.cashInOut.cashOut);
@@ -87,17 +96,12 @@ export function CashInOutScreen() {
       setNote('');
       await load();
     } catch (err) {
-      const message = (err as Error).message;
-      // recordCashTransaction (packages/db/src/repositories/shifts.ts) rejects
-      // a movement against a shift closed since this screen loaded it — a
-      // real race if the shift is closed from ShiftHandoverScreen without
-      // this screen reloading. Caught by message shape since the boundary
-      // flattens every thrown error to a bare string (db-process/index.ts).
-      setError(
-        /is closed \(rule 9\/BR-10\)/.test(message)
-          ? ar.cashInOut.errors.shiftClosed
-          : `${ar.cashInOut.errors.submitFailed}: ${message}`
-      );
+      // A shift closed from another screen since this one loaded comes back
+      // as 'shift.closed' — translated like every other coded error.
+      setError(errorText(err));
+      if (errorCode(err) === 'shift.closed') void load();
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -153,7 +157,7 @@ export function CashInOutScreen() {
           </label>
         </div>
         <div className="btn-row">
-          <button type="button" className="btn btn--primary" onClick={() => void submit()}>
+          <button type="button" className="btn btn--primary" disabled={saving} onClick={() => void submit()}>
             {ar.cashInOut.submit}
           </button>
         </div>
@@ -164,7 +168,7 @@ export function CashInOutScreen() {
         {transactions.length === 0 ? (
           <EmptyState title={ar.cashInOut.empty} />
         ) : (
-          <table className="datatable">
+          <div className="table-wrap"><table className="datatable">
             <thead>
               <tr>
                 <th>{ar.purchases.invoiceDate}</th>
@@ -180,12 +184,12 @@ export function CashInOutScreen() {
                   <td dir="ltr">{t.at.slice(0, 16)}</td>
                   <td>{t.direction === 'in' ? ar.cashInOut.cashIn : ar.cashInOut.cashOut}</td>
                   <td dir="ltr">{fromPiastres(t.amount)}</td>
-                  <td>{t.category ?? '—'}</td>
+                  <td>{CATEGORIES.find((c) => c.value === t.category)?.label ?? t.category ?? '—'}</td>
                   <td>{t.note ?? '—'}</td>
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
         )}
       </div>
     </div>

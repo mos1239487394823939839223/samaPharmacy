@@ -3,8 +3,9 @@
  * (blueprint §1.7) and the supplier ledger.
  */
 
-import { normalizeName } from '@pharmacy/core';
+import { DomainError, normalizeName } from '@pharmacy/core';
 import type { Db } from '../connection';
+import { NOW } from '../time';
 import { nextSequence } from './items';
 
 export interface SupplierRow {
@@ -18,6 +19,8 @@ export interface SupplierRow {
   openingBalance: number;
   paymentTermsDays: number | null;
   isActive: number;
+  /** Current balance — positive means the pharmacy owes the supplier. */
+  balance: number;
 }
 
 export interface SupplierInput {
@@ -33,7 +36,10 @@ export interface SupplierInput {
 const SELECT = `
   SELECT id, code, name_ar AS nameAr, phone1, phone2, address,
          tax_number AS taxNumber, opening_balance AS openingBalance,
-         payment_terms_days AS paymentTermsDays, is_active AS isActive
+         payment_terms_days AS paymentTermsDays, is_active AS isActive,
+         COALESCE((SELECT sl.balance_after FROM supplier_ledger sl
+                   WHERE sl.supplier_id = suppliers.id ORDER BY sl.id DESC LIMIT 1),
+                  opening_balance) AS balance
   FROM suppliers
 `;
 
@@ -79,7 +85,7 @@ export function createSupplier(db: Db, input: SupplierInput): number {
       )
       .run(
         code,
-        data.nameAr,
+        data.nameAr.trim(),
         normalizeName(data.nameAr),
         data.phone1 ?? null,
         data.phone2 ?? null,
@@ -92,8 +98,8 @@ export function createSupplier(db: Db, input: SupplierInput): number {
 
     if (data.openingBalance) {
       db.prepare(
-        `INSERT INTO supplier_ledger (supplier_id, entry_type, debit, credit, balance_after, note)
-         VALUES (?, 'opening', 0, ?, ?, 'رصيد افتتاحي')`
+        `INSERT INTO supplier_ledger (supplier_id, entry_type, debit, credit, balance_after, note, at)
+         VALUES (?, 'opening', 0, ?, ?, 'رصيد افتتاحي', ${NOW})`
       ).run(supplierId, data.openingBalance, data.openingBalance);
     }
 
@@ -107,7 +113,7 @@ export function updateSupplier(db: Db, id: number, input: SupplierInput): void {
     `UPDATE suppliers SET name_ar = ?, name_norm = ?, phone1 = ?, phone2 = ?,
        address = ?, tax_number = ?, payment_terms_days = ? WHERE id = ?`
   ).run(
-    input.nameAr,
+    input.nameAr.trim(),
     normalizeName(input.nameAr),
     input.phone1 ?? null,
     input.phone2 ?? null,
@@ -119,5 +125,49 @@ export function updateSupplier(db: Db, id: number, input: SupplierInput): void {
 }
 
 export function deactivateSupplier(db: Db, id: number): void {
+  const balance = getSupplierBalance(db, id);
+  if (balance !== 0) {
+    throw new DomainError('supplier.hasBalance', `Supplier ${id} has a non-zero balance (${balance})`, { balance });
+  }
   db.prepare('UPDATE suppliers SET is_active = 0 WHERE id = ?').run(id);
+}
+
+/**
+ * Pay a supplier (سداد مورد). Paid from the safe, not the shift drawer
+ * (decision D13), so no cash_transactions row.
+ */
+export function recordSupplierPayment(db: Db, supplierId: number, amount: number, note?: string | null): void {
+  if (!Number.isInteger(amount) || amount <= 0) {
+    throw new DomainError('payment.amountInvalid', `Payment amount must be a positive integer, got ${amount}`);
+  }
+  db.transaction(() => {
+    if (!getSupplier(db, supplierId)) throw new DomainError('supplier.notFound', `Supplier ${supplierId} not found`);
+    const after = getSupplierBalance(db, supplierId) - amount;
+    db.prepare(
+      `INSERT INTO supplier_ledger (supplier_id, entry_type, debit, credit, balance_after, note, at)
+       VALUES (?, 'payment', ?, 0, ?, ?, ${NOW})`
+    ).run(supplierId, amount, after, note?.trim() || null);
+  })();
+}
+
+export interface SupplierLedgerRow {
+  id: number;
+  at: string;
+  entryType: string;
+  debit: number;
+  credit: number;
+  balanceAfter: number;
+  refTable: string | null;
+  refId: number | null;
+  note: string | null;
+}
+
+export function getSupplierLedger(db: Db, supplierId: number, limit = 200): SupplierLedgerRow[] {
+  return db
+    .prepare(
+      `SELECT id, at, entry_type AS entryType, debit, credit, balance_after AS balanceAfter,
+              ref_table AS refTable, ref_id AS refId, note
+       FROM supplier_ledger WHERE supplier_id = ? ORDER BY id DESC LIMIT ?`
+    )
+    .all(supplierId, limit) as SupplierLedgerRow[];
 }

@@ -23,6 +23,21 @@ import {
   type WarehouseRow,
   type SupplierInput,
   type SupplierRow,
+  type SupplierLedgerRow,
+  type StockAdjustmentInput,
+  type StockAdjustmentRow,
+  type AdjustmentMoveRow,
+  type BackupStatus,
+  type AuditRow,
+  type NarcoticsRow,
+  type NarcoticsReconciliationRow,
+  type HeldInvoiceRow,
+  type ResumedInvoice,
+  type InvoiceSearchRow,
+  type AlternativeRow,
+  type UnitPriceIssue,
+  type PrinterStatus,
+  type PrescriptionInput,
   type PurchaseInvoiceInput,
   type PurchaseInvoiceRow,
   type PurchaseLineRow,
@@ -61,6 +76,13 @@ function send<T>(request: DbRequest): Promise<T> {
   return ipcRenderer.invoke(IPC.dbRequest, request) as Promise<T>;
 }
 
+/** Subscribe to a main → renderer push channel without exposing the IpcRendererEvent. */
+function subscribe<T>(channel: string, listener: (data: T) => void): () => void {
+  const handler = (_e: unknown, data: T) => listener(data);
+  ipcRenderer.on(channel, handler);
+  return () => ipcRenderer.removeListener(channel, handler);
+}
+
 const api: RendererApi = {
   ping: () => send<PingResult>({ kind: 'ping' }),
 
@@ -75,10 +97,14 @@ const api: RendererApi = {
     count: () => send<number>({ kind: 'items.count' }),
     findByBarcode: (barcode) =>
       send<ItemListRow | null>({ kind: 'items.findByBarcode', barcode }),
+    alternatives: (id, warehouseId) => send<AlternativeRow[]>({ kind: 'items.alternatives', id, warehouseId }),
+    unitPriceIssues: () => send<UnitPriceIssue[]>({ kind: 'items.unitPriceIssues' }),
+    fixUnitPrices: (itemIds) => send<number>({ kind: 'items.fixUnitPrices', itemIds }),
   },
 
   import: {
     pickFile: () => send<string | null>({ kind: 'import.pickFile' }),
+    bundledCatalog: () => send<string>({ kind: 'import.bundledCatalog' }),
     preview: (filePath, mapping) =>
       send<ImportPreview>({ kind: 'import.preview', filePath, mapping }),
     apply: (filePath, mapping) =>
@@ -110,6 +136,8 @@ const api: RendererApi = {
     create: (input: SupplierInput) => send<number>({ kind: 'suppliers.create', input }),
     update: (id, input: SupplierInput) => send<void>({ kind: 'suppliers.update', id, input }),
     deactivate: (id) => send<void>({ kind: 'suppliers.deactivate', id }),
+    recordPayment: (id, amount, note) => send<void>({ kind: 'suppliers.recordPayment', id, amount, note }),
+    ledger: (id, limit) => send<SupplierLedgerRow[]>({ kind: 'suppliers.ledger', id, limit }),
   },
 
   purchases: {
@@ -127,7 +155,7 @@ const api: RendererApi = {
   },
 
   stock: {
-    search: (query, limit) => send<ItemStockRow[]>({ kind: 'stock.search', query, limit }),
+    search: (query, limit, warehouseId) => send<ItemStockRow[]>({ kind: 'stock.search', query, limit, warehouseId }),
     batches: (itemId) => send<BatchRow[]>({ kind: 'stock.batches', itemId }),
     sellableBatches: (itemId, warehouseId) =>
       send<BatchRow[]>({ kind: 'stock.sellableBatches', itemId, warehouseId }),
@@ -136,8 +164,22 @@ const api: RendererApi = {
     expiryReport: (asOf) => send<ExpiryReport>({ kind: 'stock.expiryReport', asOf }),
   },
 
+  adjustments: {
+    create: (input: StockAdjustmentInput) => send<number>({ kind: 'adjustments.create', input }),
+    list: (limit) => send<StockAdjustmentRow[]>({ kind: 'adjustments.list', limit }),
+    moves: (id) => send<AdjustmentMoveRow[]>({ kind: 'adjustments.moves', id }),
+    writeOffExpired: (warehouseId) =>
+      send<{ adjustmentId: number; batchCount: number } | null>({ kind: 'adjustments.writeOffExpired', warehouseId }),
+  },
+
   sales: {
     create: (input: SalesInvoiceInput) => send<number>({ kind: 'sales.create', input }),
+    checkout: (input: SalesInvoiceInput) => send<number>({ kind: 'sales.checkout', input }),
+    hold: (input: SalesInvoiceInput) => send<number>({ kind: 'sales.hold', input }),
+    held: (warehouseId) => send<HeldInvoiceRow[]>({ kind: 'sales.held', warehouseId }),
+    resume: (id) => send<ResumedInvoice>({ kind: 'sales.resume', id }),
+    search: (filter) => send<InvoiceSearchRow[]>({ kind: 'sales.search', ...filter }),
+    prescription: (id) => send<(PrescriptionInput & { id: number }) | null>({ kind: 'sales.prescription', id }),
     get: (id) =>
       send<(SalesInvoiceRow & { lines: SalesLineRow[] }) | null>({ kind: 'sales.get', id }),
     getBySerial: (serial) => send<SalesInvoiceRow | null>({ kind: 'sales.getBySerial', serial }),
@@ -173,8 +215,8 @@ const api: RendererApi = {
     deactivate: (id) => send<void>({ kind: 'customers.deactivate', id }),
     balance: (id) => send<number>({ kind: 'customers.balance', id }),
     ledger: (id, limit) => send<CustomerLedgerRow[]>({ kind: 'customers.ledger', id, limit }),
-    recordPayment: (id, amount, note) =>
-      send<void>({ kind: 'customers.recordPayment', id, amount, note }),
+    recordPayment: (id, amount, note, cash) =>
+      send<void>({ kind: 'customers.recordPayment', id, amount, note, cash }),
     receivablesSummary: () =>
       send<ReceivablesSummary>({ kind: 'customers.receivablesSummary' }),
   },
@@ -216,6 +258,57 @@ const api: RendererApi = {
   settings: {
     get: () => send<PharmacySettings>({ kind: 'settings.get' }),
     update: (input) => send<PharmacySettings>({ kind: 'settings.update', input }),
+  },
+
+  backup: {
+    status: () => send<BackupStatus>({ kind: 'backup.status' }),
+    run: () => send<BackupStatus>({ kind: 'backup.run' }),
+    pickFolder: () => send<string | null>({ kind: 'backup.pickFolder' }),
+    restore: (filePath) => send<boolean | null>({ kind: 'backup.restore', filePath }),
+  },
+
+  audit: {
+    list: (filter) => send<AuditRow[]>({ kind: 'audit.list', ...(filter ?? {}) }),
+  },
+
+  narcotics: {
+    register: (filter) => send<NarcoticsRow[]>({ kind: 'narcotics.register', ...(filter ?? {}) }),
+    reconciliation: () => send<NarcoticsReconciliationRow[]>({ kind: 'narcotics.reconciliation' }),
+    fix: (id, details, reason) => send<number>({ kind: 'narcotics.fix', id, details, reason }),
+  },
+
+  print: {
+    receipt: (invoiceId, reprint) => send<void>({ kind: 'print.receipt', invoiceId, reprint }),
+    test: () => send<void>({ kind: 'print.test' }),
+    status: () => send<PrinterStatus>({ kind: 'print.status' }),
+    retryFailed: () => send<void>({ kind: 'print.retryFailed' }),
+    openDrawer: () => send<void>({ kind: 'print.openDrawer' }),
+    listPrinters: () => send<string[]>({ kind: 'print.listPrinters' }),
+    document: (doc, id) => send<void>({ kind: 'print.document', doc, id }),
+  },
+
+  files: {
+    saveCsv: (defaultName, csv) => send<string | null>({ kind: 'file.saveCsv', defaultName, csv }),
+  },
+
+  insurance: {
+    companies: (includeInactive) => send({ kind: 'insurance.companies', includeInactive }),
+    createCompany: (input) => send({ kind: 'insurance.createCompany', input }),
+    updateCompany: (id, input) => send({ kind: 'insurance.updateCompany', id, input }),
+    setCompanyActive: (id, active) => send({ kind: 'insurance.setCompanyActive', id, active }),
+    exclusions: (id) => send({ kind: 'insurance.exclusions', id }),
+    setExclusion: (id, itemId, excluded) => send({ kind: 'insurance.setExclusion', id, itemId, excluded }),
+    unclaimed: (companyId, from, to) => send({ kind: 'insurance.unclaimed', companyId, from, to }),
+    createClaim: (companyId, from, to) => send({ kind: 'insurance.createClaim', companyId, from, to }),
+    claims: (companyId) => send({ kind: 'insurance.claims', companyId }),
+    claimLines: (id) => send({ kind: 'insurance.claimLines', id }),
+    submitClaim: (id) => send({ kind: 'insurance.submitClaim', id }),
+    settleClaim: (id, input) => send({ kind: 'insurance.settleClaim', id, input }),
+    receivables: () => send({ kind: 'insurance.receivables' }),
+  },
+
+  events: {
+    onPrinter: (listener) => subscribe(IPC_EVENTS.printerEvent, listener),
   },
 };
 

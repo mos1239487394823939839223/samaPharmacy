@@ -3,13 +3,18 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import type { SupplierRow } from '@pharmacy/shared';
+import type { SupplierLedgerRow, SupplierRow } from '@pharmacy/shared';
 import { fromPiastres, toAsciiDigits } from '@pharmacy/core';
 import { ar } from '../../i18n/ar';
 import { MoneyInput } from '../../components/MoneyInput';
 import { EmptyState, TableSkeleton } from '../../components/EmptyState';
+import { errorText } from '../../lib/errors';
+import { SearchInput } from '../../components/SearchInput';
 
-type Mode = { view: 'list' } | { view: 'form'; existing: SupplierRow | null };
+type Mode =
+  | { view: 'list' }
+  | { view: 'form'; existing: SupplierRow | null }
+  | { view: 'account'; supplier: SupplierRow };
 
 export function SuppliersScreen() {
   const [mode, setMode] = useState<Mode>({ view: 'list' });
@@ -29,7 +34,7 @@ export function SuppliersScreen() {
     try {
       setRows(q.trim() ? await window.api.suppliers.search(q, 200) : await window.api.suppliers.list());
     } catch (err) {
-      setError((err as Error).message);
+      setError(errorText(err));
     } finally {
       setLoading(false);
     }
@@ -53,8 +58,16 @@ export function SuppliersScreen() {
   async function deactivate(id: number) {
     if (!window.api) return;
     if (!confirm(ar.suppliers.confirmDeactivate)) return;
-    await window.api.suppliers.deactivate(id);
+    try {
+      await window.api.suppliers.deactivate(id);
+    } catch (err) {
+      setError(errorText(err));
+    }
     void load(query);
+  }
+
+  if (mode.view === 'account') {
+    return <SupplierAccount supplier={mode.supplier} onBack={() => setMode({ view: 'list' })} />;
   }
 
   if (mode.view === 'form') {
@@ -70,7 +83,7 @@ export function SuppliersScreen() {
   return (
     <div className="items">
       <div className="items__bar">
-        <input
+        <SearchInput
           className="field items__search"
           placeholder={ar.suppliers.search}
           value={query}
@@ -92,13 +105,13 @@ export function SuppliersScreen() {
       ) : rows.length === 0 ? (
         <EmptyState title={query.trim() ? ar.suppliers.noResults : ar.suppliers.empty} />
       ) : (
-        <table className="datatable">
+        <div className="table-wrap"><table className="datatable">
           <thead>
             <tr>
               <th>{ar.suppliers.code}</th>
               <th>{ar.suppliers.name}</th>
               <th>{ar.suppliers.phone1}</th>
-              <th>{ar.suppliers.openingBalance}</th>
+              <th>{ar.suppliers.balance}</th>
               <th />
             </tr>
           </thead>
@@ -108,8 +121,11 @@ export function SuppliersScreen() {
                 <td dir="ltr">{r.code}</td>
                 <td>{r.nameAr}</td>
                 <td dir="ltr">{r.phone1 ?? '—'}</td>
-                <td dir="ltr">{fromPiastres(r.openingBalance)}</td>
+                <td dir="ltr" className={r.balance > 0 ? 'strong' : 'muted'}>{fromPiastres(r.balance)}</td>
                 <td className="datatable__actions">
+                  <button type="button" className="btn btn--sm" onClick={() => setMode({ view: 'account', supplier: r })}>
+                    {ar.suppliers.account}
+                  </button>
                   <button
                     type="button"
                     className="btn btn--sm"
@@ -128,7 +144,7 @@ export function SuppliersScreen() {
               </tr>
             ))}
           </tbody>
-        </table>
+        </table></div>
       )}
     </div>
   );
@@ -155,13 +171,21 @@ function SupplierForm({
     existing?.paymentTermsDays != null ? String(existing.paymentTermsDays) : ''
   );
   const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
   async function submit() {
+    if (saving) return;
     setError(null);
     if (!nameAr.trim()) return setError(ar.suppliers.errors.nameRequired);
 
-    const termsDays = paymentTermsDays === '' ? null : Number(paymentTermsDays);
-    if (termsDays !== null && termsDays < 0) return setError(ar.suppliers.errors.negativePaymentTerms);
+    const termsText = paymentTermsDays.trim();
+    if (termsText && (!/^\d+$/.test(termsText) || Number(termsText) > 365)) {
+      return setError(ar.suppliers.errors.negativePaymentTerms);
+    }
+    const termsDays = termsText === '' ? null : Number(termsText);
+    for (const phone of [phone1, phone2]) {
+      if (phone.trim() && !/^[\d+\- ]{6,20}$/.test(toAsciiDigits(phone.trim()))) return setError(ar.suppliers.errors.phoneInvalid);
+    }
 
     if (!window.api) return setError(ar.status.noBridge);
 
@@ -174,19 +198,22 @@ function SupplierForm({
       openingBalance: openingBalance ?? 0,
       paymentTermsDays: termsDays,
     };
+    setSaving(true);
     try {
       if (existing) await window.api.suppliers.update(existing.id, input);
       else await window.api.suppliers.create(input);
       onSaved();
     } catch (err) {
-      setError(`${ar.suppliers.errors.saveFailed}: ${(err as Error).message}`);
+      setError(`${ar.suppliers.errors.saveFailed}: ${errorText(err)}`);
+    } finally {
+      setSaving(false);
     }
   }
 
   return (
     <div className="item-form">
       <div className="item-form__toolbar">
-        <button type="button" className="btn btn--primary" onClick={() => void submit()}>
+        <button type="button" className="btn btn--primary" disabled={saving} onClick={() => void submit()}>
           {ar.items.actions.save}
         </button>
         <button type="button" className="btn" onClick={onCancel}>
@@ -235,7 +262,7 @@ function SupplierForm({
           </label>
           <label className="formfield">
             <span className="formfield__label">{ar.suppliers.openingBalance}</span>
-            <MoneyInput value={openingBalance} onChange={setOpeningBalance} disabled={Boolean(existing)} />
+            <MoneyInput value={openingBalance} onChange={setOpeningBalance} disabled={Boolean(existing)} allowNegative />
           </label>
           <label className="formfield">
             <span className="formfield__label">{ar.suppliers.paymentTermsDays}</span>
@@ -249,6 +276,110 @@ function SupplierForm({
           </label>
         </div>
       </div>
+    </div>
+  );
+}
+
+/** كشف حساب المورد + سداد — pay a supplier from the safe (not the shift drawer, D13). */
+function SupplierAccount({ supplier, onBack }: { supplier: SupplierRow; onBack: () => void }) {
+  const [ledger, setLedger] = useState<SupplierLedgerRow[]>([]);
+  const [balance, setBalance] = useState(supplier.balance);
+  const [amount, setAmount] = useState<number | null>(null);
+  const [note, setNote] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  async function load() {
+    if (!window.api) return;
+    const [l, b] = await Promise.all([window.api.suppliers.ledger(supplier.id, 200), window.api.suppliers.balance(supplier.id)]);
+    setLedger(l);
+    setBalance(b);
+  }
+
+  useEffect(() => {
+    void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [supplier.id]);
+
+  async function pay() {
+    if (!window.api || saving) return;
+    setError(null);
+    if (amount === null || amount <= 0) return setError(ar.errors['payment.amountInvalid']);
+    setSaving(true);
+    try {
+      await window.api.suppliers.recordPayment(supplier.id, amount, note.trim() || null);
+      setAmount(null);
+      setNote('');
+      await load();
+    } catch (err) {
+      setError(errorText(err));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const entryLabel = ar.suppliers.entryTypes as Record<string, string>;
+
+  return (
+    <div className="stack">
+      <div className="items__bar">
+        <button type="button" className="btn" onClick={onBack}>
+          {ar.stock.back}
+        </button>
+        <h2 className="section-heading section-heading--inline">{supplier.nameAr}</h2>
+      </div>
+      {error && <div className="alert alert--error">{error}</div>}
+
+      <div className="panel stack">
+        <div className="formfield">
+          <span className="formfield__label">{ar.suppliers.balance}</span>
+          <span dir="ltr" className="strong">{fromPiastres(balance)}</span>
+        </div>
+        <div className="grid2">
+          <label className="formfield">
+            <span className="formfield__label">{ar.suppliers.payAmount}</span>
+            <MoneyInput value={amount} onChange={setAmount} />
+          </label>
+          <label className="formfield">
+            <span className="formfield__label">{ar.suppliers.payNote}</span>
+            <input className="field" value={note} onChange={(e) => setNote(e.target.value)} />
+          </label>
+        </div>
+        <p className="hint">{ar.suppliers.payHint}</p>
+        <div className="btn-row">
+          <button type="button" className="btn btn--primary" disabled={saving} onClick={() => void pay()}>
+            {ar.suppliers.pay}
+          </button>
+        </div>
+      </div>
+
+      <fieldset className="fieldset">
+        <legend>{ar.suppliers.statement}</legend>
+        <div className="table-wrap"><table className="subtable">
+          <thead>
+            <tr>
+              <th>{ar.suppliers.date}</th>
+              <th>{ar.suppliers.entry}</th>
+              <th>{ar.suppliers.debit}</th>
+              <th>{ar.suppliers.credit}</th>
+              <th>{ar.suppliers.balanceAfter}</th>
+              <th>{ar.suppliers.payNote}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {ledger.map((e) => (
+              <tr key={e.id}>
+                <td dir="ltr">{e.at.slice(0, 16)}</td>
+                <td>{entryLabel[e.entryType] ?? e.entryType}</td>
+                <td dir="ltr">{e.debit ? fromPiastres(e.debit) : '—'}</td>
+                <td dir="ltr">{e.credit ? fromPiastres(e.credit) : '—'}</td>
+                <td dir="ltr">{fromPiastres(e.balanceAfter)}</td>
+                <td>{e.note ?? ''}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table></div>
+      </fieldset>
     </div>
   );
 }

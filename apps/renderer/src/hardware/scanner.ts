@@ -27,6 +27,7 @@
  */
 
 import { useEffect, useRef } from 'react';
+import { usePageActive } from '../lib/workspace';
 
 export type ScanSource = 'prefix' | 'timing';
 
@@ -459,9 +460,10 @@ export function createScanner(
       if (fast && longEnough) {
         e.preventDefault();
         e.stopPropagation();
-        const leaked = buffer;
+        // Strip first: the handler may write the code into the very field it
+        // leaked into, and stripping afterwards would erase it again.
+        stripLeaked(buffer);
         emit('timing', now);
-        stripLeaked(leaked);
       } else {
         if (buffer.length && !fast) diag.rejections.too_slow += 1;
         reset();
@@ -490,9 +492,8 @@ export function createScanner(
       if (idleTimer) clearTimeout(idleTimer);
       idleTimer = setTimeout(() => {
         if (buffer.length >= cfg.minLength) {
-          const leaked = buffer;
+          stripLeaked(buffer);
           emit('timing', performance.now());
-          stripLeaked(leaked);
         } else {
           reset();
         }
@@ -533,7 +534,10 @@ export function useBarcodeScanner(
   onScan: (event: ScanEvent) => void,
   options: ScannerOptions & { enabled?: boolean } = {}
 ): void {
-  const { enabled = true, config, shouldIgnore, onReject, onGuard } = options;
+  const { config, shouldIgnore, onReject, onGuard } = options;
+  // A hidden page in the workspace must never receive a scan (lib/workspace.tsx).
+  const pageActive = usePageActive();
+  const enabled = (options.enabled ?? true) && pageActive;
 
   const scanRef = useRef(onScan);
   scanRef.current = onScan;

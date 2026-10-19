@@ -16,6 +16,7 @@ import {
   getPurchaseLines,
   type PurchaseInvoiceInput,
 } from './purchases';
+import { FUTURE_EXPIRY } from '../test-helpers';
 
 let db: Db;
 let itemId: number;
@@ -29,7 +30,10 @@ beforeEach(() => {
 
   itemId = createItem(db, {
     nameAr: 'صنف للشراء',
-    units: [{ nameAr: 'علبة', factor: 10, salePrice: 0, isBase: false, isDefaultSale: true }],
+    units: [
+      { nameAr: 'علبة', factor: 10, salePrice: 0, isBase: false, isDefaultSale: true },
+      { nameAr: 'قرص', factor: 1, salePrice: 0, isBase: true },
+    ],
   });
   supplierId = createSupplier(db, { nameAr: 'مورد الاختبار' });
   warehouseId = getDefaultWarehouse(db).id;
@@ -50,6 +54,7 @@ function baseInvoice(overrides: Partial<PurchaseInvoiceInput> = {}): PurchaseInv
         qtyInUnit: 10,
         qtyBase: 100,
         unitPurchasePrice: 1000,
+        expiryDate: FUTURE_EXPIRY,
       },
     ],
     ...overrides,
@@ -101,6 +106,7 @@ describe('createPurchaseInvoice', () => {
             qtyInUnit: 10,
             qtyBase: 100,
             unitPurchasePrice: 1000,
+            expiryDate: FUTURE_EXPIRY,
             discountPct: 10,
           },
         ],
@@ -148,6 +154,7 @@ describe('confirmPurchaseInvoice', () => {
             bonusInUnit: 10,
             bonusBase: 100,
             unitPurchasePrice: 1000,
+            expiryDate: FUTURE_EXPIRY,
           },
         ],
       })
@@ -175,6 +182,7 @@ describe('confirmPurchaseInvoice', () => {
             bonusInUnit: 10,
             bonusBase: 100,
             unitPurchasePrice: 1000,
+            expiryDate: FUTURE_EXPIRY,
           },
         ],
       })
@@ -221,7 +229,7 @@ describe('confirmPurchaseInvoice', () => {
       baseInvoice({
         supplierInvoiceNo: 'B',
         lines: [
-          { lineNo: 1, itemId, unitId: 1, qtyInUnit: 10, qtyBase: 100, unitPurchasePrice: 2000 },
+          { lineNo: 1, itemId, unitId: 1, qtyInUnit: 10, qtyBase: 100, unitPurchasePrice: 2000, expiryDate: FUTURE_EXPIRY },
         ],
       })
     );
@@ -254,6 +262,7 @@ describe('confirmPurchaseInvoice', () => {
             qtyInUnit: 10,
             qtyBase: 100,
             unitPurchasePrice: 1000,
+            expiryDate: FUTURE_EXPIRY,
             taxPct: 14,
           },
         ],
@@ -295,8 +304,8 @@ describe('confirmPurchaseInvoice', () => {
     const id = createPurchaseInvoice(db, {
       ...baseInvoice(),
       lines: [
-        { lineNo: 1, itemId, unitId: 1, qtyInUnit: 10, qtyBase: 100, unitPurchasePrice: 1000 },
-        { lineNo: 2, itemId, unitId: 1, qtyInUnit: 5, qtyBase: 50, unitPurchasePrice: 500 },
+        { lineNo: 1, itemId, unitId: 1, qtyInUnit: 10, qtyBase: 100, unitPurchasePrice: 1000, expiryDate: FUTURE_EXPIRY },
+        { lineNo: 2, itemId, unitId: 1, qtyInUnit: 5, qtyBase: 50, unitPurchasePrice: 500, expiryDate: FUTURE_EXPIRY },
       ],
     });
     db.pragma('foreign_keys = OFF');
@@ -317,12 +326,19 @@ describe('confirmPurchaseInvoice', () => {
   });
 
   it('multi-line invoice: each line lands its own cost and its own batch', () => {
-    const itemId2 = createItem(db, { nameAr: 'صنف ثانٍ للشراء' });
+    const itemId2 = createItem(db, {
+      nameAr: 'صنف ثانٍ للشراء',
+      units: [
+        { nameAr: 'علبة', factor: 10, salePrice: 0, isBase: false },
+        { nameAr: 'قرص', factor: 1, salePrice: 0, isBase: true },
+      ],
+    });
+    const box2 = (db.prepare("SELECT id FROM item_units WHERE item_id = ? AND factor = 10").get(itemId2) as { id: number }).id;
     const id = createPurchaseInvoice(db, {
       ...baseInvoice(),
       lines: [
-        { lineNo: 1, itemId, unitId: 1, qtyInUnit: 10, qtyBase: 100, unitPurchasePrice: 1000 },
-        { lineNo: 2, itemId: itemId2, unitId: 1, qtyInUnit: 5, qtyBase: 50, unitPurchasePrice: 2000 },
+        { lineNo: 1, itemId, unitId: 1, qtyInUnit: 10, unitPurchasePrice: 1000, expiryDate: FUTURE_EXPIRY },
+        { lineNo: 2, itemId: itemId2, unitId: box2, qtyInUnit: 5, unitPurchasePrice: 2000, expiryDate: FUTURE_EXPIRY },
       ],
       expenses: 300,
     });
@@ -331,6 +347,7 @@ describe('confirmPurchaseInvoice', () => {
     const [b1] = batchesFor(itemId);
     const [b2] = batchesFor(itemId2);
     // Weights: 10000 and 10000 (5*2000) -> expenses split 150/150.
+    // Line 2 is 5 boxes of 10 = 50 base units (derived from the unit, never sent).
     expect(b1!.unit_cost).toBe(101); // (10000+150)/100 = 101.5 -> truncated 101
     expect(b2!.unit_cost).toBe(203); // (10000+150)/50 = 203
   });

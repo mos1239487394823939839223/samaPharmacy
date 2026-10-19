@@ -7,12 +7,14 @@
 
 import { useEffect, useRef, useState } from 'react';
 import type { ItemDetail, ItemInput } from '@pharmacy/shared';
-import { toAsciiDigits, validateUnitSet } from '@pharmacy/core';
+import { boxFactorOf, fromPiastres, maxUnitPrice, toAsciiDigits, validateUnitSet } from '@pharmacy/core';
 import { ar } from '../../i18n/ar';
 import { MoneyInput } from '../../components/MoneyInput';
 import { attachShortcuts, formatShortcut } from '../../lib/shortcuts';
 import { useBarcodeScanner, isValidEan, classifyBarcode } from '../../hardware/scanner';
 import { loadScannerConfig } from '../../hardware/config';
+import { errorText } from '../../lib/errors';
+import { usePageShortcuts } from '../../lib/workspace';
 
 type Tab = 'basic' | 'pricing' | 'supplier' | 'settings';
 
@@ -26,6 +28,28 @@ interface UnitRow {
   salePrice: number | null;
   isBase: boolean;
   isDefaultSale: boolean;
+  /** Price follows the box price automatically until the user types one. */
+  autoPrice?: boolean;
+  /** Typing a name not in the predefined list. */
+  customName?: boolean;
+}
+
+/** Predefined unit names (i18n), as plain strings. */
+const UNIT_NAMES: readonly string[] = ar.items.unitNames;
+/** Marker option that switches a unit name to free typing. */
+const OTHER = '__other__';
+/** Names older versions stored that are kept as-is (shown, never forced into "other"). */
+const LEGACY_NAMES = new Set(['وحدة', 'علبه']);
+
+/** Name of the smallest unit, for labels like «عدد الأقراص فيها». */
+function BASE_NAME(units: UnitRow[]): string {
+  return units.find((u) => u.isBase)?.nameAr || UNIT_NAMES[2]!;
+}
+
+/** Suggest the next unit up: علبة → شريط → … skipping names already used. */
+function nextUnitName(units: UnitRow[]): string {
+  const used = new Set(units.map((u) => u.nameAr));
+  return UNIT_NAMES.find((n) => !used.has(n)) ?? '';
 }
 
 interface Props {
@@ -44,13 +68,15 @@ export function ItemForm({ existing, showBadges, onSaved, onCancel }: Props) {
 
   const [nameAr, setNameAr] = useState(existing?.nameAr ?? '');
   const [nameEn, setNameEn] = useState(existing?.nameEn ?? '');
-  const [internationalCode, setInternationalCode] = useState('');
-  const [origin, setOrigin] = useState<'local' | 'imported'>('local');
-  const [itemNature, setItemNature] = useState('');
-  const [scientificName, setScientificName] = useState('');
-  const [mainIngredientPct, setMainIngredientPct] = useState('');
+  const [internationalCode, setInternationalCode] = useState(existing?.internationalCode ?? '');
+  const [origin, setOrigin] = useState<'local' | 'imported'>((existing?.origin as 'local') ?? 'local');
+  const [itemNature, setItemNature] = useState(existing?.itemNature ?? '');
+  const [scientificName, setScientificName] = useState(existing?.scientificName ?? '');
+  const [mainIngredientPct, setMainIngredientPct] = useState(
+    existing?.mainIngredientPct != null ? String(existing.mainIngredientPct) : ''
+  );
   const [noExpiry, setNoExpiry] = useState(Boolean(existing?.noExpiry));
-  const [requiresPrescription, setRequiresPrescription] = useState(false);
+  const [requiresPrescription, setRequiresPrescription] = useState(Boolean(existing?.requiresPrescription));
   const [scheduleClass, setScheduleClass] = useState<
     'none' | 'table1' | 'table2' | 'table3'
   >((existing?.scheduleClass as 'none') ?? 'none');
@@ -59,16 +85,22 @@ export function ItemForm({ existing, showBadges, onSaved, onCancel }: Props) {
   );
   const [shelfLocation, setShelfLocation] = useState(existing?.shelfLocation ?? '');
   const [publicPrice, setPublicPrice] = useState<number | null>(existing?.publicPrice ?? null);
-  const [minStock, setMinStock] = useState('0');
-  const [maxStock, setMaxStock] = useState('');
+  const [minStock, setMinStock] = useState(existing?.minStock != null ? String(existing.minStock) : '0');
+  const [maxStock, setMaxStock] = useState(existing?.maxStock != null ? String(existing.maxStock) : '');
 
   const [barcodes, setBarcodes] = useState<string[]>(
     existing?.barcodes?.length ? existing.barcodes : ['']
   );
 
-  const [units, setUnits] = useState<UnitRow[]>(() =>
-    existing?.units?.length
-      ? existing.units.map((u) => ({
+  // Units as loaded — with any price above its share of the box (BR-4,
+  // decision D9) corrected up front. Older data priced the tablet like the
+  // whole box, which made EVERY later edit of the item fail; the corrections
+  // are listed in `priceNotice` so the pharmacist sees exactly what changed.
+  const [initial] = useState(() => {
+    // Retired units (allow_sale = 0) stay in the database for history but
+    // are not shown — re-submitting them would silently re-enable them.
+    const rows: UnitRow[] = existing?.units?.some((u) => u.allowSale)
+      ? existing.units.filter((u) => u.allowSale).map((u) => ({
           id: u.id,
           nameAr: u.nameAr,
           factor: String(u.factor),
@@ -76,8 +108,60 @@ export function ItemForm({ existing, showBadges, onSaved, onCancel }: Props) {
           isBase: Boolean(u.isBase),
           isDefaultSale: Boolean(u.isDefaultSale),
         }))
-      : [{ nameAr: '', factor: '1', salePrice: null, isBase: true, isDefaultSale: true }]
-  );
+      : [{ nameAr: UNIT_NAMES[0]!, factor: '1', salePrice: null, isBase: true, isDefaultSale: true, autoPrice: true }];
+    for (const r of rows) r.customName = Boolean(r.nameAr) && !UNIT_NAMES.includes(r.nameAr) && !LEGACY_NAMES.has(r.nameAr);
+    const corrections: string[] = [];
+    const pub = existing?.publicPrice ?? null;
+    if (pub != null) {
+      const box = boxFactorOf(rows.map((r) => ({ factor: Number(r.factor) || 1 })));
+      for (const r of rows) {
+        const cap = maxUnitPrice(pub, box, Number(r.factor) || 1);
+        if (r.salePrice != null && r.salePrice > cap) {
+          corrections.push(`${r.nameAr}: ${fromPiastres(r.salePrice)} ← ${fromPiastres(cap)}`);
+          r.salePrice = cap;
+        }
+        // A price that is exactly the unit's share keeps following the box price.
+        r.autoPrice = r.salePrice == null || r.salePrice === cap;
+      }
+    }
+    return { rows, corrections };
+  });
+  const [units, setUnits] = useState<UnitRow[]>(initial.rows);
+  const [priceNotice, setPriceNotice] = useState<string[]>(initial.corrections);
+
+  /** Highest legal price for a unit row given the current box price (null = no public price set). */
+  function capFor(u: UnitRow): number | null {
+    if (publicPrice == null) return null;
+    const box = boxFactorOf(units.map((x) => ({ factor: Number(x.factor) || 1 })));
+    return maxUnitPrice(publicPrice, box, Number(u.factor) || 1);
+  }
+
+  /** Fill every unit with its share of the box price — the box itself gets the full price. */
+  function fillUnitPrices() {
+    if (publicPrice == null) return;
+    const box = boxFactorOf(units.map((x) => ({ factor: Number(x.factor) || 1 })));
+    setUnits(units.map((u) => ({ ...u, salePrice: maxUnitPrice(publicPrice, box, Number(u.factor) || 1), autoPrice: true })));
+    setPriceNotice([]);
+  }
+
+  // Units left on automatic pricing follow the box price and the factors:
+  // change the box price from 100 to 120 and a strip of 10 (box of 20)
+  // moves from 50 to 60 by itself. A typed price is never overwritten.
+  const factorsKey = units.map((u) => u.factor).join(',');
+  useEffect(() => {
+    if (publicPrice == null) return;
+    const box = boxFactorOf(units.map((x) => ({ factor: Number(x.factor) || 1 })));
+    let changed = false;
+    const next = units.map((u) => {
+      if (!u.autoPrice) return u;
+      const price = maxUnitPrice(publicPrice, box, Number(u.factor) || 1);
+      if (price === u.salePrice) return u;
+      changed = true;
+      return { ...u, salePrice: price };
+    });
+    if (changed) setUnits(next);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [publicPrice, factorsKey]);
 
   const firstFieldRef = useRef<HTMLInputElement>(null);
   useEffect(() => firstFieldRef.current?.focus(), []);
@@ -93,6 +177,12 @@ export function ItemForm({ existing, showBadges, onSaved, onCancel }: Props) {
   useBarcodeScanner(
     (event) => {
       const code = event.code;
+      // Scanning while the international-code field has focus fills that field.
+      if ((document.activeElement as HTMLElement | null)?.dataset?.scanTarget === 'international') {
+        setInternationalCode(code);
+        setScanNotice(ar.items.scan.internationalSet.replace('{code}', code));
+        return;
+      }
       const current = barcodesRef.current;
 
       if (current.some((b) => b.trim() === code)) {
@@ -128,7 +218,7 @@ export function ItemForm({ existing, showBadges, onSaved, onCancel }: Props) {
       shouldIgnore: () => {
         const el = document.activeElement as HTMLElement | null;
         if (!el) return false;
-        if (el.dataset?.scanTarget === 'barcode') return false;
+        if (el.dataset?.scanTarget === 'barcode' || el.dataset?.scanTarget === 'international') return false;
         const tag = el.tagName;
         return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
       },
@@ -146,12 +236,11 @@ export function ItemForm({ existing, showBadges, onSaved, onCancel }: Props) {
   const cancelRef = useRef<() => void>(onCancel);
   cancelRef.current = onCancel;
 
-  useEffect(
-    () =>
-      attachShortcuts([
-        { id: 'save', ...SAVE, run: () => submitRef.current() },
-        { id: 'cancel', code: 'Escape', run: () => cancelRef.current() },
-      ]),
+  usePageShortcuts(
+    () => [
+      { id: 'save', ...SAVE, run: () => submitRef.current() },
+      { id: 'cancel', code: 'Escape', run: () => cancelRef.current() },
+    ],
     []
   );
 
@@ -199,6 +288,13 @@ export function ItemForm({ existing, showBadges, onSaved, onCancel }: Props) {
       return ar.items.errors.mainIngredientPctInvalid;
     }
 
+    const wholeOk = (n: number | null | undefined) => n == null || (Number.isInteger(n) && n >= 0);
+    if (!wholeOk(input.minStock) || !wholeOk(input.maxStock)) return ar.items.errors.stockLevelInvalid;
+
+    // An empty price became 0 — the till then sold that unit for nothing.
+    const unpriced = units.find((u) => u.nameAr.trim() !== '' && (u.salePrice === null || u.salePrice <= 0));
+    if (unpriced) return ar.items.errors.unitPriceRequired.replace('{unit}', unpriced.nameAr.trim());
+
     if (input.maxStock != null && input.maxStock < (input.minStock ?? 0)) {
       return ar.items.errors.maxStockBelowMin;
     }
@@ -222,12 +318,16 @@ export function ItemForm({ existing, showBadges, onSaved, onCancel }: Props) {
       );
       if (unitErrors.length > 0) return describeUnitError(unitErrors[0]!);
 
-      // BR-4: sale price may never exceed the EDA public price. Compared per
-      // base unit, since public_price is stored per base unit.
+      // BR-4 with decision D9: the public price is the BOX price (the
+      // largest unit). Each unit is capped at its share of it — a strip of
+      // 10 from a 100.00 box of 20 at most 50.00. Same rule the server applies.
       if (input.publicPrice != null) {
+        const box = boxFactorOf(input.units);
         for (const u of input.units) {
-          const perBase = u.salePrice / u.factor;
-          if (perBase > input.publicPrice) return ar.items.errors.priceAbovePublic;
+          const cap = maxUnitPrice(input.publicPrice, box, u.factor);
+          if (u.salePrice > cap) {
+            return ar.items.errors.unitPriceAboveCap.replace('{unit}', u.nameAr).replace('{cap}', fromPiastres(cap));
+          }
         }
       }
     }
@@ -248,6 +348,9 @@ export function ItemForm({ existing, showBadges, onSaved, onCancel }: Props) {
       const name = message.match(/"([^"]*)"/)?.[1] ?? '';
       return ar.items.errors.invalidUnitFactor.replace('{name}', name);
     }
+    if (message.startsWith('Base unit must have factor 1')) {
+      return ar.items.errors.baseFactorOne;
+    }
     if (/base units defined/.test(message)) {
       return ar.items.errors.multipleBaseUnits;
     }
@@ -262,6 +365,13 @@ export function ItemForm({ existing, showBadges, onSaved, onCancel }: Props) {
     const problem = validate(input);
     if (problem) {
       setError(problem);
+      // Price and unit problems live on the pricing tab — show it.
+      if (
+        problem.includes(ar.items.errors.unitPriceAboveCapMarker) ||
+        units.some((u) => !u.nameAr.trim() || u.salePrice === null || u.salePrice <= 0)
+      ) {
+        setTab('pricing');
+      }
       return;
     }
 
@@ -272,12 +382,7 @@ export function ItemForm({ existing, showBadges, onSaved, onCancel }: Props) {
       else await window.api.items.create(input);
       onSaved();
     } catch (err) {
-      const message = (err as Error).message;
-      setError(
-        /UNIQUE constraint failed: item_barcodes/.test(message)
-          ? ar.items.errors.duplicateBarcode
-          : `${ar.items.errors.saveFailed}: ${message}`
-      );
+      setError(errorText(err));
     } finally {
       setSaving(false);
     }
@@ -324,6 +429,14 @@ export function ItemForm({ existing, showBadges, onSaved, onCancel }: Props) {
       </div>
 
       {error && <div className="alert alert--error">{error}</div>}
+      {priceNotice.length > 0 && tab !== 'pricing' && (
+        <div className="alert alert--info">
+          <span>{ar.items.pricing.correctedBanner.replace('{count}', String(priceNotice.length))}</span>
+          <button type="button" className="btn btn--sm" onClick={() => setTab('pricing')}>
+            {ar.items.pricing.review}
+          </button>
+        </div>
+      )}
       {scanNotice && (
         <div className="alert alert--info" role="status">
           {scanNotice}
@@ -377,8 +490,14 @@ export function ItemForm({ existing, showBadges, onSaved, onCancel }: Props) {
                 <input
                   className="field"
                   dir="ltr"
+                  inputMode="numeric"
+                  // A legitimate scan destination: scanning the box fills it.
+                  data-scan-target="international"
+                  placeholder={ar.items.fields.internationalCodeHint}
                   value={internationalCode}
-                  onChange={(e) => setInternationalCode(e.target.value)}
+                  // Arabic-Indic digits typed on an Arabic layout would never
+                  // match a scanned code — always store ASCII, no spaces.
+                  onChange={(e) => setInternationalCode(toAsciiDigits(e.target.value).replace(/\s+/g, ''))}
                 />
               </Field>
               <Field label={ar.items.fields.origin}>
@@ -465,98 +584,174 @@ export function ItemForm({ existing, showBadges, onSaved, onCancel }: Props) {
               </Field>
             </div>
 
+            {priceNotice.length > 0 && (
+              <div className="alert alert--info">
+                <div>
+                  <strong>{ar.items.pricing.correctedTitle}</strong>
+                  <ul className="small">
+                    {priceNotice.map((n) => (
+                      <li key={n} dir="auto">
+                        {n}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            )}
+            <p className="hint">{ar.items.pricing.rule}</p>
+
             <fieldset className="fieldset">
               <legend>{ar.items.fields.units}</legend>
-              <table className="subtable">
-                <thead>
-                  <tr>
-                    <th>{ar.items.fields.unitName}</th>
-                    <th>{ar.items.fields.unitFactor}</th>
-                    <th>{ar.items.fields.unitPrice}</th>
-                    <th>{ar.items.fields.unitIsBase}</th>
-                    <th>{ar.items.fields.unitDefaultSale}</th>
-                    <th />
-                  </tr>
-                </thead>
-                <tbody>
-                  {units.map((u, i) => (
-                    <tr key={i}>
-                      <td>
-                        <input
-                          className="field"
-                          value={u.nameAr}
-                          onChange={(e) => patchUnit(i, { nameAr: e.target.value })}
-                        />
-                      </td>
-                      <td>
+              <p className="hint">{ar.items.pricing.howTo}</p>
+              <div className="unit-rows">
+                {units.map((u, i) => {
+                  const cap = capFor(u);
+                  const over = u.salePrice != null && cap != null && u.salePrice > cap;
+                  const base = BASE_NAME(units);
+                  const options = [...UNIT_NAMES];
+                  if (u.nameAr && !u.customName && !options.includes(u.nameAr)) options.unshift(u.nameAr);
+                  return (
+                    <div key={i} className={u.isBase ? 'unit-row unit-row--base' : 'unit-row'}>
+                      <label className="formfield">
+                        <span className="formfield__label">{ar.items.fields.unitName}</span>
+                        {u.customName ? (
+                          <span className="unit-row__custom">
+                            <input
+                              className="field"
+                              autoFocus={!u.nameAr}
+                              placeholder={ar.items.pricing.customPlaceholder}
+                              value={u.nameAr}
+                              onChange={(e) => patchUnit(i, { nameAr: e.target.value })}
+                            />
+                            <button
+                              type="button"
+                              className="btn btn--sm"
+                              title={ar.items.pricing.backToList}
+                              onClick={() => patchUnit(i, { customName: false, nameAr: UNIT_NAMES[0]! })}
+                            >
+                              ↩
+                            </button>
+                          </span>
+                        ) : (
+                          <select
+                            className="field"
+                            value={u.nameAr}
+                            onChange={(e) =>
+                              e.target.value === OTHER
+                                ? patchUnit(i, { customName: true, nameAr: '' })
+                                : patchUnit(i, { nameAr: e.target.value })
+                            }
+                          >
+                            {!u.nameAr && <option value="">—</option>}
+                            {options.map((n) => (
+                              <option key={n} value={n}>
+                                {n}
+                              </option>
+                            ))}
+                            <option value={OTHER}>{ar.items.pricing.other}</option>
+                          </select>
+                        )}
+                      </label>
+
+                      <label className="formfield">
+                        <span className="formfield__label">
+                          {u.isBase ? ar.items.pricing.baseUnit : ar.items.pricing.contains.replace('{base}', base)}
+                        </span>
                         <input
                           className="field"
                           dir="ltr"
                           inputMode="numeric"
-                          value={u.factor}
-                          onChange={(e) => patchUnit(i, { factor: toAsciiDigits(e.target.value) })}
+                          disabled={u.isBase}
+                          value={u.isBase ? '1' : u.factor}
+                          onChange={(e) => patchUnit(i, { factor: toAsciiDigits(e.target.value).replace(/\D/g, '') })}
                         />
-                      </td>
-                      <td>
-                        <MoneyInput
-                          value={u.salePrice}
-                          onChange={(v) => patchUnit(i, { salePrice: v })}
-                        />
-                      </td>
-                      <td className="center">
-                        <input
-                          type="radio"
-                          name="baseUnit"
-                          checked={u.isBase}
-                          onChange={() =>
-                            setUnits(units.map((x, idx) => ({ ...x, isBase: idx === i })))
-                          }
-                        />
-                      </td>
-                      <td className="center">
-                        <input
-                          type="radio"
-                          name="defaultSale"
-                          checked={u.isDefaultSale}
-                          onChange={() =>
-                            setUnits(
-                              units.map((x, idx) => ({ ...x, isDefaultSale: idx === i }))
-                            )
-                          }
-                        />
-                      </td>
-                      <td>
-                        <button
-                          type="button"
-                          className="btn btn--danger btn--sm"
-                          onClick={() => setUnits(units.filter((_, idx) => idx !== i))}
-                          disabled={units.length === 1}
-                        >
-                          {ar.items.actions.removeRow}
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              <button
-                type="button"
-                className="btn btn--sm"
-                onClick={() =>
-                  setUnits([
-                    ...units,
-                    {
-                      nameAr: '',
-                      factor: '1',
-                      salePrice: null,
-                      isBase: false,
-                      isDefaultSale: false,
-                    },
-                  ])
-                }
-              >
-                {ar.items.actions.addRow}
-              </button>
+                      </label>
+
+                      <label className={over ? 'formfield cell--invalid' : 'formfield'}>
+                        <span className="formfield__label">
+                          {ar.items.fields.unitPrice}
+                          {u.autoPrice && publicPrice != null && <span className="unit-row__auto"> · {ar.items.pricing.auto}</span>}
+                        </span>
+                        <MoneyInput value={u.salePrice} onChange={(v) => patchUnit(i, { salePrice: v, autoPrice: false })} />
+                        <span className="hint">
+                          {cap != null ? `${ar.items.pricing.maxAllowed}: ${fromPiastres(cap)}` : ar.items.pricing.needPublicPrice}
+                        </span>
+                      </label>
+
+                      <div className="unit-row__flags">
+                        <label className="check">
+                          <input
+                            type="radio"
+                            name="baseUnit"
+                            checked={u.isBase}
+                            onChange={() => setUnits(units.map((x, idx) => ({ ...x, isBase: idx === i, factor: idx === i ? '1' : x.factor })))}
+                          />
+                          <span>{ar.items.fields.unitIsBase}</span>
+                        </label>
+                        <label className="check">
+                          <input
+                            type="radio"
+                            name="defaultSale"
+                            checked={u.isDefaultSale}
+                            onChange={() => setUnits(units.map((x, idx) => ({ ...x, isDefaultSale: idx === i })))}
+                          />
+                          <span>{ar.items.fields.unitDefaultSale}</span>
+                        </label>
+                      </div>
+
+                      <button
+                        type="button"
+                        className="pline__remove"
+                        onClick={() => setUnits(units.filter((_, idx) => idx !== i))}
+                        disabled={units.length === 1}
+                        title={ar.items.actions.removeRow}
+                        aria-label={ar.items.actions.removeRow}
+                      >
+                        ×
+                      </button>
+
+                      {!u.isBase && Number(u.factor) > 1 && (
+                        <div className="unit-row__explain">
+                          {ar.items.pricing.explain
+                            .replace('{unit}', u.nameAr || '—')
+                            .replace('{n}', u.factor)
+                            .replace('{base}', base)}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="btn-row">
+                <button
+                  type="button"
+                  className="btn btn--sm"
+                  onClick={() =>
+                    setUnits([
+                      ...units,
+                      {
+                        nameAr: nextUnitName(units),
+                        factor: '',
+                        salePrice: null,
+                        isBase: false,
+                        isDefaultSale: false,
+                        autoPrice: true,
+                      },
+                    ])
+                  }
+                >
+                  + {ar.items.pricing.addUnit}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn--sm"
+                  disabled={publicPrice == null}
+                  title={publicPrice == null ? ar.items.pricing.needPublicPrice : undefined}
+                  onClick={fillUnitPrices}
+                >
+                  {ar.items.pricing.fill}
+                </button>
+              </div>
             </fieldset>
           </>
         )}

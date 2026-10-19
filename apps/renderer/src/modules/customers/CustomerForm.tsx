@@ -9,6 +9,7 @@ import type { CustomerDetail } from '@pharmacy/shared';
 import { toAsciiDigits } from '@pharmacy/core';
 import { ar } from '../../i18n/ar';
 import { MoneyInput } from '../../components/MoneyInput';
+import { errorText } from '../../lib/errors';
 
 interface Props {
   existing?: CustomerDetail | null;
@@ -24,8 +25,8 @@ export function CustomerForm({ existing, onSaved, onCancel }: Props) {
   const [accountType, setAccountType] = useState<'individual' | 'pharmacy' | 'clinic' | 'company'>(
     (existing?.accountType as 'individual') ?? 'individual'
   );
-  const [pharmacyOwnerName, setPharmacyOwnerName] = useState('');
-  const [pharmacyPhone, setPharmacyPhone] = useState('');
+  const [pharmacyOwnerName, setPharmacyOwnerName] = useState(existing?.pharmacyOwnerName ?? '');
+  const [pharmacyPhone, setPharmacyPhone] = useState(existing?.pharmacyPhone ?? '');
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'credit'>(
     (existing?.paymentMethod as 'cash') ?? 'cash'
   );
@@ -37,7 +38,7 @@ export function CustomerForm({ existing, onSaved, onCancel }: Props) {
   const [discountInvoicePct, setDiscountInvoicePct] = useState(String(existing?.discountInvoicePct ?? 0));
   const [tags, setTags] = useState<string[]>(existing?.tags ?? []);
   const [tagDraft, setTagDraft] = useState('');
-  const [notes, setNotes] = useState('');
+  const [notes, setNotes] = useState(existing?.notes ?? '');
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -70,6 +71,8 @@ export function CustomerForm({ existing, onSaved, onCancel }: Props) {
     if (!mobile1Ascii) return setError(ar.customers.errors.mobileRequired);
     if (!isValidMobile(mobile1Ascii)) return setError(ar.customers.errors.mobileInvalid);
     if (mobile2Ascii && !isValidMobile(mobile2Ascii)) return setError(ar.customers.errors.mobileInvalid);
+    if (pharmacyPhoneAscii && !isValidMobile(pharmacyPhoneAscii)) return setError(ar.customers.errors.mobileInvalid);
+    if (email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) return setError(ar.customers.errors.emailInvalid);
 
     const cashPct = parseDiscountPct(discountCashPct);
     const creditPct = parseDiscountPct(discountCreditPct);
@@ -104,11 +107,7 @@ export function CustomerForm({ existing, onSaved, onCancel }: Props) {
       else await window.api.customers.create(input);
       onSaved();
     } catch (err) {
-      const message = (err as Error).message;
-      // A ZodError message is raw English JSON from the shared schema — the
-      // client-side checks above should catch the same issues first, so
-      // surfacing this means an unexpected shape slipped through them.
-      setError(message.startsWith('[') ? ar.customers.errors.saveFailedValidation : `${ar.customers.errors.saveFailed}: ${message}`);
+      setError(errorText(err));
     } finally {
       setSaving(false);
     }
@@ -158,7 +157,13 @@ export function CustomerForm({ existing, onSaved, onCancel }: Props) {
           </label>
           <label className="formfield">
             <span className="formfield__label">{ar.customers.accountType}</span>
-            <select className="field" value={accountType} onChange={(e) => setAccountType(e.target.value as 'individual')}>
+            <select className="field" value={accountType} onChange={(e) => {
+                const next = e.target.value as 'individual' | 'pharmacy' | 'clinic' | 'company';
+                setAccountType(next);
+                // Companies, pharmacies and clinics buy on account by default
+                // (decision D14) — still changeable below.
+                if (!existing && next !== 'individual') setPaymentMethod('credit');
+              }}>
               <option value="individual">{ar.customers.accountTypes.individual}</option>
               <option value="pharmacy">{ar.customers.accountTypes.pharmacy}</option>
               <option value="clinic">{ar.customers.accountTypes.clinic}</option>
@@ -207,7 +212,7 @@ export function CustomerForm({ existing, onSaved, onCancel }: Props) {
             </label>
             <label className="formfield">
               <span className="formfield__label">{ar.customers.openingBalance}</span>
-              <MoneyInput value={openingBalance} onChange={setOpeningBalance} disabled={Boolean(existing)} />
+              <MoneyInput value={openingBalance} onChange={setOpeningBalance} disabled={Boolean(existing)} allowNegative />
             </label>
             <label className="formfield">
               <span className="formfield__label">{ar.customers.creditLimit}</span>
@@ -252,7 +257,7 @@ export function CustomerForm({ existing, onSaved, onCancel }: Props) {
             value={tagDraft}
             onChange={(e) => setTagDraft(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === 'Enter') {
+              if (e.code === 'Enter' || e.code === 'NumpadEnter') {
                 e.preventDefault();
                 addTag();
               }

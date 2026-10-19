@@ -24,6 +24,7 @@ import {
   recordCustomerPayment,
   getCustomerLedger,
 } from './customers';
+import { FUTURE_EXPIRY } from '../test-helpers';
 
 let db: Db;
 let itemId: number;
@@ -38,7 +39,7 @@ beforeEach(() => {
 
   itemId = createItem(db, { nameAr: 'صنف للعميل' });
   unitId = Number(
-    db.prepare('INSERT INTO item_units (item_id, name_ar, factor, sale_price, is_base) VALUES (?, ?, 1, 100, 1)')
+    db.prepare('INSERT INTO item_units (item_id, name_ar, factor, sale_price, is_base) VALUES (?, ?, 1, 100000, 1)')
       .run(itemId, 'قرص').lastInsertRowid
   );
   supplierId = createSupplier(db, { nameAr: 'مورد للعميل' });
@@ -52,7 +53,7 @@ function stockUp(qtyBase: number, unitCost: number) {
     warehouseId,
     purchaseType: 'credit',
     invoiceDate: '2026-01-01',
-    lines: [{ lineNo: 1, itemId, unitId, qtyInUnit: qtyBase, qtyBase, unitPurchasePrice: unitCost }],
+    lines: [{ lineNo: 1, itemId, unitId, qtyInUnit: qtyBase, qtyBase, unitPurchasePrice: unitCost, expiryDate: FUTURE_EXPIRY }],
   });
   confirmPurchaseInvoice(db, id);
 }
@@ -183,8 +184,8 @@ describe('recordCustomerPayment', () => {
 
   it('rejects a non-positive payment', () => {
     const id = createCustomer(db, { name: 'عميل سداد سالب', mobile1: '0111111112' });
-    expect(() => recordCustomerPayment(db, id, 0)).toThrow(RangeError);
-    expect(() => recordCustomerPayment(db, id, -100)).toThrow(RangeError);
+    expect(() => recordCustomerPayment(db, id, 0)).toThrow(/must be (positive|a positive)/);
+    expect(() => recordCustomerPayment(db, id, -100)).toThrow(/must be (positive|a positive)/);
   });
 
   it('appears in the ledger history', () => {
@@ -199,12 +200,14 @@ describe('recordCustomerPayment', () => {
 describe('confirmSalesInvoice integration: credit sales post to the customer ledger', () => {
   it('refuses to confirm a credit invoice with no customer', () => {
     stockUp(100, 50);
-    const id = createSalesInvoice(db, {
-      warehouseId,
-      invoiceType: 'credit',
-      lines: [{ lineNo: 1, itemId, unitId, unitFactor: 1, qtyInUnit: 5, unitPrice: 200 }],
-    });
-    expect(() => confirmSalesInvoice(db, id)).toThrow(/must have a customer/);
+    // Rejected as early as the draft now, not only at confirm.
+    expect(() =>
+      createSalesInvoice(db, {
+        warehouseId,
+        invoiceType: 'credit',
+        lines: [{ lineNo: 1, itemId, unitId, unitFactor: 1, qtyInUnit: 5, unitPrice: 200 }],
+      })
+    ).toThrow(/must have a customer/);
   });
 
   it('posts the invoice total to the customer ledger on confirm, not on draft', () => {

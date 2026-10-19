@@ -13,34 +13,43 @@
   :root {
     color-scheme: light;
 
-    /* ---- Primary (soft blue) ---- */
-    --primary-50: #eef4ff;
-    --primary-100: #e0ebff;
-    --primary-200: #c5d8ff;
-    --primary-400: #5b8def;
-    --primary-500: #2563eb;
-    --primary-600: #1d4ed8;
-    --primary-700: #1e40af;
+    /* ---- Primary (deep indigo-blue) ---- */
+    --primary-50: #eef3ff;
+    --primary-100: #dfe9ff;
+    --primary-200: #c0d3ff;
+    --primary-300: #94b3fd;
+    --primary-400: #5b85f7;
+    --primary-500: #2f5ce8;
+    --primary-600: #2145c7;
+    --primary-700: #1c369c;
+    --primary-800: #172c78;
+    --primary-gradient: linear-gradient(135deg, #3b63ec 0%, #2145c7 100%);
+
+    /* ---- Secondary accent (teal — medical/pharmacy cue, used sparingly) ---- */
+    --accent2-50: #ecfdf9;
+    --accent2-400: #2dd4bf;
+    --accent2-500: #0f9488;
+    --accent2-600: #0c7a70;
 
     /* ---- Backgrounds ---- */
-    --bg-app: #f7f9fc;
-    --bg-subtle: #f1f4f8;
+    --bg-app: #f4f6fb;
+    --bg-subtle: #eef1f7;
     --surface: #ffffff;
-    --surface-hover: #f8faff;
-    --surface-selected: #eef4ff;
+    --surface-hover: #f6f8ff;
+    --surface-selected: #eaf0ff;
 
     /* ---- Text ---- */
-    --text-primary: #17233c;
-    --text-secondary: #667085;
-    --text-tertiary: #98a2b3;
+    --text-primary: #131b31;
+    --text-secondary: #5b6478;
+    --text-tertiary: #8b93a7;
     --text-disabled: #b8c0cc;
     --text-on-primary: #ffffff;
 
     /* ---- Borders ---- */
-    --border-default: #e6eaf0;
-    --border-strong: #d8dee8;
-    --border-focus: #8db4ff;
-    --border-selected: #bfd3ff;
+    --border-default: #e3e7f0;
+    --border-strong: #d2d8e5;
+    --border-focus: #7fa1fb;
+    --border-selected: #b7cbff;
 
     /* ---- Semantic: success ---- */
     --success-50: #ecfdf3;
@@ -104,14 +113,18 @@
     /* Legacy aliases */
     --radius-sm-legacy: var(--radius-sm);
 
-    /* ---- Shadows — soft, diffuse ---- */
-    --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.04);
-    --shadow-md: 0 4px 12px rgba(16, 24, 40, 0.06);
-    --shadow-lg: 0 8px 24px rgba(16, 24, 40, 0.08);
-    --shadow-xl: 0 16px 40px rgba(16, 24, 40, 0.12);
+    /* ---- Shadows — layered, slightly cooler tint for more depth ---- */
+    --shadow-xs: 0 1px 2px rgba(19, 27, 49, 0.05);
+    --shadow-sm: 0 1px 3px rgba(19, 27, 49, 0.06), 0 1px 2px rgba(19, 27, 49, 0.04);
+    --shadow-md: 0 4px 10px rgba(19, 27, 49, 0.06), 0 2px 4px rgba(19, 27, 49, 0.05);
+    --shadow-lg: 0 12px 28px rgba(19, 27, 49, 0.09), 0 4px 10px rgba(19, 27, 49, 0.05);
+    --shadow-xl: 0 24px 48px rgba(19, 27, 49, 0.14), 0 8px 20px rgba(19, 27, 49, 0.07);
+    --shadow-focus: 0 0 0 3px rgba(47, 92, 232, 0.14);
+    --shadow-primary: 0 6px 16px rgba(33, 69, 199, 0.24), 0 2px 6px rgba(33, 69, 199, 0.16);
 
     /* ---- Motion ---- */
     --ease: cubic-bezier(0.4, 0, 0.2, 1);
+    --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
     --duration-fast: 120ms;
     --duration-normal: 180ms;
     --duration-slow: 250ms;
@@ -130,7 +143,7 @@
   body {
     margin: 0;
     font-family: Cairo, system-ui, sans-serif;
-    background: var(--bg-app);
+    background: radial-gradient(ellipse 1200px 600px at top, #eef2fc 0%, var(--bg-app) 55%);
     color: var(--text-primary);
     font-size: 14px;
     line-height: 1.55;
@@ -187,6 +200,17 @@
   }
 }
 
+@keyframes fade-slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 /* ============================================================
    Typography
    ============================================================ */
@@ -195,15 +219,15 @@
   .text-display {
     font-size: 2rem;
     line-height: 2.5rem;
-    font-weight: 700;
-    letter-spacing: -0.01em;
+    font-weight: 800;
+    letter-spacing: -0.02em;
   }
 
   .text-h1 {
     font-size: 1.75rem;
     line-height: 2.25rem;
-    font-weight: 700;
-    letter-spacing: -0.01em;
+    font-weight: 800;
+    letter-spacing: -0.02em;
   }
 
   .text-h2 {
@@ -276,17 +300,25 @@
 
   .shell__content {
     flex: 1;
+    /* min-inline-size: 0 overrides the flex-item default of min-width:
+       auto, which sizes a flex item to its content's intrinsic minimum
+       width. Without this, any screen with a wide element (a fixed-width
+       grid, a long unbroken table) could force the whole content pane —
+       and with it the header/sidebar layout — wider than the window
+       instead of scrolling that one element inside its own box. */
+    min-inline-size: 0;
     overflow-y: auto;
     padding-inline: var(--space-8);
     padding-block: var(--space-6);
+    animation: fade-slide-in var(--duration-slow) var(--ease);
   }
 
   .shell__heading {
     margin-block: 0 var(--space-5);
     font-size: 1.5rem;
     line-height: 2rem;
-    font-weight: 700;
-    letter-spacing: -0.01em;
+    font-weight: 800;
+    letter-spacing: -0.015em;
     color: var(--text-primary);
   }
 
@@ -312,6 +344,7 @@
     padding-inline: var(--space-6);
     background: var(--surface);
     border-block-end: 1px solid var(--border-default);
+    box-shadow: var(--shadow-xs);
     position: relative;
     z-index: 20;
   }
@@ -320,7 +353,7 @@
     display: flex;
     align-items: center;
     gap: var(--space-3);
-    font-weight: 700;
+    font-weight: 800;
     font-size: 1.05rem;
     color: var(--text-primary);
     white-space: nowrap;
@@ -333,8 +366,9 @@
     inline-size: 2.5rem;
     block-size: 2.5rem;
     border-radius: var(--radius-md);
-    background: var(--primary-500);
+    background: var(--primary-gradient);
     color: #fff;
+    box-shadow: var(--shadow-primary);
     flex-shrink: 0;
   }
 
@@ -349,14 +383,15 @@
     justify-content: center;
     color: var(--text-secondary);
     transition: background-color var(--duration-fast) var(--ease), border-color var(--duration-fast) var(--ease),
-      color var(--duration-fast) var(--ease);
+      color var(--duration-fast) var(--ease), box-shadow var(--duration-fast) var(--ease);
     flex-shrink: 0;
   }
 
   .header__toggle:hover {
     background: var(--surface-hover);
-    border-color: var(--border-strong);
-    color: var(--text-primary);
+    border-color: var(--border-selected);
+    color: var(--primary-600);
+    box-shadow: var(--shadow-xs);
   }
 
   .header__search {
@@ -376,6 +411,88 @@
 
   .header__search input {
     padding-inline-start: var(--space-10);
+  }
+
+  .header-search-panel {
+    position: absolute;
+    inset-inline: 0;
+    inset-block-start: calc(100% + var(--space-2));
+    z-index: 30;
+    background: var(--surface);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+    max-block-size: 24rem;
+    overflow-y: auto;
+    padding: var(--space-2);
+    animation: fade-slide-in var(--duration-fast) var(--ease);
+  }
+
+  .header-search-panel__status {
+    padding-inline: var(--space-3);
+    padding-block: var(--space-4);
+    text-align: center;
+    font-size: 0.84rem;
+    color: var(--text-tertiary);
+  }
+
+  .header-search-panel__group + .header-search-panel__group {
+    margin-block-start: var(--space-2);
+    padding-block-start: var(--space-2);
+    border-block-start: 1px solid var(--border-default);
+  }
+
+  .header-search-panel__group ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  .header-search-panel__group-label {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding-inline: var(--space-3);
+    padding-block: var(--space-2) var(--space-1);
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    color: var(--text-tertiary);
+  }
+
+  .header-search-result {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    inline-size: 100%;
+    text-align: start;
+    border: none;
+    background: transparent;
+    padding-inline: var(--space-3);
+    padding-block: var(--space-2);
+    border-radius: var(--radius-sm);
+    font-size: 0.86rem;
+    color: var(--text-primary);
+    transition: background-color var(--duration-fast) var(--ease);
+  }
+
+  .header-search-result--active {
+    background: var(--surface-selected);
+  }
+
+  .header-search-result__title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .header-search-result__meta {
+    flex-shrink: 0;
+    font-size: 0.78rem;
+    color: var(--text-tertiary);
+    font-variant-numeric: tabular-nums;
   }
 
   .header__spacer {
@@ -398,15 +515,22 @@
     border-radius: var(--radius-full);
     border: 1px solid var(--border-default);
     background: var(--surface);
+    box-shadow: var(--shadow-xs);
     flex-shrink: 0;
+    transition: box-shadow var(--duration-fast) var(--ease), border-color var(--duration-fast) var(--ease);
+  }
+
+  .header__user:hover {
+    box-shadow: var(--shadow-sm);
+    border-color: var(--border-selected);
   }
 
   .header__user-avatar {
     inline-size: 2rem;
     block-size: 2rem;
     border-radius: var(--radius-full);
-    background: var(--primary-100);
-    color: var(--primary-700);
+    background: var(--primary-gradient);
+    color: #fff;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -426,16 +550,58 @@
   /* ---- sidebar ---- */
 
   .sidebar {
+    position: relative;
     inline-size: var(--sidebar-w);
     flex-shrink: 0;
     overflow-y: auto;
-    background: var(--surface);
+    overflow-x: hidden;
+    background: linear-gradient(180deg, var(--surface) 0%, #f8faff 55%, #f4f7ff 100%);
     border-inline-end: 1px solid var(--border-default);
     padding-inline: var(--space-3);
     padding-block: var(--space-4);
     display: flex;
     flex-direction: column;
     gap: var(--space-1);
+    animation: sidebar-in var(--duration-slow) var(--ease);
+  }
+
+  /* Soft decorative glow anchored to the sidebar's own box — fixed in place,
+     not scrolling with the tree, so it reads as ambient light on the panel
+     rather than content. Pointer-events off: it must never intercept clicks
+     meant for the nav buttons stacked above it. */
+  .sidebar::before {
+    content: '';
+    position: absolute;
+    inset-block-start: -6rem;
+    inset-inline-end: -6rem;
+    inline-size: 16rem;
+    block-size: 16rem;
+    border-radius: var(--radius-full);
+    background: radial-gradient(circle, rgba(47, 92, 232, 0.1) 0%, rgba(47, 92, 232, 0) 70%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .sidebar > * {
+    position: relative;
+    z-index: 1;
+  }
+
+  @keyframes sidebar-in {
+    from {
+      opacity: 0;
+      transform: translateX(var(--sidebar-enter-x, 0));
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+
+  /* RTL: the sidebar sits at the inline-end (visually the left edge under
+     RTL), so it should slide in from that side, not mirror the LTR value. */
+  [dir='rtl'] .sidebar {
+    --sidebar-enter-x: -12px;
   }
 
   .sidebar__root {
@@ -454,16 +620,37 @@
     font-weight: 700;
     font-size: 0.9rem;
     color: var(--text-primary);
-    transition: background-color var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
+    transition: background-color var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease),
+      transform var(--duration-fast) var(--ease);
   }
 
   .sidebar__root:hover {
     background: var(--surface-hover);
+    transform: translateY(-1px);
   }
 
   .sidebar__root--active {
-    background: var(--surface-selected);
+    background: var(--primary-gradient);
+    color: #fff;
+    box-shadow: var(--shadow-primary);
+  }
+
+  .sidebar__root-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: 1.75rem;
+    block-size: 1.75rem;
+    border-radius: var(--radius-sm);
+    background: var(--primary-50);
     color: var(--primary-600);
+    flex-shrink: 0;
+    transition: background-color var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
+  }
+
+  .sidebar__root--active .sidebar__root-icon {
+    background: rgba(255, 255, 255, 0.2);
+    color: #fff;
   }
 
   .sidebar__divider {
@@ -510,6 +697,30 @@
     color: var(--text-secondary);
   }
 
+  .sidebar__group-label {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .sidebar__group-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: 1.5rem;
+    block-size: 1.5rem;
+    border-radius: var(--radius-sm);
+    background: var(--bg-subtle);
+    color: var(--text-tertiary);
+    flex-shrink: 0;
+    transition: background-color var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
+  }
+
+  .sidebar__group:hover .sidebar__group-icon {
+    background: var(--primary-50);
+    color: var(--primary-600);
+  }
+
   .sidebar__group-chevron {
     flex-shrink: 0;
     display: inline-flex;
@@ -548,6 +759,49 @@
     gap: 2px;
   }
 
+  /* Staggered entrance each time a group expands — the wrapper's own grid-row
+     transition (above) drives the reveal; this adds a quick per-row fade/slide
+     on top so the list doesn't just snap open as one flat block. Capped at 8
+     rows: no group in this app's tree has more than that today (§ navigation.ts
+     DRAWER_TREE), and rows past the cap simply skip the delay stagger rather
+     than erroring. */
+  .sidebar__children > li {
+    animation: sidebar-child-in var(--duration-normal) var(--ease) backwards;
+  }
+
+  .sidebar__children > li:nth-child(1) {
+    animation-delay: 20ms;
+  }
+  .sidebar__children > li:nth-child(2) {
+    animation-delay: 40ms;
+  }
+  .sidebar__children > li:nth-child(3) {
+    animation-delay: 60ms;
+  }
+  .sidebar__children > li:nth-child(4) {
+    animation-delay: 80ms;
+  }
+  .sidebar__children > li:nth-child(5) {
+    animation-delay: 100ms;
+  }
+  .sidebar__children > li:nth-child(6) {
+    animation-delay: 120ms;
+  }
+  .sidebar__children > li:nth-child(n + 7) {
+    animation-delay: 140ms;
+  }
+
+  @keyframes sidebar-child-in {
+    from {
+      opacity: 0;
+      transform: translateY(-4px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
   .sidebar__leaf {
     position: relative;
     display: flex;
@@ -563,18 +817,35 @@
     padding-inline: var(--space-3);
     padding-block: var(--space-2);
     border-radius: var(--radius-sm);
-    transition: background-color var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
+    transition: background-color var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease),
+      transform var(--duration-fast) var(--ease);
   }
 
   .sidebar__leaf:hover {
     background: var(--surface-hover);
     color: var(--text-primary);
+    transform: translateX(var(--sidebar-leaf-hover-x, -2px));
+  }
+
+  [dir='rtl'] .sidebar__leaf:hover {
+    --sidebar-leaf-hover-x: 2px;
   }
 
   .sidebar__leaf--active {
     background: var(--surface-selected);
     color: var(--primary-600);
-    font-weight: 600;
+    font-weight: 700;
+    box-shadow: inset 0 0 0 1px rgba(47, 92, 232, 0.12);
+  }
+
+  .sidebar__leaf--active::before {
+    content: '';
+    position: absolute;
+    inset-inline-start: -0.75rem;
+    inset-block: 0.35rem;
+    inline-size: 0.2rem;
+    border-radius: var(--radius-full);
+    background: var(--primary-gradient);
   }
 
   .sidebar__leaf-dot {
@@ -583,10 +854,12 @@
     border-radius: var(--radius-full);
     background: var(--text-tertiary);
     flex-shrink: 0;
+    transition: background-color var(--duration-fast) var(--ease), transform var(--duration-fast) var(--ease);
   }
 
   .sidebar__leaf--active .sidebar__leaf-dot {
     background: var(--primary-500);
+    transform: scale(1.2);
   }
 }
 
@@ -746,7 +1019,7 @@
   .field:focus {
     outline: none;
     border-color: var(--border-focus);
-    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+    box-shadow: var(--shadow-focus);
   }
 
   .field:disabled {
@@ -849,6 +1122,14 @@
     padding-block: var(--space-4) var(--space-5);
     margin-block-start: var(--space-4);
     background: var(--surface);
+    /* <fieldset> has its own intrinsic min-width floor independent of flex
+       context (a long-standing browser quirk), and .item-form/.panel above
+       it are a flex column with the default min-width: auto on flex items —
+       both together meant a wide child like .line-grid-wrap could force
+       every ancestor wider than the window instead of scrolling internally.
+       This is what let the purchase grid overflow the page on a narrow
+       window instead of scrolling inside its own border. */
+    min-inline-size: 0;
   }
 
   .fieldset legend {
@@ -911,16 +1192,18 @@
     font-weight: 600;
     color: var(--text-primary);
     transition: background-color var(--duration-fast) var(--ease), border-color var(--duration-fast) var(--ease),
-      box-shadow var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease), opacity var(--duration-fast) var(--ease);
+      box-shadow var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease), opacity var(--duration-fast) var(--ease),
+      transform var(--duration-fast) var(--ease);
   }
 
   .btn:not(.btn--primary):not(.btn--soft):not(.btn--danger):not(.btn--ghost):hover:not(:disabled) {
     background: var(--surface-hover);
     border-color: var(--text-tertiary);
+    box-shadow: var(--shadow-xs);
   }
 
   .btn:active:not(:disabled) {
-    transform: translateY(0.5px);
+    transform: translateY(0.5px) scale(0.99);
   }
 
   .btn:disabled {
@@ -929,15 +1212,16 @@
   }
 
   .btn--primary {
-    background: var(--primary-500);
-    border-color: var(--primary-500);
+    background: var(--primary-gradient);
+    border-color: var(--primary-600);
     color: #fff;
-    box-shadow: var(--shadow-sm);
+    box-shadow: var(--shadow-primary);
   }
 
   .btn--primary:hover:not(:disabled) {
-    background: var(--primary-600);
-    border-color: var(--primary-600);
+    filter: brightness(1.06);
+    box-shadow: 0 8px 20px rgba(33, 69, 199, 0.3), 0 3px 8px rgba(33, 69, 199, 0.18);
+    transform: translateY(-1px);
   }
 
   .btn--soft {
@@ -1006,6 +1290,7 @@
   }
 
   .tab {
+    position: relative;
     border: 1px solid transparent;
     border-block-end: none;
     background: transparent;
@@ -1028,6 +1313,16 @@
     color: var(--primary-600);
     font-weight: 700;
     margin-block-end: -1px;
+  }
+
+  .tab--active::after {
+    content: '';
+    position: absolute;
+    inset-inline: var(--space-3);
+    inset-block-end: -1px;
+    block-size: 2px;
+    background: var(--primary-gradient);
+    border-radius: var(--radius-full);
   }
 
   .panel {
@@ -1123,13 +1418,13 @@
   .datatable th {
     text-align: start;
     font-weight: 700;
-    color: var(--text-tertiary);
+    color: var(--text-secondary);
     font-size: 0.72rem;
     letter-spacing: 0.03em;
     text-transform: uppercase;
     padding-inline: var(--space-4);
     padding-block: var(--space-3);
-    background: #f8fafc;
+    background: var(--bg-subtle);
     border-block-end: 1px solid var(--border-default);
   }
 
@@ -1180,6 +1475,110 @@
 
   .col--wide {
     min-inline-size: 12rem;
+  }
+
+  /* ---- Line-item grid (purchase/sales invoice lines) ----
+     A dense editable grid — 10+ columns of mostly-numeric inputs — is a
+     different density class from .subtable's read-only rows. Half the
+     cell padding, a shorter field height, and fixed-ish column widths so
+     the whole line fits in view without every input claiming a full
+     form-field's worth of space. Horizontal scroll is the release valve on
+     a narrow window rather than letting columns shrink to the point numbers
+     get clipped. */
+  /* No border/shadow of its own — this sits inside a .fieldset, which
+     already frames the section, so a second box here would just double
+     the framing. Purely a horizontal-scroll container. */
+  .line-grid-wrap {
+    overflow-x: auto;
+    border-radius: var(--radius-md);
+  }
+
+  .line-grid {
+    /* table-layout: fixed is what makes the .col-* widths below actually
+       hold — with the default `auto`, a <td>'s inline-size is only ever a
+       hint the browser can override from cell content (a long batch
+       number, a wide native date picker), so every column drifted and the
+       grid never matched what these rules said. Fixed layout takes its
+       column widths from the FIRST row only (the header, here, since it
+       always renders), which is exactly why every .col-* class below is
+       also applied to the matching <th>, not just the <td>s. */
+    table-layout: fixed;
+    /* Must be an explicit width, not auto: with table-layout: fixed and no
+       declared table width, the browser treats the .col-* widths below as
+       proportions and SHRINKS every one of them to fit whatever space
+       .line-grid-wrap has available — silently ignoring the actual rem
+       values (this is what broke col-item: it read 22rem in the stylesheet
+       but rendered at ~11rem). This value is the literal sum of every
+       .col-* width below; if a column width changes, this sum must be
+       updated to match, or the same silent-shrink comes back. Below that
+       total, .line-grid-wrap's overflow-x scrolls instead of compressing. */
+    inline-size: 82.5rem;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+    border: 1px solid var(--border-default);
+  }
+
+  .line-grid th {
+    text-align: start;
+    font-weight: 700;
+    color: var(--text-secondary);
+    font-size: 0.7rem;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    padding-inline: var(--space-3);
+    padding-block: var(--space-3);
+    background: var(--bg-subtle);
+    border-block-end: 1px solid var(--border-default);
+    white-space: nowrap;
+  }
+
+  .line-grid td {
+    padding-inline: var(--space-3);
+    padding-block: var(--space-3);
+    border-block-end: 1px solid #eef1f5;
+    vertical-align: middle;
+  }
+
+  .line-grid tbody tr:last-child td {
+    border-block-end: none;
+  }
+
+  .line-grid tbody tr:hover {
+    background: var(--surface-hover);
+  }
+
+  .line-grid .field {
+    block-size: 2.5rem;
+    padding-inline: var(--space-3);
+    font-size: 0.85rem;
+  }
+
+  .line-grid select.field {
+    block-size: 2.5rem;
+  }
+
+  /* Column widths — wide enough for real values (a drug name, a full
+     batch number) and for comfortable typing (numeric fields need room for
+     the cursor and a few digits, not just the shortest value that fits)
+     without any one column eating the row. table-layout: fixed means these
+     must be real widths, not min-widths: fixed layout takes them from the
+     header row and holds every row to it regardless of what's typed into a
+     cell below, which is the whole point (a long item name must wrap or
+     ellipsize inside its column, never push every other column off to the
+     side). */
+  .line-grid .col-item { inline-size: 22rem; }
+  .line-grid .col-stock { inline-size: 4.5rem; }
+  .line-grid .col-unit { inline-size: 7.5rem; }
+  .line-grid .col-qty { inline-size: 5.5rem; }
+  .line-grid .col-batch { inline-size: 9rem; }
+  .line-grid .col-expiry { inline-size: 10rem; }
+  .line-grid .col-price { inline-size: 7.5rem; }
+  .line-grid .col-pct { inline-size: 5rem; }
+  .line-grid .col-cost { inline-size: 6.5rem; }
+  .line-grid .col-remove { inline-size: 5rem; }
+
+  .line-grid .field--pct {
+    text-align: center;
   }
 
   .items__bar {
@@ -1376,8 +1775,8 @@
 
   .stat__value {
     font-size: 1.4rem;
-    font-weight: 700;
-    letter-spacing: -0.01em;
+    font-weight: 800;
+    letter-spacing: -0.015em;
     font-variant-numeric: tabular-nums;
     color: var(--text-primary);
   }
@@ -1428,8 +1827,8 @@
     position: absolute;
     inset-block: 0;
     inset-inline-start: 0;
-    background: var(--primary-100);
-    border-inline-end: 2px solid var(--primary-500);
+    background: linear-gradient(90deg, var(--primary-200) 0%, var(--primary-400) 100%);
+    border-inline-end: 2px solid var(--primary-600);
     transition: inline-size var(--duration-slow) ease-out;
   }
 
@@ -1470,7 +1869,14 @@
     box-shadow: var(--shadow-sm);
     padding-inline: var(--space-5);
     padding-block: var(--space-4);
-    transition: box-shadow var(--duration-normal) var(--ease), transform var(--duration-normal) var(--ease);
+    transition: box-shadow var(--duration-normal) var(--ease), transform var(--duration-normal) var(--ease),
+      border-color var(--duration-normal) var(--ease);
+  }
+
+  .dash-card:hover {
+    box-shadow: var(--shadow-md);
+    transform: translateY(-2px);
+    border-color: var(--border-selected);
   }
 
   .dash-card__icon {
@@ -1480,19 +1886,20 @@
     inline-size: 3rem;
     block-size: 3rem;
     border-radius: var(--radius-md);
-    background: var(--primary-50);
-    color: var(--primary-600);
+    background: var(--primary-gradient);
+    color: #fff;
+    box-shadow: var(--shadow-primary);
     flex-shrink: 0;
   }
 
   .dash-card--success .dash-card__icon {
-    background: var(--success-50);
-    color: var(--success-600);
+    background: linear-gradient(135deg, #17b877 0%, var(--success-600) 100%);
+    box-shadow: 0 6px 16px rgba(3, 152, 85, 0.24), 0 2px 6px rgba(3, 152, 85, 0.16);
   }
 
   .dash-card--warning .dash-card__icon {
-    background: var(--warning-50);
-    color: var(--warning-600);
+    background: linear-gradient(135deg, #f7a933 0%, var(--warning-600) 100%);
+    box-shadow: 0 6px 16px rgba(220, 104, 3, 0.24), 0 2px 6px rgba(220, 104, 3, 0.16);
   }
 
   .dash-card__body {
@@ -1510,8 +1917,8 @@
 
   .dash-card__value {
     font-size: 1.6rem;
-    font-weight: 700;
-    letter-spacing: -0.01em;
+    font-weight: 800;
+    letter-spacing: -0.015em;
     color: var(--text-primary);
     font-variant-numeric: tabular-nums;
     line-height: 1.2;
@@ -1576,13 +1983,14 @@
     font-weight: 600;
     text-align: center;
     transition: border-color var(--duration-fast) var(--ease), box-shadow var(--duration-fast) var(--ease),
-      background-color var(--duration-fast) var(--ease);
+      background-color var(--duration-fast) var(--ease), transform var(--duration-fast) var(--ease);
   }
 
   .dash-quick-link:hover {
     border-color: var(--border-selected);
     background: var(--surface-hover);
-    box-shadow: var(--shadow-sm);
+    box-shadow: var(--shadow-md);
+    transform: translateY(-2px);
   }
 
   .dash-quick-link__icon {
@@ -1594,6 +2002,12 @@
     border-radius: var(--radius-full);
     background: var(--primary-50);
     color: var(--primary-600);
+    transition: background-color var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
+  }
+
+  .dash-quick-link:hover .dash-quick-link__icon {
+    background: var(--primary-gradient);
+    color: #fff;
   }
 
   /* ---- two-column band: both panels carry equal-weight content
@@ -1618,6 +2032,28 @@
   .dash-chart-tabs {
     display: flex;
     gap: var(--space-2);
+  }
+
+  .dash-trend-range {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: var(--space-3);
+    margin-block: var(--space-3);
+    padding-block-end: var(--space-3);
+    border-block-end: 1px solid var(--border-default);
+  }
+
+  .dash-trend-range__field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+
+  .dash-trend-range__label {
+    font-size: 0.74rem;
+    font-weight: 600;
+    color: var(--text-secondary);
   }
 
   .dash-chart-tab {
@@ -1866,8 +2302,23 @@
     padding: var(--space-2);
   }
 
+  /* Rendered via a portal into document.body (PortalAutocomplete) — top/
+     left/width come from the anchor's own getBoundingClientRect() as
+     inline styles, in viewport coordinates, so every positioning property
+     the base rule sets for the in-flow case must be cleared here. */
+  .autocomplete--portal {
+    position: fixed;
+    inset-inline: auto;
+    top: auto;
+    margin-block-start: 0;
+  }
+
   .autocomplete--offset {
     top: 2.9rem;
+  }
+
+  .autocomplete--pos {
+    top: 4.25rem;
   }
 
   .autocomplete li button {
@@ -1907,18 +2358,38 @@
     display: flex;
     align-items: center;
     gap: var(--space-3);
+    background: var(--surface);
+    border-radius: var(--radius-xl);
+    padding: var(--space-2);
+    box-shadow: var(--shadow-md);
+    border: 1px solid var(--border-default);
   }
 
   .pos__search {
     flex: 1;
-    font-size: 1.05rem;
-    block-size: 3rem;
+    font-size: 1.1rem;
+    font-weight: 600;
+    block-size: 3.25rem;
+    border-radius: var(--radius-lg);
+    border-color: transparent;
+    background: var(--bg-subtle);
+  }
+
+  .pos__search:focus {
+    background: var(--surface);
+    box-shadow: var(--shadow-focus);
   }
 
   .pos__warehouse {
-    font-size: 0.82rem;
-    color: var(--text-secondary);
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--primary-600);
+    background: var(--primary-50);
+    border-radius: var(--radius-full);
+    padding-inline: var(--space-3);
+    padding-block: var(--space-2);
     white-space: nowrap;
+    flex-shrink: 0;
   }
 
   .pos__footer {
@@ -1972,13 +2443,13 @@
     padding-block: var(--space-3);
     font-size: 0.86rem;
     color: var(--text-primary);
-    animation: toast-in var(--duration-slow) var(--ease);
+    animation: toast-in 320ms var(--ease-spring);
   }
 
   @keyframes toast-in {
     from {
       opacity: 0;
-      transform: translateY(-0.5rem) scale(0.97);
+      transform: translateY(-0.5rem) scale(0.95);
     }
     to {
       opacity: 1;
@@ -2067,13 +2538,13 @@
     max-block-size: 90vh;
     overflow-y: auto;
     padding: var(--space-6);
-    animation: modal-in var(--duration-normal) var(--ease);
+    animation: modal-in 280ms var(--ease-spring);
   }
 
   @keyframes modal-in {
     from {
       opacity: 0;
-      transform: translateY(0.5rem) scale(0.98);
+      transform: translateY(0.5rem) scale(0.96);
     }
     to {
       opacity: 1;
@@ -2099,4 +2570,1221 @@
     gap: var(--space-3);
     margin-block-start: var(--space-5);
   }
+}
+
+/* ---- additions: POS warnings, refund preview, adjustments ---- */
+.badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1, 4px);
+  margin-block-start: 2px;
+}
+.badges:empty {
+  display: none;
+}
+.text-bad {
+  color: var(--error-600);
+  font-weight: 600;
+}
+.stack-sm > * + * {
+  margin-block-start: var(--space-2, 8px);
+}
+
+.alert--success {
+  display: flex;
+  border-radius: var(--radius-md);
+  padding-inline: var(--space-4);
+  padding-block: var(--space-3);
+  background: var(--success-50);
+  border: 1px solid var(--success-border);
+  color: var(--success-600);
+}
+.checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2, 8px);
+  margin-block-start: var(--space-2, 8px);
+  cursor: pointer;
+}
+
+/* ---- auth, modal ---- */
+.auth-screen {
+  min-block-size: 100vh;
+  display: grid;
+  place-items: center;
+  background: var(--color-bg, #f4f6fb);
+  padding: 16px;
+}
+.auth-card {
+  inline-size: min(420px, 100%);
+}
+.auth-card__title {
+  font-size: 1.4rem;
+  font-weight: 800;
+  text-align: center;
+}
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgb(15 23 42 / 0.45);
+  display: grid;
+  place-items: center;
+  z-index: 1000;
+  padding: 16px;
+}
+.modal {
+  inline-size: min(560px, 100%);
+  max-block-size: 90vh;
+  overflow: auto;
+  background: #fff;
+}
+.modal--wide {
+  inline-size: min(900px, 100%);
+}
+@media print {
+  .shell > header, .drawer, .no-print, .toast-host { display: none !important; }
+  .shell__content { padding: 0 !important; }
+}
+
+/* ---- workspace: open pages in the sidebar ---- */
+.open-pages {
+  position: sticky;
+  inset-block-start: calc(-1 * var(--space-4, 16px));
+  z-index: 2;
+  margin-block: calc(-1 * var(--space-4, 16px)) var(--space-2, 8px);
+  margin-inline: calc(-1 * var(--space-3, 12px));
+  padding: var(--space-3, 12px);
+  background: var(--surface, #fff);
+  border-block-end: 1px solid var(--border-default);
+}
+.open-pages__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-inline: 4px;
+  margin-block-end: 6px;
+}
+.open-pages__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--text-muted, #667085);
+}
+.open-pages__count {
+  min-inline-size: 18px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--primary-50);
+  color: var(--primary-700);
+  font-size: 0.7rem;
+  line-height: 18px;
+  text-align: center;
+}
+.open-pages__add {
+  inline-size: 26px;
+  block-size: 26px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--primary-700);
+  font-size: 1.05rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.open-pages__add:hover {
+  background: var(--primary-50);
+  border-color: var(--primary-300);
+}
+.open-pages__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-block-size: 34vh;
+  overflow-y: auto;
+}
+.open-page {
+  position: relative;
+  display: flex;
+  align-items: center;
+  border-radius: 8px;
+  transition: background 0.12s;
+}
+.open-page:hover {
+  background: #f2f4f7;
+}
+.open-page--active,
+.open-page--active:hover {
+  background: var(--primary-50);
+}
+.open-page--active::before {
+  content: '';
+  position: absolute;
+  inset-block: 6px;
+  inset-inline-start: 0;
+  inline-size: 3px;
+  border-radius: 3px;
+  background: var(--primary-600);
+}
+.open-page__select {
+  flex: 1;
+  min-inline-size: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: none;
+  background: transparent;
+  font: inherit;
+  font-size: 0.875rem;
+  text-align: start;
+  padding: 7px 10px;
+  cursor: pointer;
+  color: var(--text-default, #344054);
+}
+.open-page--active .open-page__select {
+  font-weight: 600;
+  color: var(--primary-700);
+}
+.open-page__icon {
+  display: inline-flex;
+  color: var(--text-muted, #98a2b3);
+  flex-shrink: 0;
+}
+.open-page--active .open-page__icon {
+  color: var(--primary-600);
+}
+.open-page__label {
+  flex: 1;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.open-page__dot {
+  inline-size: 7px;
+  block-size: 7px;
+  border-radius: 50%;
+  background: var(--warning-500, #f79009);
+  flex-shrink: 0;
+}
+.open-page__close {
+  visibility: hidden;
+  inline-size: 24px;
+  block-size: 24px;
+  margin-inline-end: 4px;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted, #667085);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.open-page:hover .open-page__close,
+.open-page--active .open-page__close,
+.open-page__close:focus-visible {
+  visibility: visible;
+}
+.open-page__close:hover {
+  background: var(--error-50);
+  color: var(--error-600);
+}
+.sidebar__section-title {
+  padding: 4px var(--space-2, 8px) 2px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--text-muted, #667085);
+}
+.shell__content[hidden] {
+  display: none !important;
+}
+.cell--invalid .field {
+  border-color: var(--error-600);
+  background: var(--error-50);
+}
+
+/* ==========================================================================
+   Simple theme
+   --------------------------------------------------------------------------
+   Unlayered, so it wins over the @layer rules above without editing them.
+   Direction: flat surfaces (a border, not a shadow), one accent colour,
+   smaller controls, denser tables — the screens are worked in all day, so
+   calm and compact beats decorative.
+   ========================================================================== */
+
+:root {
+  --header-h: 3.25rem;
+  --sidebar-w: 14.5rem;
+  --bg-app: #f5f6f8;
+  --surface-hover: #f7f8fb;
+  --border-default: #e4e7ec;
+  --border-strong: #d0d5dd;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.625rem;
+  --radius-xl: 0.75rem;
+  --shadow-xs: none;
+  --shadow-sm: none;
+  --shadow-md: 0 2px 8px rgba(16, 24, 40, 0.06);
+  --shadow-primary: none;
+  --primary-gradient: var(--primary-600);
+}
+
+/* ---- shell ---- */
+.shell__content {
+  padding-inline: var(--space-6);
+  padding-block: var(--space-5);
+  animation: none;
+}
+.shell__heading {
+  font-size: 1.2rem;
+  line-height: 1.75rem;
+  font-weight: 700;
+  margin-block-end: var(--space-4);
+}
+
+/* ---- header ---- */
+.header {
+  gap: var(--space-3);
+  padding-inline: var(--space-4);
+  box-shadow: none;
+}
+.header__search {
+  max-inline-size: 32rem;
+}
+.header__search .field {
+  block-size: 2.25rem;
+  background: var(--bg-app);
+  border-color: transparent;
+}
+.header__search .field:focus {
+  background: var(--surface);
+  border-color: var(--border-focus);
+}
+.header__toggle {
+  inline-size: 2.25rem;
+  block-size: 2.25rem;
+  border-radius: var(--radius-md);
+}
+.header__user {
+  border: none;
+  background: none;
+  padding: 0;
+  box-shadow: none;
+}
+.header__user-avatar {
+  display: none;
+}
+.header__user-name {
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+/* ---- sidebar: open pages on top, menu below, each scrolls on its own ---- */
+.sidebar {
+  padding: 0;
+  gap: 0;
+  overflow: hidden;
+  background: var(--surface);
+  animation: none;
+}
+.sidebar::before {
+  display: none;
+}
+.open-pages {
+  position: static;
+  flex: none;
+  max-block-size: 38%;
+  overflow-y: auto;
+  margin: 0;
+  padding: var(--space-3) var(--space-2) var(--space-2);
+  background: var(--bg-app);
+  border-block-end: 1px solid var(--border-default);
+}
+.open-page--active,
+.open-page--active:hover {
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--border-default);
+}
+.nav {
+  flex: 1;
+  min-block-size: 0;
+  overflow-y: auto;
+  padding: var(--space-2) var(--space-2) var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.nav-group {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin-block-start: var(--space-3);
+}
+.nav-group__title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding-inline: var(--space-2);
+  padding-block: var(--space-1);
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--text-tertiary);
+}
+.nav-group__title svg {
+  inline-size: 0.9rem;
+  block-size: 0.9rem;
+}
+.nav-link {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  inline-size: 100%;
+  min-block-size: 2rem;
+  padding-inline: var(--space-3);
+  border-radius: var(--radius-md);
+  font-size: 0.86rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  text-align: start;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+.nav-link:hover {
+  background: var(--bg-app);
+  color: var(--text-primary);
+}
+.nav-link--active,
+.nav-link--active:hover {
+  background: var(--primary-50);
+  color: var(--primary-700);
+  font-weight: 700;
+}
+.nav-link__icon {
+  display: inline-flex;
+}
+
+/* ---- surfaces ---- */
+.panel,
+.card,
+.stat,
+.dash-card,
+.datatable {
+  box-shadow: none;
+}
+.panel {
+  padding-inline: var(--space-5);
+  padding-block: var(--space-4);
+}
+.dash-card:hover {
+  transform: none;
+  box-shadow: none;
+}
+
+/* ---- controls ---- */
+.btn {
+  block-size: 2.25rem;
+  padding-inline: var(--space-3);
+  font-size: 0.85rem;
+}
+.btn--sm {
+  block-size: 1.875rem;
+  padding-inline: var(--space-2);
+  font-size: 0.8rem;
+}
+.btn--primary {
+  background: var(--primary-600);
+  border-color: var(--primary-600);
+  box-shadow: none;
+}
+.btn--primary:hover:not(:disabled) {
+  background: var(--primary-700);
+  filter: none;
+  box-shadow: none;
+  transform: none;
+}
+.field,
+select.field {
+  block-size: 2.375rem;
+}
+.field:focus {
+  box-shadow: 0 0 0 3px rgba(47, 92, 232, 0.12);
+}
+
+/* ---- tables: denser rows, actions only as loud as they need to be ---- */
+.subtable th,
+.datatable th {
+  padding-block: var(--space-2);
+  font-size: 0.74rem;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.subtable td,
+.datatable td {
+  padding-block: 0.55rem;
+}
+.datatable__actions .btn {
+  block-size: 1.875rem;
+  padding-inline: var(--space-2);
+  font-size: 0.8rem;
+}
+
+/* ---- stats ---- */
+.stat {
+  padding-inline: var(--space-4);
+  padding-block: var(--space-3);
+}
+.stat__value {
+  font-size: 1.2rem;
+  font-weight: 700;
+}
+.dash-card__icon {
+  background: var(--primary-50);
+  color: var(--primary-600);
+  box-shadow: none;
+}
+.dash-card--success .dash-card__icon {
+  background: var(--success-50);
+  color: var(--success-600);
+}
+.dash-card--warning .dash-card__icon {
+  background: var(--warning-50);
+  color: var(--warning-600);
+}
+
+/* ==========================================================================
+   Simple theme — round 2: wider sidebar, brand in the header, calmer forms
+   ========================================================================== */
+
+:root {
+  --sidebar-w: 17rem;
+}
+
+/* Brand (pharmacy name) sits beside the menu button; the search follows. */
+.brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-inline-size: calc(var(--sidebar-w) - 4rem);
+  white-space: nowrap;
+}
+.brand__mark {
+  display: inline-grid;
+  place-items: center;
+  inline-size: 1.875rem;
+  block-size: 1.875rem;
+  border-radius: var(--radius-md);
+  background: var(--primary-600);
+  color: #fff;
+}
+.brand__name {
+  font-size: 0.98rem;
+  font-weight: 800;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.header__search {
+  flex: 1;
+}
+
+/* Thin scrollbars everywhere — the default ones were the loudest thing on screen. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #c9ced8 transparent;
+}
+::-webkit-scrollbar {
+  inline-size: 8px;
+  block-size: 8px;
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: #d0d5dd;
+  border-radius: 99px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: #98a2b3;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Sidebar: roomier rows to match the wider column. */
+.nav-link {
+  min-block-size: 2.25rem;
+  font-size: 0.9rem;
+  padding-inline: var(--space-3);
+}
+.nav-link--active {
+  box-shadow: inset -3px 0 0 var(--primary-600);
+}
+[dir='ltr'] .nav-link--active {
+  box-shadow: inset 3px 0 0 var(--primary-600);
+}
+.nav-group__title {
+  font-size: 0.75rem;
+  padding-inline: var(--space-3);
+  letter-spacing: 0.01em;
+}
+.open-page__label {
+  font-size: 0.86rem;
+}
+
+/* Forms read best at a readable width — not stretched across a 27" screen. */
+.item-form {
+  max-inline-size: 76rem;
+}
+
+/* Form sections: a heading and a hairline, not a box drawn around a box. */
+.fieldset {
+  border: none;
+  border-block-start: 1px solid var(--border-default);
+  border-radius: 0;
+  padding: var(--space-4) 0 0;
+  margin-block-start: var(--space-5);
+}
+.fieldset legend {
+  padding-inline: 0 var(--space-3);
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.formfield__label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+/* Page title row: a little separation from the content. */
+.shell__heading {
+  padding-block-end: var(--space-3);
+  border-block-end: 1px solid var(--border-default);
+}
+
+/* Alerts: compact, with a coloured edge. */
+.alert {
+  border-radius: var(--radius-md);
+  padding-block: var(--space-2);
+  border-inline-start-width: 4px;
+}
+
+/* Empty-state text in lists. */
+.muted {
+  color: var(--text-tertiary);
+}
+
+/* ---- Open pages: one scroll (the list), header stays put ---------------- */
+.open-pages {
+  display: flex;
+  flex-direction: column;
+  max-block-size: 42%;
+  overflow: hidden;
+  padding: var(--space-3) var(--space-3) var(--space-3);
+  background: var(--bg-app);
+}
+.open-pages__header {
+  flex: none;
+  padding-inline: var(--space-1);
+  margin-block-end: var(--space-2);
+}
+.open-pages__title {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--text-tertiary);
+}
+.open-pages__count {
+  min-inline-size: 1.25rem;
+  padding-inline: 0.35rem;
+  border-radius: 99px;
+  background: var(--border-default);
+  color: var(--text-secondary);
+  font-size: 0.7rem;
+  text-align: center;
+}
+.open-pages__add {
+  inline-size: auto;
+  block-size: 1.75rem;
+  padding-inline: var(--space-2);
+  gap: 4px;
+  display: inline-flex;
+  align-items: center;
+  border-radius: var(--radius-md);
+  border-color: transparent;
+  background: var(--primary-600);
+  color: #fff;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+.open-pages__add:hover {
+  background: var(--primary-700);
+  border-color: transparent;
+}
+.open-pages__list {
+  flex: 1;
+  min-block-size: 0;
+  max-block-size: none;
+  overflow-y: auto;
+  gap: 4px;
+  padding: 1px;
+}
+.open-page {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+}
+.open-page:hover {
+  background: var(--surface);
+  border-color: var(--border-default);
+}
+.open-page--active,
+.open-page--active:hover {
+  background: var(--surface);
+  border-color: var(--border-default);
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.06);
+}
+.open-page--active::before {
+  inset-block: 8px;
+  background: var(--primary-600);
+}
+.open-page__select {
+  padding: 8px 12px;
+}
+.open-page__icon {
+  inline-size: 1.625rem;
+  block-size: 1.625rem;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 6px;
+  background: var(--bg-subtle);
+}
+.open-page--active .open-page__icon {
+  background: var(--primary-50);
+}
+.open-page__close:hover {
+  background: var(--error-50);
+  color: var(--error-600);
+}
+
+/* A section on its own is a card; inside a panel it is a heading + hairline. */
+.fieldset {
+  background: var(--surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4) var(--space-5);
+  margin-block-start: var(--space-4);
+}
+.fieldset > legend {
+  float: inline-start;
+  inline-size: 100%;
+  padding: 0;
+  margin-block-end: var(--space-3);
+  font-size: 0.92rem;
+}
+.fieldset > legend + * {
+  clear: both;
+}
+.panel .fieldset,
+.item-form .panel .fieldset {
+  background: none;
+  border: none;
+  border-block-start: 1px solid var(--border-default);
+  border-radius: 0;
+  padding: var(--space-4) 0 0;
+}
+
+/* ---- Search box with a clear (×) button -------------------------------- */
+.search-input {
+  position: relative;
+  display: block;
+  inline-size: 100%;
+  min-inline-size: 0;
+}
+.items__bar > .search-input {
+  flex: 0 1 24rem;
+  inline-size: auto;
+}
+.items__bar > .search-input > .items__search {
+  max-inline-size: none;
+}
+.header__search-icon {
+  z-index: 1;
+}
+.search-input > input {
+  inline-size: 100%;
+  padding-inline-end: 2.25rem;
+}
+.search-input__clear {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-end: 0.4rem;
+  margin-block: auto;
+  inline-size: 1.5rem;
+  block-size: 1.5rem;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: 99px;
+  background: var(--bg-subtle);
+  color: var(--text-secondary);
+  font-size: 1.05rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.search-input__clear:hover {
+  background: var(--error-50);
+  color: var(--error-600);
+}
+
+/* ==========================================================================
+   Responsive — the same app on a 13" laptop, a 24" screen or a tablet
+   ========================================================================== */
+
+/* Rows of controls never push the page wider than the window. */
+.items__bar,
+.btn-row,
+.item-form__toolbar {
+  flex-wrap: wrap;
+}
+
+/* Wide tables scroll sideways inside their own box, never the whole page. */
+.table-wrap {
+  max-inline-size: 100%;
+  overflow-x: auto;
+}
+.table-wrap > table {
+  min-inline-size: 100%;
+}
+
+/* Slide-over menu (small screens): above the page, with a dimmed backdrop. */
+.drawer-backdrop {
+  position: fixed;
+  inset: var(--header-h) 0 0 0;
+  background: rgba(16, 24, 40, 0.35);
+  z-index: 40;
+  animation: fade-in var(--duration-normal) var(--ease);
+}
+.sidebar--overlay {
+  position: fixed;
+  inset-block: var(--header-h) 0;
+  inset-inline-start: 0;
+  z-index: 41;
+  inline-size: min(var(--sidebar-w), 85vw);
+  box-shadow: 0 12px 32px rgba(16, 24, 40, 0.18);
+}
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@media (max-width: 1280px) {
+  :root {
+    --sidebar-w: 15.5rem;
+  }
+  .shell__content {
+    padding-inline: var(--space-5);
+  }
+}
+
+@media (max-width: 1100px) {
+  .brand {
+    min-inline-size: 0;
+  }
+  .shell__content {
+    padding-inline: var(--space-4);
+    padding-block: var(--space-4);
+  }
+  .grid2 {
+    grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+    gap: var(--space-3) var(--space-4);
+  }
+}
+
+@media (max-width: 768px) {
+  .header {
+    gap: var(--space-2);
+    padding-inline: var(--space-2);
+  }
+  .brand__name {
+    max-inline-size: 9rem;
+  }
+  .brand__edit {
+    display: none;
+  }
+  .shell__heading {
+    font-size: 1.05rem;
+    margin-block-end: var(--space-3);
+  }
+  .shell__content {
+    padding-inline: var(--space-3);
+  }
+  .grid2 {
+    grid-template-columns: 1fr;
+  }
+  .panel,
+  .fieldset {
+    padding-inline: var(--space-3);
+  }
+  .items__bar > .search-input {
+    flex: 1 1 100%;
+  }
+  .stat {
+    flex: 1 1 8rem;
+    min-inline-size: 0;
+  }
+  .modal {
+    padding: var(--space-4);
+    max-block-size: 94vh;
+  }
+  .header-search-panel {
+    inset-inline: calc(-1 * var(--space-10)) 0;
+  }
+}
+
+@media (max-width: 520px) {
+  .brand__name {
+    display: none;
+  }
+  .btn {
+    padding-inline: var(--space-2);
+  }
+}
+
+/* Touch screens: fingers need bigger targets than a mouse pointer. */
+@media (pointer: coarse) {
+  .btn,
+  .field,
+  select.field {
+    min-block-size: 2.75rem;
+  }
+  .nav-link,
+  .open-page__select {
+    min-block-size: 2.75rem;
+  }
+  .open-page__close {
+    visibility: visible;
+  }
+  .search-input__clear {
+    inline-size: 2rem;
+    block-size: 2rem;
+  }
+}
+
+/* Header brand as a rename button. */
+.brand--button {
+  border: none;
+  background: none;
+  padding: 0.25rem 0.4rem;
+  margin: 0;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font: inherit;
+}
+.brand--button:hover {
+  background: var(--bg-app);
+}
+.brand__edit {
+  color: var(--text-tertiary);
+  font-size: 0.85rem;
+  opacity: 0;
+  transition: opacity var(--duration-fast) var(--ease);
+}
+.brand--button:hover .brand__edit,
+.brand--button:focus-visible .brand__edit {
+  opacity: 1;
+}
+.brand__input {
+  block-size: 2.125rem;
+  inline-size: 14rem;
+  max-inline-size: 50vw;
+  font-weight: 700;
+}
+
+/* A button label never breaks over two lines. */
+.btn {
+  white-space: nowrap;
+}
+
+/* ==========================================================================
+   Purchase invoice — الأسعار والوحدات as cards
+   Each line is a card whose fields flow into as many columns as fit: one row
+   of eight on a wide screen, two or three rows on a laptop, one column on a
+   phone. No horizontal scrolling and no squeezed inputs.
+   ========================================================================== */
+.plines {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-block: var(--space-5);
+  padding-block-start: var(--space-4);
+  border-block-start: 1px solid var(--border-default);
+}
+.plines__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.pline {
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  padding: var(--space-3) var(--space-4) var(--space-4);
+  transition: border-color var(--duration-fast) var(--ease), box-shadow var(--duration-fast) var(--ease);
+}
+.pline:focus-within {
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 3px rgba(47, 92, 232, 0.08);
+}
+.pline--empty {
+  background: var(--bg-app);
+  border-style: dashed;
+}
+.pline__top {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+.pline__no {
+  flex: none;
+  inline-size: 1.75rem;
+  block-size: 1.75rem;
+  display: grid;
+  place-items: center;
+  border-radius: 99px;
+  background: var(--primary-50);
+  color: var(--primary-700);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+.pline__item {
+  flex: 1 1 16rem;
+  min-inline-size: 0;
+}
+.pline__item .field {
+  block-size: 2.625rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+.pline__stock {
+  flex: none;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  background: var(--bg-app);
+  border-radius: 99px;
+  padding: 0.2rem 0.65rem;
+}
+.pline__remove {
+  flex: none;
+  inline-size: 2rem;
+  block-size: 2rem;
+  display: grid;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: none;
+  color: var(--text-tertiary);
+  font-size: 1.3rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.pline__remove:hover:not(:disabled) {
+  background: var(--error-50);
+  border-color: #f7c9c5;
+  color: var(--error-600);
+}
+.pline__remove:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.pline__fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(7.5rem, 1fr));
+  gap: var(--space-3);
+  margin-block-start: var(--space-3);
+}
+.pline__fields .formfield {
+  min-inline-size: 0;
+}
+.pline__fields .field {
+  inline-size: 100%;
+}
+.pline__foot {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-4);
+  margin-block-start: var(--space-3);
+  padding-block-start: var(--space-2);
+  border-block-start: 1px dashed var(--border-default);
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+.pline__foot b {
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+.pline__total b {
+  font-size: 1rem;
+  color: var(--primary-700);
+}
+.plines__add {
+  align-self: flex-start;
+  border-style: dashed;
+  color: var(--primary-700);
+}
+
+/* Totals box, aligned to the end like the bottom of a paper invoice. */
+.psummary {
+  margin-block-start: var(--space-4);
+  margin-inline-start: auto;
+  inline-size: min(100%, 22rem);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  padding: var(--space-2) var(--space-4);
+  background: var(--bg-app);
+}
+.psummary > div {
+  display: flex;
+  justify-content: space-between;
+  padding-block: var(--space-2);
+  font-size: 0.88rem;
+  color: var(--text-secondary);
+}
+.psummary > div + div {
+  border-block-start: 1px solid var(--border-default);
+}
+.psummary b {
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+.psummary__total span,
+.psummary__total b {
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: var(--text-primary);
+}
+
+@media (max-width: 520px) {
+  .pline {
+    padding-inline: var(--space-3);
+  }
+  .pline__fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .pline__stock {
+    order: 3;
+  }
+}
+/* The date needs its full "31/12/2028" plus the picker icon in a narrow column. */
+.pline__fields input[type='date'] {
+  padding-inline: 0.45rem;
+  font-size: 0.85rem;
+}
+
+/* ---- Item units (الأسعار والوحدات): one card per unit ------------------ */
+.unit-rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-block: var(--space-3);
+}
+.unit-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(9rem, 1.2fr) minmax(8rem, 1fr) minmax(10rem, 1.2fr) auto 2rem;
+  align-items: start;
+  gap: var(--space-3);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface);
+}
+.unit-row--base {
+  border-color: var(--primary-200);
+  background: var(--primary-50);
+}
+.unit-row .formfield {
+  min-inline-size: 0;
+}
+.unit-row__custom {
+  display: flex;
+  gap: var(--space-1);
+}
+.unit-row__auto {
+  color: var(--success-600);
+  font-weight: 600;
+}
+.unit-row__flags {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-block-start: 1.6rem;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+.unit-row > .pline__remove {
+  margin-block-start: 1.6rem;
+}
+.unit-row__explain {
+  grid-column: 1 / -1;
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  border-block-start: 1px dashed var(--border-default);
+  padding-block-start: var(--space-2);
+}
+.unit-row .cell--invalid .field {
+  border-color: var(--error-500);
+}
+@media (max-width: 900px) {
+  .unit-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .unit-row__flags {
+    padding-block-start: 0;
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+  .unit-row > .pline__remove {
+    position: absolute;
+    inset-block-start: var(--space-2);
+    inset-inline-end: var(--space-2);
+    margin: 0;
+  }
+}
+@media (max-width: 520px) {
+  .unit-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Stock count: one small box per unit (علبة / شريط / قرص). */
+.count-inputs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.count-input {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+}
+.count-input .field {
+  inline-size: 4.5rem;
 }

@@ -7,10 +7,14 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import type { ItemStockRow, BatchRow, StockMoveRow } from '@pharmacy/shared';
+import type { ItemStockRow, BatchRow, StockMoveRow, WarehouseRow } from '@pharmacy/shared';
 import { fromPiastres } from '@pharmacy/core';
 import { ar } from '../../i18n/ar';
 import { EmptyState, TableSkeleton } from '../../components/EmptyState';
+import { errorText } from '../../lib/errors';
+import { exportCsv } from '../../lib/csv';
+import { useToast } from '../../components/Toast';
+import { SearchInput } from '../../components/SearchInput';
 
 type MoveTypeKey = keyof typeof ar.stock.moveType;
 
@@ -20,9 +24,19 @@ export function StockScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<ItemStockRow | null>(null);
+  const [warehouses, setWarehouses] = useState<WarehouseRow[]>([]);
+  // null = every warehouse combined — the qtyOnHand shown is then a sum
+  // across all of them, same as before this filter existed.
+  const [warehouseId, setWarehouseId] = useState<number | null>(null);
   const debounce = useRef<ReturnType<typeof setTimeout>>();
+  const { showToast } = useToast();
 
-  async function load(q: string) {
+  useEffect(() => {
+    if (!window.api) return;
+    void window.api.warehouses.list().then(setWarehouses);
+  }, []);
+
+  async function load(q: string, wId: number | null) {
     if (!window.api) {
       setError(ar.status.noBridge);
       setLoading(false);
@@ -30,33 +44,31 @@ export function StockScreen() {
     }
     setLoading(true);
     try {
-      setRows(await window.api.stock.search(q, 200));
+      setRows(await window.api.stock.search(q, 200, wId ?? undefined));
     } catch (err) {
-      setError(`${ar.stock.errors.loadFailed}: ${(err as Error).message}`);
+      setError(`${ar.stock.errors.loadFailed}: ${errorText(err)}`);
     } finally {
       setLoading(false);
     }
   }
 
   useEffect(() => {
-    void load('');
-  }, []);
-
-  useEffect(() => {
     if (debounce.current) clearTimeout(debounce.current);
-    debounce.current = setTimeout(() => void load(query), 120);
+    debounce.current = setTimeout(() => void load(query, warehouseId), 120);
     return () => {
       if (debounce.current) clearTimeout(debounce.current);
     };
-  }, [query]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query, warehouseId]);
 
   if (selected) {
     return (
       <BatchDetail
         item={selected}
+        warehouses={warehouses}
         onBack={() => {
           setSelected(null);
-          void load(query);
+          void load(query, warehouseId);
         }}
       />
     );
@@ -65,27 +77,57 @@ export function StockScreen() {
   return (
     <div className="items">
       <div className="items__bar">
-        <input
+        <SearchInput
           className="field items__search"
           placeholder={ar.stock.search}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
+        {warehouses.length > 1 && (
+          <select
+            className="field field--sm"
+            value={warehouseId ?? ''}
+            onChange={(e) => setWarehouseId(e.target.value === '' ? null : Number(e.target.value))}
+          >
+            <option value="">{ar.stock.allWarehouses}</option>
+            {warehouses.map((w) => (
+              <option key={w.id} value={w.id}>
+                {w.nameAr}
+              </option>
+            ))}
+          </select>
+        )}
+        <button
+          type="button"
+          className="btn btn--sm"
+          disabled={rows.length === 0}
+          onClick={() =>
+            void exportCsv(
+              'stock.csv',
+              [ar.items.fields.code, ar.items.fields.nameAr, ar.stock.available, ar.stock.expiredQty, ar.stock.quarantinedQty, ar.stock.nearestExpiry, ar.stock.stockValue],
+              rows.map((r) => [r.code, r.nameAr, r.qtyOnHand, r.expiredQty, r.quarantinedQty, r.nearestExpiry ?? '', fromPiastres(r.stockValue)])
+            ).then((msg) => msg && showToast(msg, 'info'))
+          }
+        >
+          {ar.exportCsv.button}
+        </button>
       </div>
 
       {error && <div className="alert alert--error">{error}</div>}
 
       {loading ? (
-        <TableSkeleton cols={6} />
+        <TableSkeleton cols={8} />
       ) : rows.length === 0 ? (
         <EmptyState title={query.trim() ? ar.stock.noResults : ar.stock.empty} />
       ) : (
-        <table className="datatable">
+        <div className="table-wrap"><table className="datatable">
           <thead>
             <tr>
               <th>{ar.items.fields.code}</th>
               <th>{ar.items.fields.nameAr}</th>
-              <th>{ar.stock.onHand}</th>
+              <th>{ar.stock.available}</th>
+              <th>{ar.stock.expiredQty}</th>
+              <th>{ar.stock.quarantinedQty}</th>
               <th>{ar.stock.nearestExpiry}</th>
               <th>{ar.stock.stockValue}</th>
               <th />
@@ -100,6 +142,8 @@ export function StockScreen() {
                   {r.qtyOnHand}
                   {r.qtyOnHand === 0 && <span className="badge badge--error"> {ar.stock.outOfStock}</span>}
                 </td>
+                <td dir="ltr" className={r.expiredQty > 0 ? 'text-bad' : 'muted'}>{r.expiredQty || '—'}</td>
+                <td dir="ltr" className="muted">{r.quarantinedQty || '—'}</td>
                 <td dir="ltr">{r.nearestExpiry ?? ar.stock.noExpiry}</td>
                 <td dir="ltr">{fromPiastres(r.stockValue)}</td>
                 <td className="datatable__actions">
@@ -110,13 +154,21 @@ export function StockScreen() {
               </tr>
             ))}
           </tbody>
-        </table>
+        </table></div>
       )}
     </div>
   );
 }
 
-function BatchDetail({ item, onBack }: { item: ItemStockRow; onBack: () => void }) {
+function BatchDetail({
+  item,
+  warehouses,
+  onBack,
+}: {
+  item: ItemStockRow;
+  warehouses: WarehouseRow[];
+  onBack: () => void;
+}) {
   const [batches, setBatches] = useState<BatchRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [movesFor, setMovesFor] = useState<number | null>(null);
@@ -156,9 +208,10 @@ function BatchDetail({ item, onBack }: { item: ItemStockRow; onBack: () => void 
       ) : batches.length === 0 ? (
         <EmptyState title={ar.stock.noBatches} />
       ) : (
-        <table className="datatable">
+        <div className="table-wrap"><table className="datatable">
           <thead>
             <tr>
+              <th>{ar.stock.warehouseColumn}</th>
               <th>{ar.stock.batchNumber}</th>
               <th>{ar.stock.expiryDate}</th>
               <th>{ar.stock.onHand}</th>
@@ -170,6 +223,7 @@ function BatchDetail({ item, onBack }: { item: ItemStockRow; onBack: () => void 
           <tbody>
             {batches.map((b) => (
               <tr key={b.id}>
+                <td>{warehouses.find((w) => w.id === b.warehouseId)?.nameAr ?? '—'}</td>
                 <td dir="ltr">{b.batchNumber ?? '—'}</td>
                 <td dir="ltr">{b.expiryDate ?? ar.stock.noExpiry}</td>
                 <td dir="ltr">
@@ -186,7 +240,7 @@ function BatchDetail({ item, onBack }: { item: ItemStockRow; onBack: () => void 
               </tr>
             ))}
           </tbody>
-        </table>
+        </table></div>
       )}
 
       {movesFor !== null && (
@@ -197,7 +251,7 @@ function BatchDetail({ item, onBack }: { item: ItemStockRow; onBack: () => void 
               {ledgerCheck.matches ? ar.stock.ledgerMatches : ar.stock.ledgerMismatch}
             </p>
           )}
-          <table className="subtable">
+          <div className="table-wrap"><table className="subtable">
             <thead>
               <tr>
                 <th>{ar.purchases.invoiceDate}</th>
@@ -216,7 +270,7 @@ function BatchDetail({ item, onBack }: { item: ItemStockRow; onBack: () => void 
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
         </fieldset>
       )}
     </div>

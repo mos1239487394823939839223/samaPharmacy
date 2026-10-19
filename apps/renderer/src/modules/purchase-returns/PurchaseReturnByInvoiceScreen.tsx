@@ -1,45 +1,60 @@
 /**
- * مرتجعات فواتير الشراء — look up a purchase invoice by serial, select
- * lines and quantities to return to the supplier. Availability is capped by
- * current qty_on_hand, not by what was originally received: some of it may
- * have already sold.
+ * مرتجعات فواتير الشراء — find a confirmed purchase invoice by serial and
+ * send stock back to its supplier, in any unit (box, strip, tablet). The cap
+ * is what is still on the shelf in that batch (some may already have sold);
+ * the value is the batch's landed cost and is deducted from what the
+ * pharmacy owes the supplier.
  */
 
 import { useState } from 'react';
-import type { ReturnablePurchaseLine } from '@pharmacy/shared';
+import type { PurchaseInvoiceRow, ReturnablePurchaseLine } from '@pharmacy/shared';
 import { fromPiastres, toAsciiDigits } from '@pharmacy/core';
 import { ar } from '../../i18n/ar';
 import { useToast } from '../../components/Toast';
+import { Stat } from '../../components/Stat';
+import { errorText } from '../../lib/errors';
+import { baseQty, describeQty, loadUnits, type UnitOption } from '../../lib/units';
+import { SearchInput } from '../../components/SearchInput';
 
 interface DraftLine extends ReturnablePurchaseLine {
+  units: UnitOption[];
+  returnUnitId: number;
   returnQty: string;
 }
 
+const unitOf = (l: DraftLine) => l.units.find((u) => u.id === l.returnUnitId);
+
 export function PurchaseReturnByInvoiceScreen() {
   const [serial, setSerial] = useState('');
-  const [invoiceId, setInvoiceId] = useState<number | null>(null);
-  const [supplierId, setSupplierId] = useState<number | null>(null);
-  const [warehouseId, setWarehouseId] = useState<number | null>(null);
+  const [invoice, setInvoice] = useState<PurchaseInvoiceRow | null>(null);
   const [lines, setLines] = useState<DraftLine[]>([]);
   const [reason, setReason] = useState('');
   const [error, setError] = useState<string | null>(null);
+  /** The return just saved — offered for printing until the next one. */
+  const [lastReturnId, setLastReturnId] = useState<number | null>(null);
+  const [saving, setSaving] = useState(false);
   const { showToast } = useToast();
 
   async function findInvoice() {
     if (!window.api || !serial.trim()) return;
     setError(null);
+    setInvoice(null);
+    setLines([]);
     try {
       const serialNum = Number(serial.trim());
       const match = Number.isInteger(serialNum) ? await window.api.purchases.getBySerial(serialNum) : null;
-      if (!match) return setError(ar.salesReturns.notFound);
+      if (!match) return setError(ar.purchaseReturns.notFound);
+      setInvoice(match);
+      if (match.status !== 'confirmed') return;
 
-      setInvoiceId(match.id);
-      setSupplierId(match.supplierId);
-      setWarehouseId(match.warehouseId);
-      const returnable = await window.api.purchaseReturns.returnableLines(match.id);
-      setLines(returnable.map((l) => ({ ...l, returnQty: '' })));
+      const returnable = (await window.api.purchaseReturns.returnableLines(match.id)).filter((l) => l.batchId);
+      const unitsByItem = new Map<number, UnitOption[]>();
+      for (const id of new Set(returnable.map((l) => l.itemId))) unitsByItem.set(id, await loadUnits(id));
+      setLines(
+        returnable.map((l) => ({ ...l, units: unitsByItem.get(l.itemId) ?? [], returnUnitId: l.unitId, returnQty: '' }))
+      );
     } catch (err) {
-      setError((err as Error).message);
+      setError(errorText(err));
     }
   }
 
@@ -47,57 +62,58 @@ export function PurchaseReturnByInvoiceScreen() {
     setLines((prev) => prev.map((l) => (l.batchId === batchId ? { ...l, ...patch } : l)));
   }
 
+  const chosen = lines.filter((l) => baseQty(l.returnQty, unitOf(l)) !== 0);
+  const valueTotal = chosen.reduce((s, l) => s + (baseQty(l.returnQty, unitOf(l)) ?? 0) * l.unitCost, 0);
+
   async function submit() {
-    if (!window.api || !supplierId || !warehouseId) return;
+    if (!window.api || !invoice || saving) return;
     setError(null);
-
-    const toReturn = lines.filter((l) => Number(l.returnQty) > 0);
-    if (toReturn.length === 0) return setError(ar.purchaseReturns.errors.noLines);
-
-    // createPurchaseReturn's only real bound is live batch.qtyOnHand, not
-    // receivedQtyBase — some of what was received may have already sold, so
-    // batchQtyOnHand (already fetched per line) is the correct cap here.
-    if (toReturn.some((l) => !Number.isInteger(Number(l.returnQty)))) {
-      return setError(ar.purchaseReturns.errors.qtyNotWhole);
-    }
-    if (toReturn.some((l) => Number(l.returnQty) > (l.batchQtyOnHand ?? 0))) {
-      return setError(ar.purchaseReturns.errors.qtyExceedsOnHand);
+    if (chosen.length === 0) return setError(ar.purchaseReturns.errors.noLines);
+    for (const l of chosen) {
+      const base = baseQty(l.returnQty, unitOf(l));
+      if (base === null) return setError(ar.purchaseReturns.errors.qtyNotWhole);
+      if (base > (l.batchQtyOnHand ?? 0)) return setError(ar.purchaseReturns.errors.qtyExceedsOnHand);
     }
 
+    setSaving(true);
     try {
       const returnId = await window.api.purchaseReturns.create({
-        sourceInvoiceId: invoiceId,
-        supplierId,
-        warehouseId,
+        sourceInvoiceId: invoice.id,
+        supplierId: invoice.supplierId,
+        warehouseId: invoice.warehouseId,
         reason: reason.trim() || null,
-        lines: toReturn.map((l) => ({
+        lines: chosen.map((l) => ({
           itemId: l.itemId,
           batchId: l.batchId,
-          unitId: l.unitId,
-          qtyInUnit: Number(l.returnQty),
-          qtyBase: Number(l.returnQty),
+          unitId: l.returnUnitId,
+          qtyInUnit: Number(toAsciiDigits(l.returnQty)),
         })),
       });
+      setLastReturnId(returnId);
       const created = await window.api.purchaseReturns.get(returnId);
       showToast(ar.purchaseReturns.confirmed.replace('{serial}', String(created?.serial ?? returnId)));
-      setInvoiceId(null);
+      setInvoice(null);
       setLines([]);
       setSerial('');
+      setReason('');
     } catch (err) {
-      setError(`${ar.purchaseReturns.errors.createFailed}: ${(err as Error).message}`);
+      setError(errorText(err));
+    } finally {
+      setSaving(false);
     }
   }
 
   return (
     <div className="items">
       <div className="items__bar">
-        <input
+        <SearchInput
           className="field items__search"
           placeholder={ar.purchaseReturns.invoiceSerial}
           dir="ltr"
+          autoFocus
           value={serial}
           onChange={(e) => setSerial(toAsciiDigits(e.target.value))}
-          onKeyDown={(e) => e.key === 'Enter' && void findInvoice()}
+          onKeyDown={(e) => (e.code === 'Enter' || e.code === 'NumpadEnter') && void findInvoice()}
         />
         <button type="button" className="btn btn--primary" onClick={() => void findInvoice()}>
           {ar.purchaseReturns.load}
@@ -105,54 +121,83 @@ export function PurchaseReturnByInvoiceScreen() {
       </div>
 
       {error && <div className="alert alert--error">{error}</div>}
+      {lastReturnId && (
+        <div className="btn-row" style={{ marginBlockStart: 0 }}>
+          <button
+            type="button"
+            className="btn btn--sm"
+            onClick={() => void window.api!.print.document('purchaseReturn', lastReturnId).catch((err) => setError(errorText(err)))}
+          >
+            {ar.print.lastReturn}
+          </button>
+        </div>
+      )}
+      {invoice && invoice.status !== 'confirmed' && <div className="alert alert--error">{ar.purchaseReturns.notConfirmed}</div>}
 
-      {invoiceId && (
+      {invoice && invoice.status === 'confirmed' && (
         <>
-          <table className="subtable">
+          <div className="table-wrap"><table className="subtable">
             <thead>
               <tr>
                 <th>{ar.items.fields.nameAr}</th>
                 <th>{ar.purchaseReturns.receivedQty}</th>
                 <th>{ar.purchaseReturns.onHandQty}</th>
-                <th>{ar.purchaseReturns.alreadyReturned}</th>
+                <th>{ar.purchaseReturns.unit}</th>
                 <th>{ar.purchaseReturns.returnQty}</th>
-                <th>{ar.purchaseReturns.unitCost}</th>
+                <th>{ar.purchaseReturns.value}</th>
               </tr>
             </thead>
             <tbody>
-              {lines.map((l) => (
-                <tr key={l.batchId}>
-                  <td>{l.itemNameAr}</td>
-                  <td dir="ltr">{l.receivedQtyBase}</td>
-                  <td dir="ltr">{l.batchQtyOnHand ?? '—'}</td>
-                  <td dir="ltr">{l.alreadyReturnedQtyBase}</td>
-                  <td>
-                    <input
-                      className="field field--sm"
-                      dir="ltr"
-                      inputMode="numeric"
-                      value={l.returnQty}
-                      disabled={(l.batchQtyOnHand ?? 0) <= 0}
-                      onChange={(e) =>
-                        updateLine(l.batchId, {
-                          returnQty: toAsciiDigits(e.target.value).replace(/[^\d]/g, ''),
-                        })
-                      }
-                    />
-                  </td>
-                  <td dir="ltr">{fromPiastres(l.unitCost)}</td>
-                </tr>
-              ))}
+              {lines.map((l) => {
+                const base = baseQty(l.returnQty, unitOf(l));
+                const invalid = base === null || (base !== 0 && base > (l.batchQtyOnHand ?? 0));
+                return (
+                  <tr key={l.batchId}>
+                    <td>{l.itemNameAr}</td>
+                    <td>{describeQty(l.receivedQtyBase, l.units)}</td>
+                    <td>{describeQty(l.batchQtyOnHand ?? 0, l.units)}</td>
+                    <td>
+                      <select
+                        className="field field--sm"
+                        value={l.returnUnitId}
+                        disabled={(l.batchQtyOnHand ?? 0) <= 0}
+                        onChange={(e) => updateLine(l.batchId, { returnUnitId: Number(e.target.value) })}
+                      >
+                        {l.units.map((u) => (
+                          <option key={u.id} value={u.id}>
+                            {u.nameAr}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td>
+                      <input
+                        className={invalid ? 'field field--sm field--invalid' : 'field field--sm'}
+                        dir="ltr"
+                        inputMode="decimal"
+                        value={l.returnQty}
+                        disabled={(l.batchQtyOnHand ?? 0) <= 0}
+                        onChange={(e) => updateLine(l.batchId, { returnQty: toAsciiDigits(e.target.value) })}
+                      />
+                    </td>
+                    <td dir="ltr">{base ? fromPiastres(base * l.unitCost) : '—'}</td>
+                  </tr>
+                );
+              })}
             </tbody>
-          </table>
+          </table></div>
 
           <label className="formfield formfield--narrow mt">
             <span className="formfield__label">{ar.purchaseReturns.reason}</span>
             <input className="field" value={reason} onChange={(e) => setReason(e.target.value)} />
           </label>
 
+          <div className="stats mt">
+            <Stat label={ar.purchaseReturns.valueTotal} value={fromPiastres(valueTotal)} good />
+          </div>
+
           <div className="btn-row">
-            <button type="button" className="btn btn--primary" onClick={() => void submit()}>
+            <button type="button" className="btn btn--primary" disabled={saving || chosen.length === 0} onClick={() => void submit()}>
               {ar.purchaseReturns.confirm}
             </button>
           </div>

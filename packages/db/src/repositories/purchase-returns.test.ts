@@ -14,6 +14,7 @@ import {
   getPurchaseReturn,
   getReturnablePurchaseLines,
 } from './purchase-returns';
+import { FUTURE_EXPIRY } from '../test-helpers';
 
 let db: Db;
 let supplierId: number;
@@ -43,7 +44,7 @@ function purchase(itemId: number, unitId: number, qtyBase: number, unitCost: num
     warehouseId,
     purchaseType: 'credit',
     invoiceDate: '2026-01-01',
-    lines: [{ lineNo: 1, itemId, unitId, qtyInUnit: qtyBase, qtyBase, unitPurchasePrice: unitCost }],
+    lines: [{ lineNo: 1, itemId, unitId, qtyInUnit: qtyBase, qtyBase, unitPurchasePrice: unitCost, expiryDate: FUTURE_EXPIRY }],
   });
   confirmPurchaseInvoice(db, id);
   return id;

@@ -20,6 +20,7 @@ import {
   getShiftSalesSummary,
   listShifts,
 } from './shifts';
+import { FUTURE_EXPIRY } from '../test-helpers';
 
 let db: Db;
 let itemId: number;
@@ -34,7 +35,7 @@ beforeEach(() => {
 
   itemId = createItem(db, { nameAr: 'صنف للوردية' });
   unitId = Number(
-    db.prepare('INSERT INTO item_units (item_id, name_ar, factor, sale_price, is_base) VALUES (?, ?, 1, 100, 1)')
+    db.prepare('INSERT INTO item_units (item_id, name_ar, factor, sale_price, is_base) VALUES (?, ?, 1, 100000, 1)')
       .run(itemId, 'قرص').lastInsertRowid
   );
   supplierId = createSupplier(db, { nameAr: 'مورد للوردية' });
@@ -48,7 +49,7 @@ function stockUp(qtyBase: number, unitCost: number) {
     warehouseId,
     purchaseType: 'credit',
     invoiceDate: '2026-01-01',
-    lines: [{ lineNo: 1, itemId, unitId, qtyInUnit: qtyBase, qtyBase, unitPurchasePrice: unitCost }],
+    lines: [{ lineNo: 1, itemId, unitId, qtyInUnit: qtyBase, qtyBase, unitPurchasePrice: unitCost, expiryDate: FUTURE_EXPIRY }],
   });
   confirmPurchaseInvoice(db, id);
 }
@@ -224,8 +225,8 @@ describe('BR-10: a closed shift is immutable', () => {
 describe('recordCashTransaction', () => {
   it('rejects a non-positive amount', () => {
     const id = openShift(db, warehouseId, 30000);
-    expect(() => recordCashTransaction(db, id, 'in', 0)).toThrow(RangeError);
-    expect(() => recordCashTransaction(db, id, 'out', -100)).toThrow(RangeError);
+    expect(() => recordCashTransaction(db, id, 'in', 0)).toThrow(/must be (positive|a positive)/);
+    expect(() => recordCashTransaction(db, id, 'out', -100)).toThrow(/must be (positive|a positive)/);
   });
 
   it('lists transactions for a shift in order', () => {

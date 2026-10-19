@@ -8,6 +8,8 @@ import { fromPiastres } from '@pharmacy/core';
 import { ar } from '../../i18n/ar';
 import { PurchaseForm } from './PurchaseForm';
 import { EmptyState, TableSkeleton } from '../../components/EmptyState';
+import { errorText } from '../../lib/errors';
+import { useToast } from '../../components/Toast';
 
 type Mode = { view: 'list' } | { view: 'form' };
 
@@ -30,6 +32,34 @@ export function PurchasesScreen() {
   const [rows, setRows] = useState<PurchaseInvoiceRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<number | null>(null);
+  const { showToast } = useToast();
+
+  async function printInvoice(id: number) {
+    try {
+      await window.api!.print.document('purchase', id);
+    } catch (err) {
+      setError(errorText(err));
+    }
+  }
+
+  /** A saved draft can be confirmed (stock enters) or voided (abandoned) from the list. */
+  async function act(row: PurchaseInvoiceRow, action: 'confirm' | 'void') {
+    if (!window.api || busyId) return;
+    if (action === 'void' && !window.confirm(ar.purchases.voidConfirm)) return;
+    setError(null);
+    setBusyId(row.id);
+    try {
+      if (action === 'confirm') await window.api.purchases.confirm(row.id);
+      else await window.api.purchases.voidInvoice(row.id);
+      showToast(action === 'confirm' ? ar.purchases.confirmedToast : ar.purchases.voidedToast);
+      await load();
+    } catch (err) {
+      setError(errorText(err));
+    } finally {
+      setBusyId(null);
+    }
+  }
 
   async function load() {
     if (!window.api) {
@@ -41,7 +71,7 @@ export function PurchasesScreen() {
     try {
       setRows(await window.api.purchases.list({ limit: 200 }));
     } catch (err) {
-      setError(`${ar.purchases.errors.loadFailed}: ${(err as Error).message}`);
+      setError(`${ar.purchases.errors.loadFailed}: ${errorText(err)}`);
     } finally {
       setLoading(false);
     }
@@ -68,11 +98,11 @@ export function PurchasesScreen() {
       {error && <div className="alert alert--error">{error}</div>}
 
       {loading ? (
-        <TableSkeleton cols={5} />
+        <TableSkeleton cols={6} />
       ) : rows.length === 0 ? (
         <EmptyState title={ar.purchases.empty} />
       ) : (
-        <table className="datatable">
+        <div className="table-wrap"><table className="datatable">
           <thead>
             <tr>
               <th>{ar.purchases.serial}</th>
@@ -80,6 +110,7 @@ export function PurchasesScreen() {
               <th>{ar.purchases.invoiceDate}</th>
               <th>{ar.purchases.status}</th>
               <th>{ar.purchases.total}</th>
+              <th />
             </tr>
           </thead>
           <tbody>
@@ -94,10 +125,35 @@ export function PurchasesScreen() {
                   </span>
                 </td>
                 <td dir="ltr">{fromPiastres(r.total)}</td>
+                <td className="datatable__actions">
+                  <button type="button" className="btn btn--sm" onClick={() => void printInvoice(r.id)}>
+                    {ar.print.a4}
+                  </button>
+                  {r.status === 'draft' && (
+                    <div className="btn-row" style={{ marginBlockStart: 0 }}>
+                      <button
+                        type="button"
+                        className="btn btn--primary btn--sm"
+                        disabled={busyId === r.id}
+                        onClick={() => void act(r, 'confirm')}
+                      >
+                        {ar.purchases.confirm}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn--danger btn--sm"
+                        disabled={busyId === r.id}
+                        onClick={() => void act(r, 'void')}
+                      >
+                        {ar.purchases.voidDraft}
+                      </button>
+                    </div>
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>
-        </table>
+        </table></div>
       )}
     </div>
   );

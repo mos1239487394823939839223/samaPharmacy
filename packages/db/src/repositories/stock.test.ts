@@ -18,6 +18,8 @@ import {
   getLowStockItems,
   getExpiryReport,
 } from './stock';
+import { todayLocal } from '@pharmacy/core';
+import { FUTURE_EXPIRY } from '../test-helpers';
 
 let db: Db;
 let supplierId: number;
@@ -57,6 +59,7 @@ function purchaseAndConfirm(itemId: number, qtyBase: number, unitPrice: number, 
         .run(itemId, 'وحدة اختبار').lastInsertRowid
     );
 
+  const receivable = opts.expiryDate != null && opts.expiryDate > todayLocal();
   const id = createPurchaseInvoice(db, {
     supplierInvoiceNo: opts.supplierInvoiceNo ?? `SUP-${Math.random()}`,
     supplierId,
@@ -73,12 +76,21 @@ function purchaseAndConfirm(itemId: number, qtyBase: number, unitPrice: number, 
         bonusBase: opts.bonusBase ?? 0,
         bonusInUnit: opts.bonusBase ?? 0,
         batchNumber: opts.batchNumber ?? null,
-        expiryDate: opts.expiryDate ?? null,
+        // Purchases now refuse blank or past expiry dates, so stock that the
+        // test needs expired (or with no expiry recorded — legacy data, see
+        // migration 0003) is received with a future date and then backdated
+        // on the batch, which is what such stock looks like in the database.
+        expiryDate: receivable ? opts.expiryDate! : FUTURE_EXPIRY,
         unitPurchasePrice: unitPrice,
       },
     ],
   });
   confirmPurchaseInvoice(db, id);
+  if (!receivable) {
+    db.prepare(
+      'UPDATE batches SET expiry_date = ? WHERE id IN (SELECT batch_id FROM purchase_invoice_lines WHERE invoice_id = ?)'
+    ).run(opts.expiryDate ?? null, id);
+  }
   return id;
 }
 
@@ -189,8 +201,8 @@ describe('getBatchMoves / verifyBatchLedger', () => {
 
   it('verifies qty_on_hand matches the sum of stock_moves (rule 8)', () => {
     const itemId = createItem(db, { nameAr: 'صنف تحقق' });
-    purchaseAndConfirm(itemId, 100, 500, { batchNumber: 'MERGE' });
-    purchaseAndConfirm(itemId, 50, 500, { batchNumber: 'MERGE' }); // merges, BR-11
+    purchaseAndConfirm(itemId, 100, 500, { batchNumber: 'MERGE', expiryDate: yearsFromNow(1) });
+    purchaseAndConfirm(itemId, 50, 500, { batchNumber: 'MERGE', expiryDate: yearsFromNow(1) }); // merges, BR-11
     const [batch] = getItemBatches(db, itemId);
 
     const check = verifyBatchLedger(db, batch!.id);

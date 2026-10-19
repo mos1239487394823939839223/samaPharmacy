@@ -1,3 +1,5 @@
+import { z } from 'zod';
+
 export interface ShiftRow {
   id: number;
   userId: number;
@@ -34,3 +36,25 @@ export interface ShiftSalesSummary {
   cashTotal: number;
   creditTotal: number;
 }
+
+export const openShiftSchema = z.object({
+  warehouseId: z.number().int().positive(),
+  /** Piastres. */
+  openingFloat: z.number().int().nonnegative(),
+});
+
+export const closeShiftSchema = z.object({
+  /** Piastres. */
+  countedCash: z.number().int().nonnegative(),
+  varianceNote: z.string().max(500).nullable().optional(),
+  handedTo: z.number().int().positive().nullable().optional(),
+});
+
+export const cashTransactionSchema = z.object({
+  shiftId: z.number().int().positive(),
+  direction: z.enum(['in', 'out']),
+  /** Piastres. */
+  amount: z.number().int().positive(),
+  category: z.string().max(40).nullable().optional(),
+  note: z.string().max(500).nullable().optional(),
+});

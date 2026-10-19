@@ -1,142 +1,118 @@
-import { useEffect, useState } from 'react';
-import { DRAWER_TREE, type DrawerNode, type ScreenId } from '../lib/navigation';
+import type { ReactNode } from 'react';
+import { DRAWER_TREE, type ScreenId } from '../lib/navigation';
+
 import { ar } from '../i18n/ar';
-import { ChevronDownIcon } from './icons';
+import { HomeIcon } from './icons';
+
+interface OpenPage {
+  id: string;
+  screen: ScreenId;
+  label: string;
+  /** Holds unsaved work (a cart with items). */
+  dirty: boolean;
+}
 
 interface Props {
   open: boolean;
+  /** Slide-over panel above the page (small screens) instead of a column. */
+  overlay?: boolean;
   activeScreen: ScreenId;
   onNavigate: (screen: ScreenId) => void;
+  /** The workspace's open pages, shown above the navigation tree. */
+  pages: OpenPage[];
+  activePageId: string;
+  onSelectPage: (id: string) => void;
+  onClosePage: (id: string) => void;
+  onNewSale: () => void;
 }
 
-const COLLAPSED_KEY = 'ui.drawerCollapsedGroups';
-
-function readCollapsed(): Set<string> {
-  try {
-    const raw = localStorage.getItem(COLLAPSED_KEY);
-    return raw ? new Set(JSON.parse(raw) as string[]) : new Set();
-  } catch {
-    return new Set();
-  }
+/** The icon of the menu group a screen belongs to (the home icon for the dashboard). */
+function pageIcon(screen: ScreenId) {
+  if (screen === 'dashboard') return <HomeIcon className="icon--sm" />;
+  const group = DRAWER_TREE.find((g) => g.children?.some((c) => c.screen === screen));
+  return group?.icon ?? <HomeIcon className="icon--sm" />;
 }
 
-function Node({
-  node,
-  activeScreen,
-  onNavigate,
-  collapsed,
-  onToggle,
-}: {
-  node: DrawerNode;
-  activeScreen: ScreenId;
-  onNavigate: (s: ScreenId) => void;
-  collapsed: Set<string>;
-  onToggle: (label: string) => void;
-}) {
-  if (!node.children) {
-    const active = node.screen === activeScreen;
-    return (
-      <li>
-        <button
-          type="button"
-          className={active ? 'sidebar__leaf sidebar__leaf--active' : 'sidebar__leaf'}
-          onClick={() => node.screen && onNavigate(node.screen)}
-        >
-          <span className="sidebar__leaf-dot" aria-hidden="true" />
-          {node.label}
-        </button>
-      </li>
-    );
-  }
-
-  // Purely user-controlled: a group can be collapsed even while it holds the
-  // active screen, so staff can tuck a section away without losing their
-  // place — the active leaf stays highlighted once the group reopens.
-  const isCollapsed = collapsed.has(node.label);
-
+function MenuLink({ label, active, icon, onClick }: { label: string; active: boolean; icon?: ReactNode; onClick: () => void }) {
   return (
-    <li>
-      <button
-        type="button"
-        className="sidebar__group"
-        onClick={() => onToggle(node.label)}
-        aria-expanded={!isCollapsed}
-      >
-        <span>{node.label}</span>
-        <span
-          className={
-            isCollapsed ? 'sidebar__group-chevron sidebar__group-chevron--collapsed' : 'sidebar__group-chevron'
-          }
-          aria-hidden="true"
-        >
-          <ChevronDownIcon />
-        </span>
-      </button>
-      <div className={isCollapsed ? 'sidebar__children-wrap sidebar__children-wrap--collapsed' : 'sidebar__children-wrap'}>
-        <div className="sidebar__children-inner">
-          <ul className="sidebar__children">
-            {node.children.map((child) => (
-              <Node
-                key={child.label + (child.screen ?? '')}
-                node={child}
-                activeScreen={activeScreen}
-                onNavigate={onNavigate}
-                collapsed={collapsed}
-                onToggle={onToggle}
-              />
-            ))}
-          </ul>
-        </div>
-      </div>
-    </li>
+    <button type="button" className={active ? 'nav-link nav-link--active' : 'nav-link'} aria-current={active ? 'page' : undefined} onClick={onClick}>
+      {icon && <span className="nav-link__icon">{icon}</span>}
+      {label}
+    </button>
   );
 }
 
-/** Collapsible sidebar — the navigation tree, single source for every screen. */
-export function Drawer({ open, activeScreen, onNavigate }: Props) {
-  const [collapsed, setCollapsed] = useState<Set<string>>(() => readCollapsed());
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(COLLAPSED_KEY, JSON.stringify([...collapsed]));
-    } catch {
-      /* private mode or blocked storage — collapse state just resets next launch */
-    }
-  }, [collapsed]);
-
+/**
+ * The sidebar: the open pages (tabs) on top, the full menu below. Two
+ * regions that scroll on their own — the open pages never slide over the
+ * menu. Menu groups are plain headings, always expanded: every screen is
+ * one click away and never hidden inside a collapsed section.
+ */
+export function Drawer({ open, overlay = false, activeScreen, onNavigate, pages, activePageId, onSelectPage, onClosePage, onNewSale }: Props) {
   if (!open) return null;
 
-  function toggle(label: string) {
-    setCollapsed((prev) => {
-      const next = new Set(prev);
-      if (next.has(label)) next.delete(label);
-      else next.add(label);
-      return next;
-    });
-  }
-
   return (
-    <aside className="sidebar">
-      <button
-        type="button"
-        className={activeScreen === 'dashboard' ? 'sidebar__root sidebar__root--active' : 'sidebar__root'}
-        onClick={() => onNavigate('dashboard')}
-      >
-        {ar.drawer.home}
-      </button>
+    <aside className={overlay ? 'sidebar sidebar--overlay' : 'sidebar'}>
+      <section className="open-pages" aria-label={ar.workspace.openPages}>
+        <div className="open-pages__header">
+          <span className="open-pages__title">
+            {ar.workspace.openPages}
+            <span className="open-pages__count">{pages.length}</span>
+          </span>
+          <button type="button" className="open-pages__add" onClick={onNewSale} title={ar.workspace.newSaleTitle} aria-label={ar.workspace.newSaleTitle}>
+            + {ar.workspace.newSaleShort}
+          </button>
+        </div>
+        <ul className="open-pages__list" title={ar.workspace.hint}>
+          {pages.map((p) => {
+            const isActive = p.id === activePageId;
+            return (
+              <li key={p.id} className={isActive ? 'open-page open-page--active' : 'open-page'}>
+                <button
+                  type="button"
+                  className="open-page__select"
+                  onClick={() => onSelectPage(p.id)}
+                  aria-current={isActive ? 'page' : undefined}
+                  title={p.dirty ? `${p.label} — ${ar.workspace.unsaved}` : p.label}
+                >
+                  <span className="open-page__icon">{pageIcon(p.screen)}</span>
+                  <span className="open-page__label">{p.label}</span>
+                  {p.dirty && <span className="open-page__dot" aria-label={ar.workspace.unsaved} />}
+                </button>
+                <button
+                  type="button"
+                  className="open-page__close"
+                  onClick={() => onClosePage(p.id)}
+                  title={ar.workspace.close}
+                  aria-label={`${ar.workspace.close} — ${p.label}`}
+                >
+                  ×
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      </section>
 
-      <ul className="sidebar__tree">
-        {DRAWER_TREE.map((node) => (
-          <Node
-            key={node.label}
-            node={node}
-            activeScreen={activeScreen}
-            onNavigate={onNavigate}
-            collapsed={collapsed}
-            onToggle={toggle}
-          />
+      <nav className="nav" aria-label={ar.workspace.menu}>
+        <MenuLink label={ar.drawer.home} icon={<HomeIcon className="icon--sm" />} active={activeScreen === 'dashboard'} onClick={() => onNavigate('dashboard')} />
+        {DRAWER_TREE.map((group) => (
+          <div key={group.label} className="nav-group">
+            <div className="nav-group__title">
+              {group.icon}
+              {group.label}
+            </div>
+            {group.children?.map((child) => (
+              <MenuLink
+                key={child.screen}
+                label={child.label}
+                active={child.screen === activeScreen}
+                onClick={() => child.screen && onNavigate(child.screen)}
+              />
+            ))}
+          </div>
         ))}
-      </ul>
+      </nav>
     </aside>
   );
 }

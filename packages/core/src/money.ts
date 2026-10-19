@@ -102,6 +102,25 @@ export function multiplyMoney(value: Piastres, quantity: number): Piastres {
 }
 
 /**
+ * Value of a line: a (possibly fractional) quantity of a unit times its
+ * integer unit price, rounded half-up to a whole piastre.
+ *
+ * Fractional quantities are legitimate (half a box of 20 is 10 tablets), but
+ * 0.5 × 10.01 EGP is 500.5 piastres — and SQLite stores that as REAL in an
+ * INTEGER column, silently breaking rule 1. Every line total goes through
+ * here so it is always an integer.
+ */
+export function lineValue(quantity: number, unitPrice: Piastres): Piastres {
+  assertSafeInteger(unitPrice, 'unit price');
+  if (!Number.isFinite(quantity)) throw new RangeError(`Quantity must be finite, got ${quantity}`);
+  // Round to 6 decimals first so 1.1 * 300 = 330.00000000000006 cannot tip a tie.
+  const exact = Math.round(quantity * unitPrice * 1e6) / 1e6;
+  const rounded = Math.sign(exact) * Math.round(Math.abs(exact));
+  assertSafeInteger(rounded, 'line value');
+  return rounded === 0 ? 0 : rounded;
+}
+
+/**
  * Apply a percentage, rounding half away from zero.
  *
  * Half-up is the convention staff expect from a till: 0.5 piastre rounds to 1,

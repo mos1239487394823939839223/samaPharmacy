@@ -8,6 +8,7 @@
 
 import { useEffect, useState } from 'react';
 import { fromPiastres, toPiastres } from '@pharmacy/core';
+import { ar } from '../i18n/ar';
 
 interface Props {
   value: number | null;
@@ -15,9 +16,11 @@ interface Props {
   id?: string;
   placeholder?: string;
   disabled?: boolean;
+  /** Only balances may go below zero; prices and payments never do. */
+  allowNegative?: boolean;
 }
 
-export function MoneyInput({ value, onChange, id, placeholder, disabled }: Props) {
+export function MoneyInput({ value, onChange, id, placeholder, disabled, allowNegative = false }: Props) {
   const [text, setText] = useState(() => (value === null ? '' : fromPiastres(value)));
   const [invalid, setInvalid] = useState(false);
 
@@ -34,7 +37,8 @@ export function MoneyInput({ value, onChange, id, placeholder, disabled }: Props
 
   function safeParse(raw: string): number | null {
     try {
-      return toPiastres(raw);
+      const p = toPiastres(raw);
+      return p < 0 && !allowNegative ? null : p;
     } catch {
       return null;
     }
@@ -64,12 +68,13 @@ export function MoneyInput({ value, onChange, id, placeholder, disabled }: Props
         setInvalid(parsed === null);
         if (parsed !== null) onChange(parsed);
       }}
+      title={invalid ? ar.common.invalidMoney : undefined}
       onBlur={() => {
-        // Normalize the display on blur so "5" becomes "5.00".
-        if (value !== null) {
-          setText(fromPiastres(value));
-          setInvalid(false);
-        }
+        // Normalize the display on blur so "5" becomes "5.00". Invalid text
+        // falls back to the value the form actually holds — otherwise the
+        // field showed "10.555" while 10.55 (or an older number) was saved.
+        setText(value === null ? '' : fromPiastres(value));
+        setInvalid(false);
       }}
     />
   );

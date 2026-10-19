@@ -20,6 +20,8 @@ import {
   getSalesTrend,
   getSalesInvoiceBySerial,
 } from './sales';
+import { FUTURE_EXPIRY, allowHistoryEdits } from '../test-helpers';
+import { addDays, todayLocal } from '@pharmacy/core';
 
 let db: Db;
 let itemId: number;
@@ -41,7 +43,7 @@ beforeEach(() => {
   itemId = createItem(db, { nameAr: 'صنف للبيع' });
   unitId = Number(
     db
-      .prepare('INSERT INTO item_units (item_id, name_ar, factor, sale_price, is_base) VALUES (?, ?, 1, 100, 1)')
+      .prepare('INSERT INTO item_units (item_id, name_ar, factor, sale_price, is_base) VALUES (?, ?, 1, 100000, 1)')
       .run(itemId, 'قرص').lastInsertRowid
   );
   supplierId = createSupplier(db, { nameAr: 'مورد للبيع' });
@@ -63,12 +65,17 @@ function stockUp(qtyBase: number, unitCost: number, expiryDate?: string) {
         unitId,
         qtyInUnit: qtyBase,
         qtyBase,
-        expiryDate: expiryDate ?? null,
+        // A past expiry cannot be received any more; receive it fresh and
+        // backdate the batch, which is what expired stock looks like.
+        expiryDate: expiryDate && expiryDate > todayLocal() ? expiryDate : FUTURE_EXPIRY,
         unitPurchasePrice: unitCost,
       },
     ],
   });
   confirmPurchaseInvoice(db, id);
+  if (expiryDate && expiryDate <= todayLocal()) {
+    db.prepare('UPDATE batches SET expiry_date = ? WHERE id IN (SELECT batch_id FROM purchase_invoice_lines WHERE invoice_id = ?)').run(expiryDate, id);
+  }
 }
 
 function baseSaleLine(overrides: Partial<Parameters<typeof createSalesInvoice>[1]['lines'][0]> = {}) {
@@ -142,7 +149,7 @@ describe('createSalesInvoice', () => {
       warehouseId: otherWarehouse,
       purchaseType: 'credit',
       invoiceDate: '2026-01-01',
-      lines: [{ lineNo: 1, itemId, unitId, qtyInUnit: 100, qtyBase: 100, unitPurchasePrice: 50 }],
+      lines: [{ lineNo: 1, itemId, unitId, qtyInUnit: 100, qtyBase: 100, unitPurchasePrice: 50, expiryDate: FUTURE_EXPIRY }],
     });
     confirmPurchaseInvoice(db, purchaseId);
 
@@ -379,7 +386,7 @@ describe('confirmSalesInvoice', () => {
     stockUp(100, 50);
     const itemId2 = createItem(db, { nameAr: 'صنف ثانٍ للبيع' });
     const unitId2 = Number(
-      db.prepare('INSERT INTO item_units (item_id, name_ar, factor, sale_price, is_base) VALUES (?, ?, 1, 100, 1)')
+      db.prepare('INSERT INTO item_units (item_id, name_ar, factor, sale_price, is_base) VALUES (?, ?, 1, 100000, 1)')
         .run(itemId2, 'قرص').lastInsertRowid
     );
     // No stock for item 2 at all -> createSalesInvoice itself would refuse,
@@ -452,7 +459,7 @@ describe('voidSalesInvoice', () => {
 
 describe('getSalesReport / getSalesReportInvoices', () => {
   function todayStr(): string {
-    return new Date().toISOString().slice(0, 10);
+    return todayLocal();
   }
 
   it('sums confirmed cash and credit invoices separately for today', () => {
@@ -531,6 +538,7 @@ describe('getSalesReport / getSalesReportInvoices', () => {
     const id = createSalesInvoice(db, { warehouseId, invoiceType: 'cash', lines: [baseSaleLine()] });
     confirmSalesInvoice(db, id);
     // Force confirmed_at into the past, outside "today".
+    allowHistoryEdits(db);
     db.prepare("UPDATE sales_invoices SET confirmed_at = '2020-01-01T10:00:00' WHERE id = ?").run(id);
 
     const report = getSalesReport(db, todayStr(), todayStr());
@@ -545,6 +553,7 @@ describe('getSalesReport / getSalesReportInvoices', () => {
     // 23:59:59 on the target day must still be included -- the naive bug this
     // guards against is comparing confirmed_at against a bare date string,
     // which in SQLite text comparison would exclude any time-of-day at all.
+    allowHistoryEdits(db);
     db.prepare("UPDATE sales_invoices SET confirmed_at = ? WHERE id = ?").run(`${today}T23:59:59`, id);
 
     const report = getSalesReport(db, today, today);
@@ -566,12 +575,10 @@ describe('getSalesReport / getSalesReportInvoices', () => {
 
 describe('getSalesTrend', () => {
   function todayStr(): string {
-    return new Date().toISOString().slice(0, 10);
+    return todayLocal();
   }
   function daysAgo(n: number): string {
-    const d = new Date();
-    d.setDate(d.getDate() - n);
-    return d.toISOString().slice(0, 10);
+    return addDays(todayLocal(), -n);
   }
 
   it('one grouped query matches calling getSalesReport once per day — same totals, same invoice counts', () => {
@@ -581,14 +588,17 @@ describe('getSalesTrend', () => {
     // same technique the existing boundary test above uses.
     const day2 = createSalesInvoice(db, { warehouseId, invoiceType: 'cash', lines: [baseSaleLine({ qtyInUnit: 3, unitPrice: 100 })] });
     confirmSalesInvoice(db, day2);
+    allowHistoryEdits(db);
     db.prepare("UPDATE sales_invoices SET confirmed_at = ? WHERE id = ?").run(`${daysAgo(2)}T10:00:00`, day2);
 
     const day1a = createSalesInvoice(db, { warehouseId, invoiceType: 'cash', lines: [baseSaleLine({ qtyInUnit: 5, unitPrice: 100 })] });
     confirmSalesInvoice(db, day1a);
+    allowHistoryEdits(db);
     db.prepare("UPDATE sales_invoices SET confirmed_at = ? WHERE id = ?").run(`${daysAgo(1)}T09:00:00`, day1a);
 
     const day1b = createSalesInvoice(db, { warehouseId, invoiceType: 'cash', lines: [baseSaleLine({ qtyInUnit: 2, unitPrice: 100 })] });
     confirmSalesInvoice(db, day1b);
+    allowHistoryEdits(db);
     db.prepare("UPDATE sales_invoices SET confirmed_at = ? WHERE id = ?").run(`${daysAgo(1)}T18:00:00`, day1b);
 
     const today = createSalesInvoice(db, { warehouseId, invoiceType: 'cash', lines: [baseSaleLine({ qtyInUnit: 1, unitPrice: 100 })] });

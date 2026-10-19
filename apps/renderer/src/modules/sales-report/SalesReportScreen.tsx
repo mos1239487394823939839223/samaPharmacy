@@ -8,19 +8,22 @@
 
 import { useEffect, useState } from 'react';
 import type { SalesReportRow, SalesReportInvoiceRow } from '@pharmacy/shared';
-import { fromPiastres } from '@pharmacy/core';
+import { addDays, fromPiastres, todayLocal } from '@pharmacy/core';
 import { ar } from '../../i18n/ar';
 import { Stat } from '../../components/Stat';
 import { EmptyState, TableSkeleton } from '../../components/EmptyState';
+import { errorText } from '../../lib/errors';
+import { exportCsv } from '../../lib/csv';
+import { useToast } from '../../components/Toast';
 
+// Local (Cairo) calendar dates — toISOString() is UTC and named yesterday
+// between midnight and 02:00/03:00.
 function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
+  return todayLocal();
 }
 
 function daysAgoIso(days: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() - days);
-  return d.toISOString().slice(0, 10);
+  return addDays(todayLocal(), -days);
 }
 
 export function SalesReportScreen() {
@@ -30,6 +33,7 @@ export function SalesReportScreen() {
   const [invoices, setInvoices] = useState<SalesReportInvoiceRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { showToast } = useToast();
 
   async function load() {
     if (!window.api) {
@@ -55,7 +59,7 @@ export function SalesReportScreen() {
       setReport(summary);
       setInvoices(list);
     } catch (err) {
-      setError(`${ar.salesReport.errors.loadFailed}: ${(err as Error).message}`);
+      setError(`${ar.salesReport.errors.loadFailed}: ${errorText(err)}`);
     } finally {
       setLoading(false);
     }
@@ -97,6 +101,26 @@ export function SalesReportScreen() {
           <button type="button" className="btn btn--primary btn--sm" onClick={() => void load()}>
             {ar.salesReport.apply}
           </button>
+          <button
+            type="button"
+            className="btn btn--sm"
+            disabled={invoices.length === 0}
+            onClick={() =>
+              void exportCsv(
+                `sales-${from}-${to}.csv`,
+                [ar.salesReport.serial, ar.salesReport.type, ar.salesReport.total, ar.salesReport.profit, ar.salesReport.confirmedAt],
+                invoices.map((inv) => [
+                  inv.serial,
+                  inv.invoiceType === 'cash' ? ar.salesReport.cash : ar.salesReport.credit,
+                  fromPiastres(inv.total),
+                  fromPiastres(inv.total - inv.costTotal),
+                  inv.confirmedAt ?? '',
+                ])
+              ).then((msg) => msg && showToast(msg, 'info'))
+            }
+          >
+            {ar.exportCsv.button}
+          </button>
         </div>
       </div>
 
@@ -110,7 +134,12 @@ export function SalesReportScreen() {
             <Stat label={ar.salesReport.invoiceCount} value={String(report.invoiceCount)} neutral />
             <Stat label={ar.salesReport.cashTotal} value={fromPiastres(report.cashTotal)} />
             <Stat label={ar.salesReport.creditTotal} value={fromPiastres(report.creditTotal)} />
-            <Stat label={ar.salesReport.grandTotal} value={fromPiastres(report.grandTotal)} good />
+            <Stat label={ar.salesReport.grandTotal} value={fromPiastres(report.grandTotal)} />
+            {report.insuranceTotal > 0 && (
+              <Stat label={ar.salesReport.insuranceTotal} value={fromPiastres(report.insuranceTotal)} />
+            )}
+            <Stat label={ar.salesReport.returnsTotal} value={fromPiastres(report.returnsTotal)} bad={report.returnsTotal > 0} />
+            <Stat label={ar.salesReport.netTotal} value={fromPiastres(report.netTotal)} good />
             <Stat label={ar.salesReport.grossProfit} value={fromPiastres(report.grossProfit)} good />
           </div>
 
@@ -119,7 +148,7 @@ export function SalesReportScreen() {
             {invoices.length === 0 ? (
               <EmptyState title={ar.salesReport.empty} />
             ) : (
-              <table className="datatable">
+              <div className="table-wrap"><table className="datatable">
                 <thead>
                   <tr>
                     <th>{ar.salesReport.serial}</th>
@@ -140,7 +169,7 @@ export function SalesReportScreen() {
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </table></div>
             )}
           </div>
         </>

@@ -12,6 +12,9 @@ import { ar } from '../../i18n/ar';
 import { MoneyInput } from '../../components/MoneyInput';
 import { Stat } from '../../components/Stat';
 import { useToast } from '../../components/Toast';
+import { errorText } from '../../lib/errors';
+import { useBusy } from '../../lib/useBusy';
+import { useRefreshOnActivate } from '../../lib/workspace';
 
 export function ShiftHandoverScreen() {
   const [warehouseId, setWarehouseId] = useState<number | null>(null);
@@ -23,6 +26,7 @@ export function ShiftHandoverScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { showToast } = useToast();
+  const { busy, run } = useBusy();
 
   const [openingFloat, setOpeningFloat] = useState<number | null>(null);
   const [txDirection, setTxDirection] = useState<'in' | 'out'>('out');
@@ -58,7 +62,7 @@ export function ShiftHandoverScreen() {
         setExpectedCash(expected);
       }
     } catch (err) {
-      setError((err as Error).message);
+      setError(errorText(err));
     } finally {
       setLoading(false);
     }
@@ -67,6 +71,7 @@ export function ShiftHandoverScreen() {
   useEffect(() => {
     void load();
   }, []);
+  useRefreshOnActivate(() => void load());
 
   async function handleOpen() {
     if (!window.api || !warehouseId) return;
@@ -77,13 +82,17 @@ export function ShiftHandoverScreen() {
       setOpeningFloat(null);
       await load();
     } catch (err) {
-      setError(`${ar.shifts.errors.openFailed}: ${(err as Error).message}`);
+      setError(`${ar.shifts.errors.openFailed}: ${errorText(err)}`);
     }
   }
 
   async function handleAddCash() {
-    if (!window.api || !shift || txAmount === null || txAmount <= 0) return;
+    if (!window.api || !shift) return;
     setError(null);
+    if (txAmount === null || txAmount <= 0) return setError(ar.cashInOut.errors.invalidAmount);
+    if (txDirection === 'out' && expectedCash !== null && txAmount > expectedCash) {
+      return setError(ar.errors['shift.insufficientCash'].replace('{available}', fromPiastres(expectedCash)));
+    }
     try {
       // recordCash's 4th/5th params are category/note — this screen has no
       // category selector, only the single "ملاحظة" field, which belongs in
@@ -94,13 +103,14 @@ export function ShiftHandoverScreen() {
       setTxCategory('');
       await load();
     } catch (err) {
-      setError(`${ar.shifts.errors.cashTxFailed}: ${(err as Error).message}`);
+      setError(`${ar.shifts.errors.cashTxFailed}: ${errorText(err)}`);
     }
   }
 
   async function handleClose() {
-    if (!window.api || !shift || countedCash === null) return;
+    if (!window.api || !shift) return;
     setError(null);
+    if (countedCash === null) return setError(ar.shifts.errors.countedRequired);
     if (countedCash < 0) return setError(ar.shifts.errors.negativeAmount);
     // closeShift (packages/db/src/repositories/shifts.ts) rejects a non-zero
     // variance with no note, but throws a raw English RangeError — checked
@@ -118,7 +128,7 @@ export function ShiftHandoverScreen() {
       setVarianceNote('');
       await load();
     } catch (err) {
-      setError(`${ar.shifts.errors.closeFailed}: ${(err as Error).message}`);
+      setError(`${ar.shifts.errors.closeFailed}: ${errorText(err)}`);
     }
   }
 
@@ -144,8 +154,8 @@ export function ShiftHandoverScreen() {
             <button
               type="button"
               className="btn btn--primary"
-              onClick={() => void handleOpen()}
-              disabled={openingFloat !== null && openingFloat < 0}
+              disabled={busy}
+              onClick={() => void run(handleOpen)}
             >
               {ar.shifts.openShift}
             </button>
@@ -167,7 +177,13 @@ export function ShiftHandoverScreen() {
           <Stat label={ar.shifts.cashSalesCount} value={String(summary?.count ?? 0)} neutral />
           <Stat label={ar.shifts.cashTotal} value={fromPiastres(summary?.cashTotal ?? 0)} good />
           <Stat label={ar.shifts.creditTotal} value={fromPiastres(summary?.creditTotal ?? 0)} neutral />
-          <Stat label={ar.shifts.expectedCash} value={fromPiastres(expectedCash ?? 0)} good />
+          {/* Blind count: the expected figure appears only after the drawer has
+              been counted, so the count cannot simply be copied from it. */}
+          <Stat
+            label={ar.shifts.expectedCash}
+            value={countedCash === null ? ar.shifts.expectedHidden : fromPiastres(expectedCash ?? 0)}
+            good
+          />
         </div>
         <p className="muted small" dir="ltr" style={{ marginBlockStart: 'var(--space-3)' }}>
           {ar.shifts.openedAt}: {shift.openedAt.slice(0, 16)}
@@ -194,7 +210,7 @@ export function ShiftHandoverScreen() {
           </label>
         </div>
         <div className="btn-row">
-          <button type="button" className="btn btn--sm" onClick={() => void handleAddCash()}>
+          <button type="button" className="btn btn--sm" disabled={busy} onClick={() => void run(handleAddCash)}>
             {ar.shifts.addTransaction}
           </button>
         </div>
@@ -203,7 +219,7 @@ export function ShiftHandoverScreen() {
       {transactions.length > 0 && (
         <div className="panel">
           <h2 className="section-heading">{ar.shifts.transactionsLog}</h2>
-          <table className="datatable">
+          <div className="table-wrap"><table className="datatable">
             <thead>
               <tr>
                 <th>{ar.purchases.invoiceDate}</th>
@@ -222,7 +238,7 @@ export function ShiftHandoverScreen() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
         </div>
       )}
 
@@ -247,12 +263,10 @@ export function ShiftHandoverScreen() {
           <button
             type="button"
             className="btn btn--primary"
-            onClick={() => void handleClose()}
-            disabled={
-              countedCash === null ||
-              countedCash < 0 ||
-              (previewVariance !== null && previewVariance !== 0 && !varianceNote.trim())
-            }
+            // Not disabled while incomplete: a greyed-out button gives no
+            // reason, the click shows which field is missing.
+            disabled={busy}
+            onClick={() => void run(handleClose)}
           >
             {ar.shifts.closeShift}
           </button>

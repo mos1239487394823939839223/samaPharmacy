@@ -4,8 +4,10 @@ import ReactDOM from 'react-dom/client';
 // Bundled, not system-linked. Windows' own Arabic faces render poorly at the
 // small sizes used in dense invoice grids (blueprint §2.2).
 import '@fontsource/cairo/400.css';
+import '@fontsource/cairo/500.css';
 import '@fontsource/cairo/600.css';
 import '@fontsource/cairo/700.css';
+import '@fontsource/cairo/800.css';
 
 import './styles.css';
 import { App } from './App';

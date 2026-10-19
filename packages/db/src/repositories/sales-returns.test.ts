@@ -13,6 +13,7 @@ import { getItemBatches, getBatchMoves } from './stock';
 import { createSalesReturn, getSalesReturn, getSalesReturnLines, getReturnableLines } from './sales-returns';
 import { updateSettings } from './settings';
 import { openShift, computeExpectedCash } from './shifts';
+import { FUTURE_EXPIRY, allowHistoryEdits } from '../test-helpers';
 
 let db: Db;
 let unitId: number;
@@ -30,7 +31,7 @@ beforeEach(() => {
 function makeItem(nameAr: string, storageCondition: 'room' | 'fridge' | 'freezer' = 'room', publicPrice: number | null = null) {
   const itemId = createItem(db, { nameAr, storageCondition, publicPrice });
   const uId = Number(
-    db.prepare('INSERT INTO item_units (item_id, name_ar, factor, sale_price, is_base) VALUES (?, ?, 1, 100, 1)')
+    db.prepare('INSERT INTO item_units (item_id, name_ar, factor, sale_price, is_base) VALUES (?, ?, 1, 100000, 1)')
       .run(itemId, 'قرص').lastInsertRowid
   );
   return { itemId, unitId: uId };
@@ -43,7 +44,7 @@ function stockUp(itemId: number, uId: number, qtyBase: number, unitCost: number)
     warehouseId,
     purchaseType: 'credit',
     invoiceDate: '2026-01-01',
-    lines: [{ lineNo: 1, itemId, unitId: uId, qtyInUnit: qtyBase, qtyBase, unitPurchasePrice: unitCost }],
+    lines: [{ lineNo: 1, itemId, unitId: uId, qtyInUnit: qtyBase, qtyBase, unitPurchasePrice: unitCost, expiryDate: FUTURE_EXPIRY }],
   });
   confirmPurchaseInvoice(db, id);
 }
@@ -102,7 +103,7 @@ describe('createSalesReturn — against an invoice (مرتجع فواتير ال
         sourceInvoiceId: invoiceId,
         warehouseId,
         refundMethod: 'cash',
-        lines: [{ itemId, batchId: saleLine!.batchId, unitId: uId, qtyInUnit: 1, qtyBase: 1, unitPrice: 200 }],
+        lines: [{ itemId, batchId: saleLine!.batchId, unitId: uId, qtyInUnit: 1, qtyBase: 1, unitPrice: 200, sourceLineId: saleLine!.id }],
       })
     ).not.toThrow();
   });
@@ -460,8 +461,9 @@ describe('BR-12: refrigerated stock quarantine', () => {
 
 describe('return window (Settings → sales return window)', () => {
   function backdateConfirmedAt(invoiceId: number, daysAgo: number) {
+    allowHistoryEdits(db);
     db.prepare(
-      `UPDATE sales_invoices SET confirmed_at = datetime('now', ?) WHERE id = ?`
+      `UPDATE sales_invoices SET confirmed_at = datetime('now', 'localtime', ?) WHERE id = ?`
     ).run(`-${daysAgo} days`, invoiceId);
   }
 

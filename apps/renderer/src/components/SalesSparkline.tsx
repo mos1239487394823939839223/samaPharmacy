@@ -40,9 +40,9 @@ const BAR_GAP_RATIO = 0.35;
     --primary-* scale — a quiet day reads as a pale tint, the biggest day
     lands on the dashboard's usual saturated primary blue. */
 const COLOR_STOPS: [number, number, number][] = [
-  [224, 235, 255], // primary-100 — quiet day
-  [91, 141, 239], // primary-400 — typical day
-  [29, 78, 216], // primary-600 — peak day
+  [223, 233, 255], // primary-100 — quiet day
+  [91, 133, 247], // primary-400 — typical day
+  [33, 69, 199], // primary-600 — peak day
 ];
 
 function lerp(a: number, b: number, t: number): number {

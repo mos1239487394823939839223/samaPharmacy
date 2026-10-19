@@ -209,6 +209,92 @@ printer work in D6.
 
 ---
 
+## D9 — `public_price` is the price of the box
+
+**Decided by the owner (October 2026 audit).** The EDA public price is the price of
+the item's largest unit (the box). Strips and tablets may be sold; BR-4 caps each
+unit at its share of the box price: `ceil(public_price × unit.factor / box.factor)`
+(`packages/core/src/pricing.ts`). Enforced when an item is saved and on general
+returns. Previously the schema said "per base unit" while the form, the import and
+the returns screens each assumed something different.
+
+## D10 — a batch expiring today is expired
+
+Not sellable today, and shown in the "expired" bucket of the expiry dashboard. All
+"today" comparisons use the local (Cairo) date.
+
+## D11 — refunds follow the invoice
+
+A return against a cash invoice refunds cash from the drawer; against a credit
+invoice it is credited to the customer's account ("على الحساب") only. Credit notes
+are not supported. The refund is the share of what the customer actually paid for
+the line (after line and invoice discounts), never list price × quantity.
+
+## D12 — purchase expenses are owed to the supplier
+
+Invoice total = lines after discounts − extra discount + expenses, and that total is
+posted to the supplier ledger. Expenses are also folded into landed cost.
+
+## D13 — cash purchases are paid from the safe, not the shift drawer
+
+Confirming a cash purchase posts the purchase and an equal payment to the supplier
+ledger (balance unchanged, `paid = total`). It does not touch the shift's expected
+cash. Supplier payments (سداد مورد) likewise come from the safe.
+
+## D14 — companies, pharmacies and clinics buy on account by default
+
+A new customer of those account types defaults to payment method "credit"; purchases
+from suppliers default to credit.
+
+## D15 — money is shown in EGP, stored in piastres
+
+Everything the user reads or types is in pounds (`fromPiastres` / `MoneyInput`).
+Storage stays integer piastres (rule 1) — storing decimal pounds reintroduces
+floating-point drift. Line values go through `lineValue()` so a fractional quantity
+can never store a non-integer amount.
+
+## D16 — timestamps are local time
+
+All timestamps are written as `datetime('now','localtime')` (`packages/db/src/time.ts`);
+migration 0007 converted existing rows. Format remains SQLite's
+`YYYY-MM-DD HH:MM:SS` (space, not `T`) for consistency with existing data and range
+comparisons — a deliberate deviation from CLAUDE.md rule 3's `T` separator.
+
+## D17 — migration numbers are never reused
+
+Version 5 (`index-active-name-lists`) had been applied to existing databases and the
+file was later lost; a new migration reusing number 5 would have been silently
+skipped there. The file is restored, new migrations start at 0006, and `migrate()`
+now refuses to start when an applied version's recorded name differs from its file.
+
+## D18 — no user accounts: one pharmacy, one operator
+
+**Decided by the owner.** The app serves a single pharmacy and opens straight to
+work — no login, no roles, no supervisor approvals. Every write is still recorded in
+the append-only audit log (migration 0009) under the built-in operator, user 1,
+renamed «الصيدلية» (migration 0012). Narcotics register corrections are a reversal
+plus a corrected entry with a mandatory reason (no second signature). If staff
+accounts are ever wanted, `users`/`audit_log` already carry `user_id` everywhere.
+
+## D19 — insurance is a split cash invoice
+
+An insured sale is a cash invoice: the company's share (coverage % of covered lines,
+excluded items paid by the patient, optional per-invoice cap) is a receivable;
+`paid_cash` is the patient's share, so shift close expects exactly that. Claims batch
+unclaimed invoices per company and period through draft → submitted → settled (paid
+amount + rejected invoices with reasons). A return on an insured invoice refunds the
+patient only their share; the company portion (`sales_returns.insurance_portion`) comes
+off the claim.
+
+## D20 — receipts: Windows driver or raw ESC/POS
+
+`system` mode prints through the Windows driver of a named printer (any thermal or A5
+printer with a driver). `network`/`share` modes rasterise to ESC/POS (D2, guards
+P1–P10) and can open the cash drawer. Printing always happens after the sale commits
+and never blocks the till (rule 10).
+
+---
+
 ## Open, not yet decided
 
 - **Concurrent tills.** Spec §6 targets 3. Blueprint §2.3 is emphatic that two tills
