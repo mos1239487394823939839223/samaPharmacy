@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Build packages/db/seed/egypt-drugs.csv — the Egyptian drug catalog shipped
-with the app and imported from الأصناف ← استيراد من ملف ← «دليل الأدوية».
+Build release/egypt-drugs.csv — a clean Egyptian drug catalog, imported by
+hand from الأصناف ← استيراد من ملف.
 
 Input: a distributor / EDA export with the columns of the file this catalog
 was first built from (commercial_name_en, commercial_name_ar,
@@ -28,7 +28,7 @@ if len(sys.argv) < 2:
     sys.exit('usage: build-drug-catalog.py <export.csv> [hand-made.csv]')
 BIG = sys.argv[1]
 SMALL = sys.argv[2] if len(sys.argv) > 2 else None
-OUT = os.path.join(ROOT, 'packages', 'db', 'seed', 'egypt-drugs.csv')
+OUT = os.path.join(ROOT, 'release', 'egypt-drugs.csv')
 
 UNIT_AR = {'MG': 'مجم', 'MCG': 'ميكروجرام', 'GM': 'جم', 'G': 'جم', 'ML': 'مل', 'IU': 'وحدة', '%': '%', 'MIU': 'مليون وحدة'}
 STRENGTH = re.compile(r'(\d+(?:\.\d+)?)\s*(MCG|MIU|MG|GM|G|ML|IU|%)(?:\s*/\s*(\d+(?:\.\d+)?)?\s*(ML|GM|G))?(?![A-Z])')

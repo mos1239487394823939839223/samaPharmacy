@@ -39,3 +39,18 @@ export async function loadUnits(itemId: number): Promise<UnitOption[]> {
     .map((u) => ({ id: u.id, nameAr: u.nameAr, factor: u.factor, salePrice: u.salePrice }))
     .sort((a, b) => b.factor - a.factor);
 }
+
+/** Stock the way it sits on the shelf: «17 علبة + 18 قرص» (largest unit first). */
+export function mixedQty(base: number, units: UnitOption[]): string {
+  if (base <= 0 || units.length === 0) return String(base);
+  const sorted = [...units].sort((a, b) => b.factor - a.factor);
+  const box = sorted[0]!;
+  const smallest = sorted[sorted.length - 1]!;
+  if (box.factor <= 1) return `${base} ${box.nameAr}`;
+  const boxes = Math.floor(base / box.factor);
+  const rest = base % box.factor;
+  const parts: string[] = [];
+  if (boxes > 0) parts.push(`${boxes} ${box.nameAr}`);
+  if (rest > 0) parts.push(`${rest} ${smallest.nameAr}`);
+  return parts.join(' + ');
+}

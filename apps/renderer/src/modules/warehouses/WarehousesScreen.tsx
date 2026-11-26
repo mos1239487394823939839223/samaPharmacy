@@ -135,7 +135,7 @@ export function WarehousesScreen() {
                 <td>{Boolean(r.isDefault) && <span className="badge">{ar.warehouses.default}</span>}</td>
                 <td className="datatable__actions">
                   <button type="button" className="btn btn--sm" onClick={() => startEdit(r)}>
-                    {ar.items.edit}
+                    {ar.warehouses.edit}
                   </button>
                   <button
                     type="button"

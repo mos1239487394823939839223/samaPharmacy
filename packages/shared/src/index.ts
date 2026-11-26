@@ -15,3 +15,5 @@ export * from './auth';
 export * from './narcotics';
 export * from './insurance';
 export * from './printing';
+export * from './shortages';
+export * from './valuation';

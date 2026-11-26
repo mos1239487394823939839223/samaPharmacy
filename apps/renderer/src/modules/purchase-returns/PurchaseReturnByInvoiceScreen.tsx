@@ -8,13 +8,14 @@
 
 import { useState } from 'react';
 import type { PurchaseInvoiceRow, ReturnablePurchaseLine } from '@pharmacy/shared';
-import { fromPiastres, toAsciiDigits } from '@pharmacy/core';
+import { fromPiastres, toAsciiDigits, fromPiastresGrouped } from '@pharmacy/core';
 import { ar } from '../../i18n/ar';
 import { useToast } from '../../components/Toast';
 import { Stat } from '../../components/Stat';
 import { errorText } from '../../lib/errors';
 import { baseQty, describeQty, loadUnits, type UnitOption } from '../../lib/units';
 import { SearchInput } from '../../components/SearchInput';
+import { EmptyState } from '../../components/EmptyState';
 
 interface DraftLine extends ReturnablePurchaseLine {
   units: UnitOption[];
@@ -132,6 +133,7 @@ export function PurchaseReturnByInvoiceScreen() {
           </button>
         </div>
       )}
+      {!invoice && !error && <EmptyState title={ar.purchaseReturns.lookupTitle} hint={ar.purchaseReturns.lookupHint} />}
       {invoice && invoice.status !== 'confirmed' && <div className="alert alert--error">{ar.purchaseReturns.notConfirmed}</div>}
 
       {invoice && invoice.status === 'confirmed' && (
@@ -180,7 +182,7 @@ export function PurchaseReturnByInvoiceScreen() {
                         onChange={(e) => updateLine(l.batchId, { returnQty: toAsciiDigits(e.target.value) })}
                       />
                     </td>
-                    <td dir="ltr">{base ? fromPiastres(base * l.unitCost) : '—'}</td>
+                    <td dir="ltr">{base ? fromPiastresGrouped(base * l.unitCost) : '—'}</td>
                   </tr>
                 );
               })}
@@ -193,7 +195,7 @@ export function PurchaseReturnByInvoiceScreen() {
           </label>
 
           <div className="stats mt">
-            <Stat label={ar.purchaseReturns.valueTotal} value={fromPiastres(valueTotal)} good />
+            <Stat label={ar.purchaseReturns.valueTotal} value={fromPiastresGrouped(valueTotal)} good />
           </div>
 
           <div className="btn-row">

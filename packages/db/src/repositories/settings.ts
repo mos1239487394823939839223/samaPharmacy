@@ -21,6 +21,7 @@ const KEYS = {
   expiryD90: 'expiry.bucket.d90',
   expiryD180: 'expiry.bucket.d180',
   salesReturnWindowDays: 'sales.returnWindowDays',
+  purchaseDiscountPct: 'purchases.discountPct',
   backupSecondaryDir: 'backup.secondaryDir',
   backupKeep: 'backup.keep',
   backupIntervalHours: 'backup.intervalHours',
@@ -120,10 +121,13 @@ export interface ExpiryBucketDays {
 
 export const DEFAULT_EXPIRY_BUCKET_DAYS: ExpiryBucketDays = { d30: 30, d60: 60, d90: 90, d180: 180 };
 export const DEFAULT_SALES_RETURN_WINDOW_DAYS = 14;
+/** خصم الصيدلي: purchase price = selling price − this %. */
+export const DEFAULT_PURCHASE_DISCOUNT_PCT = 20;
 
 export interface PharmacySettings {
   expiryBucketDays: ExpiryBucketDays;
   salesReturnWindowDays: number;
+  purchaseDiscountPct: number;
   backup: BackupSettings;
   pharmacy: PharmacyProfile;
   printer: PrinterSettings;
@@ -154,6 +158,10 @@ export function getSalesReturnWindowDays(db: Db): number {
   return getInt(db, KEYS.salesReturnWindowDays, DEFAULT_SALES_RETURN_WINDOW_DAYS);
 }
 
+export function getPurchaseDiscountPct(db: Db): number {
+  return getInt(db, KEYS.purchaseDiscountPct, DEFAULT_PURCHASE_DISCOUNT_PCT);
+}
+
 export function getBackupSettings(db: Db): BackupSettings {
   return {
     secondaryDir: getRaw(db, KEYS.backupSecondaryDir) ?? DEFAULT_BACKUP_SETTINGS.secondaryDir,
@@ -166,6 +174,7 @@ export function getSettings(db: Db): PharmacySettings {
   return {
     expiryBucketDays: getExpiryBucketDays(db),
     salesReturnWindowDays: getSalesReturnWindowDays(db),
+    purchaseDiscountPct: getPurchaseDiscountPct(db),
     backup: getBackupSettings(db),
     pharmacy: getPharmacyProfile(db),
     printer: getPrinterSettings(db),
@@ -194,6 +203,7 @@ function validateExpiryBucketDays(days: ExpiryBucketDays): void {
 export interface PharmacySettingsPatch {
   expiryBucketDays?: ExpiryBucketDays;
   salesReturnWindowDays?: number;
+  purchaseDiscountPct?: number;
   backup?: Partial<BackupSettings>;
   pharmacy?: Partial<PharmacyProfile>;
   printer?: Partial<PrinterSettings>;
@@ -213,6 +223,12 @@ export function updateSettings(db: Db, input: PharmacySettingsPatch): PharmacySe
         throw new DomainError('settings.returnWindow', 'Sales return window must be a positive whole number of days');
       }
       setRaw(db, KEYS.salesReturnWindowDays, String(data.salesReturnWindowDays));
+    }
+    if (data.purchaseDiscountPct !== undefined) {
+      if (!(Number.isFinite(data.purchaseDiscountPct) && data.purchaseDiscountPct >= 0 && data.purchaseDiscountPct < 100)) {
+        throw new DomainError('settings.purchaseDiscount', 'Purchase discount must be between 0 and 99.99%');
+      }
+      setRaw(db, KEYS.purchaseDiscountPct, String(data.purchaseDiscountPct));
     }
     if (data.backup) {
       const b = data.backup;

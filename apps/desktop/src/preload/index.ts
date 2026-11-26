@@ -12,6 +12,8 @@ import {
   IPC_EVENTS,
   type DbRequest,
   type ImportPreview,
+  type ShortageRow,
+  type Valuation,
   type ImportProgressEvent,
   type ImportResult,
   type ItemDetail,
@@ -100,15 +102,28 @@ const api: RendererApi = {
     alternatives: (id, warehouseId) => send<AlternativeRow[]>({ kind: 'items.alternatives', id, warehouseId }),
     unitPriceIssues: () => send<UnitPriceIssue[]>({ kind: 'items.unitPriceIssues' }),
     fixUnitPrices: (itemIds) => send<number>({ kind: 'items.fixUnitPrices', itemIds }),
+    exportSheet: () => send<{ headers: string[]; rows: (string | number)[][] }>({ kind: 'items.export' }),
+  },
+
+  valuation: {
+    get: (warehouseId) => send<Valuation>({ kind: 'stock.valuation', warehouseId }),
+    opening: (input) => send<{ adjustmentId: number; lines: number }>({ kind: 'stock.opening', input }),
+  },
+
+  shortages: {
+    list: (scope) => send<ShortageRow[]>({ kind: 'shortages.list', scope }),
+    activeItems: () => send<number[]>({ kind: 'shortages.activeItems' }),
+    add: (input) => send<number>({ kind: 'shortages.add', input }),
+    update: (id, input) => send<void>({ kind: 'shortages.update', id, input }),
+    setStatus: (id, status) => send<void>({ kind: 'shortages.setStatus', id, status }),
   },
 
   import: {
     pickFile: () => send<string | null>({ kind: 'import.pickFile' }),
-    bundledCatalog: () => send<string>({ kind: 'import.bundledCatalog' }),
-    preview: (filePath, mapping) =>
-      send<ImportPreview>({ kind: 'import.preview', filePath, mapping }),
-    apply: (filePath, mapping) =>
-      send<ImportResult>({ kind: 'import.apply', filePath, mapping }),
+    preview: (filePath, mapping, mode) =>
+      send<ImportPreview>({ kind: 'import.preview', filePath, mapping, mode }),
+    apply: (filePath, mapping, mode) =>
+      send<ImportResult>({ kind: 'import.apply', filePath, mapping, mode }),
     saveRejects: (csv) => send<string | null>({ kind: 'import.saveRejects', csv }),
     onProgress: (listener: (p: ImportProgressEvent) => void) => {
       // Wrap rather than passing the listener to ipcRenderer directly, so the
@@ -155,7 +170,7 @@ const api: RendererApi = {
   },
 
   stock: {
-    search: (query, limit, warehouseId) => send<ItemStockRow[]>({ kind: 'stock.search', query, limit, warehouseId }),
+    search: (query, limit, warehouseId, inStockOnly) => send<ItemStockRow[]>({ kind: 'stock.search', query, limit, warehouseId, inStockOnly }),
     batches: (itemId) => send<BatchRow[]>({ kind: 'stock.batches', itemId }),
     sellableBatches: (itemId, warehouseId) =>
       send<BatchRow[]>({ kind: 'stock.sellableBatches', itemId, warehouseId }),

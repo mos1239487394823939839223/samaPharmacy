@@ -85,7 +85,7 @@ export function listAudit(
     params.push(filter.entity);
   }
   params.push(filter.limit ?? 300);
-  return db
+  const rows = db
     .prepare(
       `SELECT a.id, a.at, a.user_id AS userId, u.display_name AS userName, a.machine, a.action, a.entity,
               a.entity_id AS entityId, a.before_json AS beforeJson, a.after_json AS afterJson, a.note
@@ -93,5 +93,41 @@ export function listAudit(
        ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
        ORDER BY a.id DESC LIMIT ?`
     )
-    .all(...params) as AuditRow[];
+    .all(...params) as Omit<AuditRow, 'subject'>[];
+  return rows.map((r) => ({ ...r, subject: auditSubject(db, r) }));
+}
+
+/** Lookups that name the record an audit row is about. Ids are internal; names are what staff recognise. */
+const SUBJECTS: Record<string, string> = {
+  items: 'SELECT name_ar AS s FROM items WHERE id = ?',
+  shortages: 'SELECT i.name_ar AS s FROM shortages x JOIN items i ON i.id = x.item_id WHERE x.id = ?',
+  suppliers: 'SELECT name_ar AS s FROM suppliers WHERE id = ?',
+  customers: 'SELECT name AS s FROM customers WHERE id = ?',
+  warehouses: 'SELECT name_ar AS s FROM warehouses WHERE id = ?',
+  insurance: 'SELECT name_ar AS s FROM insurance_companies WHERE id = ?',
+  sales: "SELECT '#' || serial AS s FROM sales_invoices WHERE id = ?",
+  purchases: "SELECT '#' || serial || ' — ' || supplier_invoice_no AS s FROM purchase_invoices WHERE id = ?",
+  salesReturns: "SELECT '#' || serial AS s FROM sales_returns WHERE id = ?",
+  purchaseReturns: "SELECT '#' || serial AS s FROM purchase_returns WHERE id = ?",
+  shifts: "SELECT '#' || id || ' — ' || substr(opened_at, 1, 16) AS s FROM shifts WHERE id = ?",
+};
+
+function auditSubject(db: Db, r: { entity: string; entityId: number | null; afterJson: string | null }): string | null {
+  const id = r.entityId;
+  // shortages.add records the item, not the new row id.
+  if (r.entity === 'shortages' && r.afterJson) {
+    try {
+      const after = JSON.parse(r.afterJson) as { itemId?: number };
+      if (after.itemId) return (db.prepare('SELECT name_ar AS s FROM items WHERE id = ?').get(after.itemId) as { s: string } | undefined)?.s ?? null;
+    } catch {
+      /* not JSON — fall through */
+    }
+  }
+  const sql = SUBJECTS[r.entity];
+  if (!sql || id == null) return null;
+  try {
+    return (db.prepare(sql).get(id) as { s: string } | undefined)?.s ?? null;
+  } catch {
+    return null; // a column this database does not have — the id alone still shows
+  }
 }

@@ -12,12 +12,13 @@
 
 import { useState } from 'react';
 import type { ReturnableLine, SalesInvoiceRow } from '@pharmacy/shared';
-import { fromPiastres, proRataShare, toAsciiDigits, toBaseUnits } from '@pharmacy/core';
+import { fromPiastres, proRataShare, toAsciiDigits, toBaseUnits, fromPiastresGrouped } from '@pharmacy/core';
 import { ar } from '../../i18n/ar';
 import { useToast } from '../../components/Toast';
 import { Stat } from '../../components/Stat';
 import { errorText } from '../../lib/errors';
 import { SearchInput } from '../../components/SearchInput';
+import { EmptyState } from '../../components/EmptyState';
 
 interface UnitOption {
   id: number;
@@ -190,6 +191,7 @@ export function SalesReturnByInvoiceScreen() {
         </div>
       )}
 
+      {!invoice && !error && <EmptyState title={ar.salesReturns.lookupTitle} hint={ar.salesReturns.lookupHint} />}
       {invoice && (
         <p className="hint">
           {ar.salesReturns.invoiceInfo
@@ -226,7 +228,7 @@ export function SalesReturnByInvoiceScreen() {
                   <tr key={l.sourceLineId}>
                     <td>{l.itemNameAr}</td>
                     <td>{describe(l.soldQtyBase, l.units)}</td>
-                    <td dir="ltr">{fromPiastres(l.netValue)}</td>
+                    <td dir="ltr">{fromPiastresGrouped(l.netValue)}</td>
                     <td>{remaining > 0 ? describe(remaining, l.units) : '—'}</td>
                     <td>
                       <select
@@ -281,7 +283,7 @@ export function SalesReturnByInvoiceScreen() {
           </div>
 
           <div className="stats mt">
-            <Stat label={ar.salesReturns.refundTotal} value={fromPiastres(refundTotal)} good />
+            <Stat label={ar.salesReturns.refundTotal} value={fromPiastresGrouped(refundTotal)} good />
           </div>
 
           <div className="btn-row">

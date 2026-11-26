@@ -7,7 +7,7 @@
 
 import { useEffect, useState } from 'react';
 import type { ShiftRow, ShiftSalesSummary, CashTransactionRow } from '@pharmacy/shared';
-import { fromPiastres } from '@pharmacy/core';
+import { fromPiastres, fromPiastresGrouped } from '@pharmacy/core';
 import { ar } from '../../i18n/ar';
 import { MoneyInput } from '../../components/MoneyInput';
 import { Stat } from '../../components/Stat';
@@ -91,7 +91,7 @@ export function ShiftHandoverScreen() {
     setError(null);
     if (txAmount === null || txAmount <= 0) return setError(ar.cashInOut.errors.invalidAmount);
     if (txDirection === 'out' && expectedCash !== null && txAmount > expectedCash) {
-      return setError(ar.errors['shift.insufficientCash'].replace('{available}', fromPiastres(expectedCash)));
+      return setError(ar.errors['shift.insufficientCash'].replace('{available}', `${fromPiastres(expectedCash)} ${ar.common.currency}`));
     }
     try {
       // recordCash's 4th/5th params are category/note — this screen has no
@@ -173,20 +173,22 @@ export function ShiftHandoverScreen() {
 
       <div className="panel">
         <div className="stats">
-          <Stat label={ar.shifts.openingFloat} value={fromPiastres(shift.openingFloat)} neutral />
+          <Stat label={ar.shifts.openingFloat} value={fromPiastresGrouped(shift.openingFloat)} neutral />
           <Stat label={ar.shifts.cashSalesCount} value={String(summary?.count ?? 0)} neutral />
-          <Stat label={ar.shifts.cashTotal} value={fromPiastres(summary?.cashTotal ?? 0)} good />
-          <Stat label={ar.shifts.creditTotal} value={fromPiastres(summary?.creditTotal ?? 0)} neutral />
+          <Stat label={ar.shifts.cashTotal} value={fromPiastresGrouped(summary?.cashTotal ?? 0)} good />
+          <Stat label={ar.shifts.creditTotal} value={fromPiastresGrouped(summary?.creditTotal ?? 0)} neutral />
           {/* Blind count: the expected figure appears only after the drawer has
               been counted, so the count cannot simply be copied from it. */}
           <Stat
             label={ar.shifts.expectedCash}
-            value={countedCash === null ? ar.shifts.expectedHidden : fromPiastres(expectedCash ?? 0)}
-            good
+            value={countedCash === null ? '••••' : fromPiastresGrouped(expectedCash ?? 0)}
+            good={countedCash !== null}
+            neutral={countedCash === null}
           />
         </div>
-        <p className="muted small" dir="ltr" style={{ marginBlockStart: 'var(--space-3)' }}>
-          {ar.shifts.openedAt}: {shift.openedAt.slice(0, 16)}
+        <p className="muted small" style={{ marginBlockStart: 'var(--space-3)' }}>
+          {ar.shifts.openedAt}: <span dir="ltr">{shift.openedAt.slice(0, 16)}</span>
+          {countedCash === null && <> · {ar.shifts.expectedHidden}</>}
         </p>
       </div>
 
@@ -222,7 +224,7 @@ export function ShiftHandoverScreen() {
           <div className="table-wrap"><table className="datatable">
             <thead>
               <tr>
-                <th>{ar.purchases.invoiceDate}</th>
+                <th>{ar.common.timeCol}</th>
                 <th>{ar.shifts.category}</th>
                 <th>{ar.shifts.amount}</th>
                 <th>{ar.shifts.note}</th>
@@ -233,8 +235,8 @@ export function ShiftHandoverScreen() {
                 <tr key={t.id}>
                   <td dir="ltr">{t.at.slice(0, 16)}</td>
                   <td>{t.direction === 'in' ? ar.shifts.cashIn : ar.shifts.cashOut}</td>
-                  <td dir="ltr">{fromPiastres(t.amount)}</td>
-                  <td>{t.category ?? '—'}</td>
+                  <td dir="ltr">{fromPiastresGrouped(t.amount)}</td>
+                  <td>{t.note ?? (t.category ? (ar.cashInOut.categories as Record<string, string>)[t.category] ?? t.category : '—')}</td>
                 </tr>
               ))}
             </tbody>

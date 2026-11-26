@@ -17,7 +17,7 @@ import type {
   StockAdjustmentRow,
   WarehouseRow,
 } from '@pharmacy/shared';
-import { fromPiastres, toAsciiDigits } from '@pharmacy/core';
+import { fromPiastres, toAsciiDigits, fromPiastresGrouped } from '@pharmacy/core';
 import { ar } from '../../i18n/ar';
 import { useToast } from '../../components/Toast';
 import { EmptyState } from '../../components/EmptyState';
@@ -172,7 +172,6 @@ export function StockAdjustmentsScreen() {
 
   return (
     <div className="stack">
-      <p className="hint">{ar.adjustments.intro}</p>
 
       <div className="items__bar field-wrap">
         <SearchInput
@@ -342,7 +341,7 @@ export function StockAdjustmentsScreen() {
                     <td>{h.note ?? '—'}</td>
                     <td dir="ltr">{h.lineCount}</td>
                     <td dir="ltr">{h.qtyDelta > 0 ? `+${h.qtyDelta}` : h.qtyDelta}</td>
-                    <td dir="ltr" className={h.valueDelta < 0 ? 'text-bad' : ''}>{fromPiastres(h.valueDelta)}</td>
+                    <td dir="ltr" className={h.valueDelta < 0 ? 'text-bad' : ''}>{fromPiastresGrouped(h.valueDelta)}</td>
                   </tr>
                   {openId === h.id &&
                     moves.map((m) => (
@@ -354,7 +353,7 @@ export function StockAdjustmentsScreen() {
                         </td>
                         <td />
                         <td dir="ltr">{m.qtyDelta > 0 ? `+${m.qtyDelta}` : m.qtyDelta}</td>
-                        <td dir="ltr">{fromPiastres(m.qtyDelta * m.unitCost)}</td>
+                        <td dir="ltr">{fromPiastresGrouped(m.qtyDelta * m.unitCost)}</td>
                       </tr>
                     ))}
                 </Fragment>

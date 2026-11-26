@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { boxFactorOf, maxUnitPrice, proRataShare } from './pricing';
+import { boxFactorOf, maxUnitPrice, proRataShare, repriceUnits } from './pricing';
 import { lineValue } from './money';
 import { addDays, isIsoDate, toLocalIsoDate } from './dates';
 
@@ -57,5 +57,41 @@ describe('local dates', () => {
     expect(isIsoDate('2026-13-01')).toBe(false);
     expect(isIsoDate('not-a-date')).toBe(false);
     expect(isIsoDate('2026-1-1')).toBe(false);
+  });
+});
+
+describe('repriceUnits (selling price typed on a purchase invoice)', () => {
+  const units = [
+    { id: 1, factor: 20, salePrice: 10000 }, // box
+    { id: 2, factor: 10, salePrice: 5000 }, // strip
+    { id: 3, factor: 1, salePrice: 480 }, // tablet, a little under its share
+  ];
+  it('reprices the box and carries the other units by the same ratio', () => {
+    expect(repriceUnits(units, 1, 12000)).toEqual([
+      { id: 1, salePrice: 12000 },
+      { id: 2, salePrice: 6000 },
+      { id: 3, salePrice: 576 },
+    ]);
+  });
+  it('repricing a strip moves the box with it', () => {
+    expect(repriceUnits(units, 2, 5500)).toEqual([
+      { id: 1, salePrice: 11000 },
+      { id: 2, salePrice: 5500 },
+      { id: 3, salePrice: 528 },
+    ]);
+  });
+  it('an unpriced item gets each unit at its exact share', () => {
+    const blank = units.map((u) => ({ ...u, salePrice: 0 }));
+    expect(repriceUnits(blank, 1, 9000)).toEqual([
+      { id: 1, salePrice: 9000 },
+      { id: 2, salePrice: 4500 },
+      { id: 3, salePrice: 450 },
+    ]);
+  });
+  it('returns nothing when the price is unchanged', () => {
+    expect(repriceUnits(units, 1, 10000)).toEqual([]);
+  });
+  it('rejects a unit that is not the item\'s', () => {
+    expect(() => repriceUnits(units, 9, 100)).toThrow(RangeError);
   });
 });

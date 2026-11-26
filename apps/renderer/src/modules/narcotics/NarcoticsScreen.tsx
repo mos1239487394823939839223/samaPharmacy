@@ -16,6 +16,7 @@ import { useToast } from '../../components/Toast';
 import { PrescriptionDialog } from '../../components/PrescriptionDialog';
 import { exportCsv } from '../../lib/csv';
 import { SearchInput } from '../../components/SearchInput';
+import { EmptyState } from '../../components/EmptyState';
 
 type Tab = 'register' | 'reconciliation';
 
@@ -70,7 +71,6 @@ export function NarcoticsScreen() {
 
   return (
     <div className="stack">
-      <p className="hint no-print">{ar.narcotics.intro}</p>
       <div className="btn-row no-print" style={{ marginBlockStart: 0 }}>
         <button type="button" className={tab === 'register' ? 'btn btn--primary btn--sm' : 'btn btn--sm'} onClick={() => setTab('register')}>
           {ar.narcotics.title}
@@ -136,7 +136,7 @@ export function NarcoticsScreen() {
           </div>
 
           {rows.length === 0 ? (
-            <p className="muted">{ar.narcotics.noEntries}</p>
+            <EmptyState title={ar.narcotics.noEntries} hint={ar.narcotics.noEntriesHint} />
           ) : (
             <div className="table-wrap"><table className="datatable small">
               <thead>

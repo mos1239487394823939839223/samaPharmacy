@@ -35,13 +35,17 @@ import { ExpiryReportScreen } from './modules/stock/ExpiryReportScreen';
 import { StockAdjustmentsScreen } from './modules/stock/StockAdjustmentsScreen';
 import { BackupScreen } from './modules/settings/BackupScreen';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import { MODULES, SCREEN_LABELS, type ScreenId } from './lib/navigation';
+import { MODULES, SCREEN_LABELS, type ScreenId, toneOf } from './lib/navigation';
 import { AuditScreen } from './modules/audit/AuditScreen';
 import { NarcoticsScreen } from './modules/narcotics/NarcoticsScreen';
 import { PrinterSettingsScreen } from './modules/settings/PrinterSettingsScreen';
 import { InvoiceHistoryScreen } from './modules/sales/InvoiceHistoryScreen';
 import { PriceFixScreen } from './modules/items/PriceFixScreen';
 import { InsuranceScreen } from './modules/insurance/InsuranceScreen';
+import { ShortagesScreen } from './modules/shortages/ShortagesScreen';
+import { ValuationScreen } from './modules/stock/ValuationScreen';
+import { OpeningStockScreen } from './modules/stock/OpeningStockScreen';
+import { ItemEditPage } from './modules/items/ItemEditPage';
 import { useToast } from './components/Toast';
 import { errorText } from './lib/errors';
 import { encodeAppError } from '@pharmacy/shared';
@@ -148,6 +152,14 @@ function renderScreen(screen: ScreenId, query: string, navigate: (s: ScreenId) =
               <InvoiceHistoryScreen />
             ) : screen === 'accounts.insurance' ? (
               <InsuranceScreen />
+            ) : screen === 'items.opening' ? (
+              <OpeningStockScreen />
+            ) : screen === 'items.valuation' ? (
+              <ValuationScreen />
+            ) : screen === 'items.shortages' ? (
+              <ShortagesScreen />
+            ) : screen === 'items.edit' ? (
+              <ItemEditPage showBadges={SHOW_FORM_SHORTCUT_BADGES} />
             ) : (
               <Placeholder screen={screen} />
             );
@@ -159,21 +171,36 @@ interface Page {
   screen: ScreenId;
   /** Global-search text the page was opened with (read once, on mount). */
   query: string;
+  /** items.edit: the item being edited. */
+  itemId?: number;
+  /** The page to come back to when this one finishes (e.g. the invoice that opened an item). */
+  returnTo?: string;
 }
+
+/** Pages that only make sense opened from another page — not restored after a restart. */
+const TRANSIENT: ScreenId[] = ['items.edit'];
 
 const PAGES_KEY = 'ui.openPages';
 const MAX_PAGES = 15;
 /** Screens that may be open more than once — several invoices at the counter. */
 const MULTI_INSTANCE: ScreenId[] = ['sales.invoices'];
 
+/**
+ * Page ids must never repeat. A plain counter restarts at 1 whenever this
+ * module is reloaded (hot reload during development) while the open pages
+ * keep their old ids — two pages then share an id: the sidebar shows a
+ * "copy" and closing one closes the other. A per-load random prefix rules
+ * that out.
+ */
+const pagePrefix = Math.random().toString(36).slice(2, 7);
 let pageSeq = 1;
-const newPage = (screen: ScreenId, query = ''): Page => ({ id: `p${pageSeq++}`, screen, query });
+const newPage = (screen: ScreenId, query = ''): Page => ({ id: `p-${pagePrefix}-${pageSeq++}`, screen, query });
 
 function restorePages(): Page[] {
   try {
     const raw = localStorage.getItem(PAGES_KEY);
     const screens = raw ? (JSON.parse(raw) as string[]) : [];
-    const valid = screens.filter((s): s is ScreenId => s in SCREEN_LABELS);
+    const valid = screens.filter((s): s is ScreenId => s in SCREEN_LABELS && !TRANSIENT.includes(s as ScreenId));
     if (valid.length > 0) return valid.slice(0, MAX_PAGES).map((s) => newPage(s));
   } catch {
     /* corrupt or blocked storage — start fresh */
@@ -195,6 +222,29 @@ export function App() {
 
   const active = pages.find((p) => p.id === activeId) ?? pages[0]!;
 
+  // Self-heal: never keep two pages with one id (see newPage).
+  useEffect(() => {
+    const seen = new Set<string>();
+    if (pages.some((p) => (seen.has(p.id) ? true : (seen.add(p.id), false)))) {
+      const unique = new Set<string>();
+      setPages((prev) => prev.filter((p) => (unique.has(p.id) ? false : (unique.add(p.id), true))));
+    }
+  }, [pages]);
+
+  // Opening (or returning to) a page puts the cursor where work starts —
+  // its first search box — unless the page already focused something itself.
+  useEffect(() => {
+    const id = requestAnimationFrame(() => {
+      const main = document.querySelector<HTMLElement>('main.shell__content:not([hidden])');
+      if (!main || main.contains(document.activeElement)) return;
+      const target =
+        main.querySelector<HTMLInputElement>('[data-autofocus]') ??
+        main.querySelector<HTMLInputElement>('.search-input input:not(:disabled)');
+      target?.focus();
+    });
+    return () => cancelAnimationFrame(id);
+  }, [active.id]);
+
   /** Open a screen: focus its page if already open, otherwise open a new page. */
   function navigate(target: ScreenId, opts: { query?: string; newInstance?: boolean } = {}) {
     const existing = !opts.newInstance ? pages.find((p) => p.screen === target) : undefined;
@@ -214,19 +264,42 @@ export function App() {
     setActiveId(page.id);
   }
 
-  function closePage(id: string) {
+  function closePage(id: string, opts: { force?: boolean } = {}) {
     const page = pages.find((p) => p.id === id);
     if (!page) return;
-    if (dirty[id] && !window.confirm(ar.workspace.confirmCloseDirty.replace('{page}', pageLabel(page)))) return;
-    const index = pages.findIndex((p) => p.id === id);
-    const remaining = pages.filter((p) => p.id !== id);
-    const next = remaining.length > 0 ? remaining : [newPage('dashboard')];
-    setPages(next);
+    if (!opts.force && dirty[id] && !window.confirm(ar.workspace.confirmCloseDirty.replace('{page}', pageLabel(page)))) return;
+    // Work from the latest list, not this render's copy: two quick closes (a
+    // click then Ctrl+W) must not resurrect or drop a page.
+    let fallback: Page | null = null;
+    setPages((prev) => {
+      const index = prev.findIndex((p) => p.id === id);
+      if (index < 0) return prev;
+      const remaining = prev.filter((p) => p.id !== id);
+      if (remaining.length === 0) remaining.push((fallback ??= newPage('dashboard')));
+      setActiveId((current) => {
+        if (current !== id && remaining.some((p) => p.id === current)) return current;
+        const back = page.returnTo ? remaining.find((p) => p.id === page.returnTo) : undefined;
+        return (back ?? remaining[Math.min(index, remaining.length - 1)]!).id;
+      });
+      return remaining;
+    });
     setDirty((d) => {
       const { [id]: _gone, ...rest } = d;
       return rest;
     });
-    if (id === activeId) setActiveId((next[Math.min(index, next.length - 1)] ?? next[0]!).id);
+  }
+
+  /** Edit an item on its own page, coming back to `fromPageId` afterwards. */
+  function openItem(itemId: number, fromPageId: string) {
+    const open = pages.find((p) => p.screen === 'items.edit' && p.itemId === itemId);
+    if (open) {
+      setPages(pages.map((p) => (p === open ? { ...p, returnTo: fromPageId } : p)));
+      setActiveId(open.id);
+      return;
+    }
+    const page: Page = { ...newPage('items.edit'), itemId, returnTo: fromPageId };
+    setPages([...pages, page]);
+    setActiveId(page.id);
   }
 
   function cycle(step: number) {
@@ -252,7 +325,7 @@ export function App() {
 
   useEffect(() => {
     try {
-      localStorage.setItem(PAGES_KEY, JSON.stringify(pages.map((p) => p.screen)));
+      localStorage.setItem(PAGES_KEY, JSON.stringify(pages.filter((p) => !TRANSIENT.includes(p.screen)).map((p) => p.screen)));
     } catch {
       /* not remembered across restarts — still works this session */
     }
@@ -326,10 +399,24 @@ export function App() {
 
           {pages.map((page) => (
             // Every open page stays mounted; only the active one is shown.
-            <main className="shell__content" key={page.id} hidden={page.id !== active.id}>
-              <PageProvider value={{ active: page.id === active.id, setDirty: setDirtyFor(page.id) }}>
+            <main className="shell__content" key={page.id} hidden={page.id !== active.id} data-tone={toneOf(page.screen)}>
+              <PageProvider
+                value={{
+                  active: page.id === active.id,
+                  setDirty: setDirtyFor(page.id),
+                  openItem: (itemId) => openItem(itemId, page.id),
+                  openScreen: (s) => navigate(s),
+                  finish: () => closePage(page.id, { force: true }),
+                  itemId: page.itemId ?? null,
+                }}
+              >
                 <ErrorBoundary>
-                  <h1 className="shell__heading">{pageLabel(page)}</h1>
+                  <header className="page-head">
+                    <h1 className="shell__heading">{pageLabel(page)}</h1>
+                    {(ar.guide as Record<string, string>)[page.screen] && (
+                      <p className="page-head__guide">{(ar.guide as Record<string, string>)[page.screen]}</p>
+                    )}
+                  </header>
                   {renderScreen(page.screen, page.query, (s) => navigate(s))}
                 </ErrorBoundary>
               </PageProvider>

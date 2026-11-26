@@ -4,7 +4,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import type { SupplierLedgerRow, SupplierRow } from '@pharmacy/shared';
-import { fromPiastres, toAsciiDigits } from '@pharmacy/core';
+import { fromPiastres, toAsciiDigits, fromPiastresGrouped } from '@pharmacy/core';
 import { ar } from '../../i18n/ar';
 import { MoneyInput } from '../../components/MoneyInput';
 import { EmptyState, TableSkeleton } from '../../components/EmptyState';
@@ -103,25 +103,36 @@ export function SuppliersScreen() {
       {loading ? (
         <TableSkeleton cols={5} />
       ) : rows.length === 0 ? (
-        <EmptyState title={query.trim() ? ar.suppliers.noResults : ar.suppliers.empty} />
+        <EmptyState
+          title={query.trim() ? ar.suppliers.noResults : ar.suppliers.empty}
+          hint={query.trim() ? undefined : ar.emptyHints.suppliers}
+          action={
+            <button type="button" className="btn btn--primary btn--sm" onClick={() => setMode({ view: 'form', existing: null })}>
+              {ar.suppliers.add}
+            </button>
+          }
+        />
       ) : (
         <div className="table-wrap"><table className="datatable">
           <thead>
             <tr>
-              <th>{ar.suppliers.code}</th>
               <th>{ar.suppliers.name}</th>
               <th>{ar.suppliers.phone1}</th>
-              <th>{ar.suppliers.balance}</th>
+              <th className="num">{ar.suppliers.balance}</th>
               <th />
             </tr>
           </thead>
           <tbody>
             {rows.map((r) => (
               <tr key={r.id}>
-                <td dir="ltr">{r.code}</td>
-                <td>{r.nameAr}</td>
-                <td dir="ltr">{r.phone1 ?? '—'}</td>
-                <td dir="ltr" className={r.balance > 0 ? 'strong' : 'muted'}>{fromPiastres(r.balance)}</td>
+                <td>
+                  <div className="itemlist__name">{r.nameAr}</div>
+                  <div className="itemlist__meta">
+                    <span dir="ltr" className="itemlist__code">#{r.code}</span>
+                  </div>
+                </td>
+                <td dir="ltr" className="muted">{r.phone1 ?? '—'}</td>
+                <td dir="ltr" className={r.balance > 0 ? 'num strong' : 'num muted'}>{fromPiastresGrouped(r.balance)}</td>
                 <td className="datatable__actions">
                   <button type="button" className="btn btn--sm" onClick={() => setMode({ view: 'account', supplier: r })}>
                     {ar.suppliers.account}
@@ -333,7 +344,7 @@ function SupplierAccount({ supplier, onBack }: { supplier: SupplierRow; onBack: 
       <div className="panel stack">
         <div className="formfield">
           <span className="formfield__label">{ar.suppliers.balance}</span>
-          <span dir="ltr" className="strong">{fromPiastres(balance)}</span>
+          <span dir="ltr" className="strong">{fromPiastresGrouped(balance)}</span>
         </div>
         <div className="grid2">
           <label className="formfield">
@@ -371,9 +382,9 @@ function SupplierAccount({ supplier, onBack }: { supplier: SupplierRow; onBack: 
               <tr key={e.id}>
                 <td dir="ltr">{e.at.slice(0, 16)}</td>
                 <td>{entryLabel[e.entryType] ?? e.entryType}</td>
-                <td dir="ltr">{e.debit ? fromPiastres(e.debit) : '—'}</td>
-                <td dir="ltr">{e.credit ? fromPiastres(e.credit) : '—'}</td>
-                <td dir="ltr">{fromPiastres(e.balanceAfter)}</td>
+                <td dir="ltr">{e.debit ? fromPiastresGrouped(e.debit) : '—'}</td>
+                <td dir="ltr">{e.credit ? fromPiastresGrouped(e.credit) : '—'}</td>
+                <td dir="ltr">{fromPiastresGrouped(e.balanceAfter)}</td>
                 <td>{e.note ?? ''}</td>
               </tr>
             ))}

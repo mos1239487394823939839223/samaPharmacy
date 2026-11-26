@@ -11,6 +11,9 @@ import '@fontsource/cairo/800.css';
 
 import './styles.css';
 import { App } from './App';
+import { installInputAssist } from './lib/inputAssist';
+
+installInputAssist();
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

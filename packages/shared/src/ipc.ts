@@ -6,6 +6,10 @@
  */
 
 import type { PrintableKind } from './printing';
+import type { ImportMode } from './items';
+import type { Valuation } from './valuation';
+import type { OpeningStockInput } from './stock';
+import type { ShortageInput, ShortageRow, ShortageStatus, ShortageUpdate } from './shortages';
 import type {
   ItemInput,
   ItemListRow,
@@ -89,10 +93,9 @@ export type DbRequest =
   | { kind: 'items.deactivate'; id: number }
   | { kind: 'items.count' }
   | { kind: 'items.findByBarcode'; barcode: string }
-  | { kind: 'import.bundledCatalog' }
   | { kind: 'import.pickFile' }
-  | { kind: 'import.preview'; filePath: string; mapping?: Record<string, number> }
-  | { kind: 'import.apply'; filePath: string; mapping: Record<string, number> }
+  | { kind: 'import.preview'; filePath: string; mapping?: Record<string, number>; mode?: ImportMode }
+  | { kind: 'import.apply'; filePath: string; mapping: Record<string, number>; mode?: ImportMode }
   | { kind: 'import.saveRejects'; csv: string }
   | { kind: 'warehouses.list'; includeInactive?: boolean }
   | { kind: 'warehouses.get'; id: number }
@@ -114,7 +117,7 @@ export type DbRequest =
   | { kind: 'purchases.list'; limit?: number; offset?: number }
   | { kind: 'purchases.confirm'; id: number }
   | { kind: 'purchases.void'; id: number }
-  | { kind: 'stock.search'; query: string; limit?: number; warehouseId?: number }
+  | { kind: 'stock.search'; query: string; limit?: number; warehouseId?: number; inStockOnly?: boolean }
   | { kind: 'stock.batches'; itemId: number }
   | { kind: 'stock.sellableBatches'; itemId: number; warehouseId?: number }
   | { kind: 'stock.batchMoves'; batchId: number }
@@ -187,6 +190,15 @@ export type DbRequest =
   | { kind: 'items.alternatives'; id: number; warehouseId: number }
   | { kind: 'items.unitPriceIssues' }
   | { kind: 'items.fixUnitPrices'; itemIds: number[] }
+  | { kind: 'items.export' }
+  | { kind: 'stock.valuation'; warehouseId?: number | null }
+  | { kind: 'stock.opening'; input: OpeningStockInput }
+  // --- النواقص ---
+  | { kind: 'shortages.list'; scope?: 'active' | 'closed' | 'all' }
+  | { kind: 'shortages.activeItems' }
+  | { kind: 'shortages.add'; input: ShortageInput }
+  | { kind: 'shortages.update'; id: number; input: ShortageUpdate }
+  | { kind: 'shortages.setStatus'; id: number; status: ShortageStatus }
   // --- printing & files (main process) ---
   | { kind: 'print.receipt'; invoiceId: number; reprint?: boolean }
   | { kind: 'print.test' }
@@ -214,7 +226,6 @@ export type DbRequest =
 /** Kinds the main process answers itself (dialogs, printing, files). */
 export const MAIN_PROCESS_KINDS = [
   'import.pickFile',
-  'import.bundledCatalog',
   'import.saveRejects',
   'backup.pickFolder',
   'print.receipt',
@@ -283,14 +294,28 @@ export interface RendererApi {
     alternatives(id: number, warehouseId: number): Promise<AlternativeRow[]>;
     unitPriceIssues(): Promise<UnitPriceIssue[]>;
     fixUnitPrices(itemIds: number[]): Promise<number>;
+    /** Every active item in the import file's column layout. */
+    exportSheet(): Promise<{ headers: string[]; rows: (string | number)[][] }>;
+  };
+  valuation: {
+    /** قيمة المخزون — at cost, at selling price, and the expected profit. */
+    get(warehouseId?: number | null): Promise<Valuation>;
+    /** رصيد أول المدة: post the stock already on the shelves. */
+    opening(input: OpeningStockInput): Promise<{ adjustmentId: number; lines: number }>;
+  };
+  shortages: {
+    list(scope?: 'active' | 'closed' | 'all'): Promise<ShortageRow[]>;
+    /** Item ids currently on the list. */
+    activeItems(): Promise<number[]>;
+    add(input: ShortageInput): Promise<number>;
+    update(id: number, input: ShortageUpdate): Promise<void>;
+    setStatus(id: number, status: ShortageStatus): Promise<void>;
   };
   import: {
     /** Opens the OS file dialog. Returns null if the user cancels. */
     pickFile(): Promise<string | null>;
-    /** Path of the Egyptian drug catalog shipped with the app (دليل الأدوية). */
-    bundledCatalog(): Promise<string>;
-    preview(filePath: string, mapping?: Record<string, number>): Promise<ImportPreview>;
-    apply(filePath: string, mapping: Record<string, number>): Promise<ImportResult>;
+    preview(filePath: string, mapping?: Record<string, number>, mode?: ImportMode): Promise<ImportPreview>;
+    apply(filePath: string, mapping: Record<string, number>, mode?: ImportMode): Promise<ImportResult>;
     /** Writes the rejected-rows CSV somewhere the user chooses. */
     saveRejects(csv: string): Promise<string | null>;
     onProgress(listener: (p: ImportProgressEvent) => void): () => void;
@@ -323,7 +348,7 @@ export interface RendererApi {
     voidInvoice(id: number): Promise<void>;
   };
   stock: {
-    search(query: string, limit?: number, warehouseId?: number): Promise<ItemStockRow[]>;
+    search(query: string, limit?: number, warehouseId?: number, inStockOnly?: boolean): Promise<ItemStockRow[]>;
     batches(itemId: number): Promise<BatchRow[]>;
     sellableBatches(itemId: number, warehouseId?: number): Promise<BatchRow[]>;
     batchMoves(batchId: number): Promise<StockMoveRow[]>;

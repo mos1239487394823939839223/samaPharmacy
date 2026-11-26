@@ -179,3 +179,169 @@ export function bulkInsertItems(
 
   return { inserted, elapsedMs: Date.now() - started };
 }
+
+/**
+ * All active items as a sheet in the importer's own column layout, so an
+ * export opens in Excel and re-imports unchanged (on this machine or a new
+ * one). Stock is added as an extra column (in the smallest unit); the
+ * importer ignores it.
+ */
+export function exportItemsSheet(db: Db): { headers: string[]; rows: (string | number)[][] } {
+  const items = db
+    .prepare(
+      `SELECT i.id, i.code, i.name_ar AS nameAr, i.name_en AS nameEn, i.scientific_name AS sci,
+              i.public_price AS publicPrice, i.shelf_location AS shelf, i.min_stock AS minStock,
+              (SELECT barcode FROM item_barcodes b WHERE b.item_id = i.id ORDER BY b.is_primary DESC, b.id LIMIT 1) AS barcode,
+              (SELECT COALESCE(SUM(qty_on_hand), 0) FROM batches bt WHERE bt.item_id = i.id) AS stock
+       FROM items i WHERE i.is_active = 1 ORDER BY i.name_ar`
+    )
+    .all() as Array<{
+    id: number; code: number; nameAr: string; nameEn: string | null; sci: string | null; publicPrice: number | null;
+    shelf: string | null; minStock: number; barcode: string | null; stock: number;
+  }>;
+  const units = db
+    .prepare('SELECT item_id AS itemId, name_ar AS nameAr, factor, sale_price AS salePrice FROM item_units WHERE allow_sale = 1')
+    .all() as Array<{ itemId: number; nameAr: string; factor: number; salePrice: number }>;
+  const byItem = new Map<number, typeof units>();
+  for (const u of units) {
+    const list = byItem.get(u.itemId) ?? [];
+    list.push(u);
+    byItem.set(u.itemId, list);
+  }
+  const egp = (p: number | null) => (p == null ? '' : (p / 100).toFixed(2));
+
+  const headers = ['اسم الصنف', 'الاسم الانجليزي', 'الاسم العلمي', 'الوحدة', 'المعامل', 'سعر الجمهور', 'الوحدة الصغرى',
+    'باركود', 'مكان الصنف', 'الحد الأدنى', 'مؤشر الصنف', 'الرصيد (بالوحدة الصغرى)'];
+  const rows = items.map((i) => {
+    const list = (byItem.get(i.id) ?? []).sort((a, b) => b.factor - a.factor);
+    const box = list[0];
+    const base = list.find((u) => u.factor === 1);
+    return [
+      i.nameAr, i.nameEn ?? '', i.sci ?? '',
+      box?.nameAr ?? '', box?.factor ?? '', egp(i.publicPrice ?? box?.salePrice ?? null),
+      box && box.factor > 1 ? base?.nameAr ?? '' : '',
+      i.barcode ?? '', i.shelf ?? '', i.minStock || '', i.code, i.stock,
+    ];
+  });
+  return { headers, rows };
+}
+
+/** add = new items only · update = existing items only · upsert = both. */
+export type ImportMode = 'add' | 'update' | 'upsert';
+
+export interface ImportPlan {
+  toInsert: ParsedRow[];
+  toUpdate: Array<{ itemId: number; row: ParsedRow }>;
+  /** Rows the chosen mode leaves alone (already exists in "add", not found in "update"). */
+  skipped: number;
+}
+
+/**
+ * Split validated rows into new and existing items. An existing item is the
+ * active item with the same (normalized) Arabic name, or — when the name
+ * changed — the active item that owns the row's barcode.
+ */
+export function planImport(db: Db, rows: ParsedRow[], mode: ImportMode): ImportPlan {
+  const byName = new Map<string, number>();
+  for (const r of db.prepare('SELECT id, name_ar_norm AS n FROM items WHERE is_active = 1').all() as { id: number; n: string }[]) {
+    byName.set(r.n, r.id);
+  }
+  const byBarcode = new Map<string, number>();
+  for (const r of db
+    .prepare('SELECT b.barcode AS b, b.item_id AS id FROM item_barcodes b JOIN items i ON i.id = b.item_id WHERE i.is_active = 1')
+    .all() as { b: string; id: number }[]) {
+    byBarcode.set(r.b, r.id);
+  }
+
+  const plan: ImportPlan = { toInsert: [], toUpdate: [], skipped: 0 };
+  for (const row of rows) {
+    const itemId = byName.get(normalizeName(row.nameAr)) ?? (row.barcode ? byBarcode.get(row.barcode) : undefined);
+    if (itemId !== undefined) {
+      if (mode === 'add') plan.skipped += 1;
+      else plan.toUpdate.push({ itemId, row });
+    } else if (mode === 'update') {
+      plan.skipped += 1;
+    } else {
+      plan.toInsert.push(row);
+    }
+  }
+  return plan;
+}
+
+export interface UpdateOutcome {
+  updated: number;
+  /** Items whose unit layout in the file (e.g. a box of 20) differs from the item's — prices left as they were. */
+  unitsMismatch: number;
+}
+
+/**
+ * Update existing items from the file. Only what the file actually provides
+ * changes; an empty cell never wipes a stored value. Units are never
+ * restructured here (a different factor would corrupt the stock already
+ * counted in base units) — only prices of the matching units are updated:
+ * the box gets the public price, the base unit its share of it (D9).
+ */
+export function updateImportedItems(
+  db: Db,
+  rows: Array<{ itemId: number; row: ParsedRow }>,
+  mapped: { minStock: boolean },
+  onProgress?: (p: ImportProgress) => void
+): UpdateOutcome {
+  const item = db.prepare(
+    `UPDATE items SET
+       name_en = COALESCE(@nameEn, name_en),
+       name_en_norm = COALESCE(@nameEnNorm, name_en_norm),
+       scientific_name = COALESCE(@sci, scientific_name),
+       ingredient_norm = COALESCE(@sciNorm, ingredient_norm),
+       shelf_location = COALESCE(@shelf, shelf_location),
+       public_price = COALESCE(@publicPrice, public_price),
+       min_stock = CASE WHEN @setMin = 1 THEN @minStock ELSE min_stock END,
+       updated_at = ${NOW}
+     WHERE id = @id`
+  );
+  const units = db.prepare('SELECT id, factor FROM item_units WHERE item_id = ? AND allow_sale = 1 ORDER BY factor DESC');
+  const setPrice = db.prepare('UPDATE item_units SET sale_price = ? WHERE id = ?');
+  const barcodeOwner = db.prepare('SELECT item_id AS id FROM item_barcodes WHERE barcode = ?');
+  const addBarcode = db.prepare('INSERT INTO item_barcodes (item_id, barcode, is_primary) VALUES (?, ?, 0)');
+
+  let unitsMismatch = 0;
+  const run = db.transaction(() => {
+    let done = 0;
+    for (const { itemId, row } of rows) {
+      item.run({
+        id: itemId,
+        nameEn: row.nameEn,
+        nameEnNorm: row.nameEn ? normalizeName(row.nameEn) : null,
+        sci: row.scientificName,
+        sciNorm: row.scientificName ? normalizeName(row.scientificName) : null,
+        shelf: row.shelfLocation,
+        publicPrice: row.publicPrice,
+        setMin: mapped.minStock ? 1 : 0,
+        minStock: row.minStock,
+      });
+
+      if (row.barcode && !barcodeOwner.get(row.barcode)) addBarcode.run(itemId, row.barcode);
+
+      const boxPrice = row.salePrice ?? row.publicPrice;
+      if (boxPrice != null) {
+        const list = units.all(itemId) as { id: number; factor: number }[];
+        const box = row.unitFactor ? list.find((u) => u.factor === row.unitFactor) : list[0];
+        if (!box) {
+          unitsMismatch += 1;
+        } else {
+          for (const u of list) {
+            // Box at the full price, smaller units at their share (rounded up, like the item form).
+            if (u.factor <= box.factor) setPrice.run(u.id === box.id ? boxPrice : Math.ceil((boxPrice * u.factor) / box.factor), u.id);
+          }
+        }
+      }
+
+      done += 1;
+      if (onProgress && done % 500 === 0) onProgress({ done, total: rows.length });
+    }
+    return done;
+  });
+  const updated = run();
+  onProgress?.({ done: updated, total: rows.length });
+  return { updated, unitsMismatch };
+}

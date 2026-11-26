@@ -20,7 +20,7 @@ const READ_SUFFIXES = [
   '.report', '.reportInvoices', '.trend', '.getOpen', '.computeExpectedCash', '.cashTransactions',
   '.salesSummary', '.receivablesSummary', '.status', '.held', '.receipt',
   '.prescription', '.alternatives', '.unitPriceIssues', '.register', '.reconciliation', '.moves',
-  '.preview', '.companies', '.exclusions', '.unclaimed', '.claims', '.claimLines', '.receivables',
+  '.preview', '.export', '.activeItems', '.valuation', '.companies', '.exclusions', '.unclaimed', '.claims', '.claimLines', '.receivables',
 ];
 
 export function isMutation(kind: string): boolean {

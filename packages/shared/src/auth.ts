@@ -17,4 +17,6 @@ export interface AuditRow {
   beforeJson: string | null;
   afterJson: string | null;
   note: string | null;
+  /** What the record is, for people: an item's name, an invoice's serial… Null when unknown. */
+  subject: string | null;
 }

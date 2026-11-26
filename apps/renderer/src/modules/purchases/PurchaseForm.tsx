@@ -11,12 +11,14 @@
  * request — see the comments on DraftLine.bonusInUnit and DraftLine.taxPct.
  */
 
+import { mixedQty } from '../../lib/units';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ItemListRow, SupplierRow, WarehouseRow } from '@pharmacy/shared';
-import { fromPiastres, landedCost, lineValue, toAsciiDigits, toBaseUnits, todayLocal, type LandedCostLine } from '@pharmacy/core';
+import { fromPiastres, landedCost, lineValue, toAsciiDigits, toBaseUnits, todayLocal, type LandedCostLine, fromPiastresGrouped } from '@pharmacy/core';
 import { ar } from '../../i18n/ar';
 import { MoneyInput } from '../../components/MoneyInput';
 import { PortalAutocomplete } from '../../components/PortalAutocomplete';
+import { QuickItemDialog } from '../../components/QuickItemDialog';
 
 import { useBarcodeScanner } from '../../hardware/scanner';
 import { loadScannerConfig } from '../../hardware/config';
@@ -28,6 +30,13 @@ interface UnitOption {
   id: number;
   nameAr: string;
   factor: number;
+  /** Selling price of this unit (piastres) — the purchase price is derived from it. */
+  salePrice: number;
+}
+
+/** Purchase price from a unit's selling price and the pharmacist discount (settings). */
+function priceFromSale(salePrice: number, discountPct: number): number | null {
+  return salePrice > 0 ? Math.round((salePrice * (100 - discountPct)) / 100) : null;
 }
 
 interface DraftLine {
@@ -47,7 +56,12 @@ interface DraftLine {
   bonusInUnit: string;
   batchNumber: string;
   expiryDate: string;
+  /** Always derived: the selling price − خصم الصيدلي (settings). Never typed. */
   unitPurchasePrice: number | null;
+  /** Selling price of the chosen unit (piastres) — what the pharmacist types. */
+  salePrice: number | null;
+  /** The selling price was typed here: on save it becomes the item's price everywhere. */
+  salePriceEdited?: boolean;
   discountPct: string;
   /** No UI to edit this either — the ضريبة % column was removed from the
       grid, same reasoning as bonusInUnit above: stays '' (→ taxAmt 0),
@@ -81,6 +95,14 @@ function lineNet(l: { item: unknown; qtyInUnit: string; unitPurchasePrice: numbe
   return afterDiscount + Math.round((afterDiscount * Number(l.taxPct || 0)) / 100);
 }
 
+/** The typed selling price differs from what the item has stored for that unit. */
+function priceChanged(l: Pick<DraftLine, 'salePrice' | 'unitId' | 'unitOptions'>): boolean {
+  const stored = l.unitOptions.find((u) => u.id === l.unitId)?.salePrice ?? 0;
+  return l.salePrice != null && l.salePrice > 0 && l.salePrice !== stored;
+}
+
+type LineField = 'item' | 'qty' | 'price' | 'expiry';
+
 let keySeq = 1;
 const newLine = (): DraftLine => ({
   key: keySeq++,
@@ -95,6 +117,7 @@ const newLine = (): DraftLine => ({
   batchNumber: '',
   expiryDate: '',
   unitPurchasePrice: null,
+  salePrice: null,
   discountPct: '',
   taxPct: '',
   qtyOnHand: null,
@@ -201,6 +224,7 @@ export function PurchaseForm({ onSaved, onCancel }: Props) {
     // Typing again after a selection clears it -- the user is picking a new
     // item, not editing free text next to the old one.
     updateLine(key, { itemQuery: query, item: null, itemResults: [], qtyOnHand: null });
+    setSuggestIndex(0);
     if (!window.api || query.trim() === '') return;
     void window.api.items.search(query, 10).then((results) => updateLine(key, { itemResults: results }));
   }
@@ -218,7 +242,99 @@ export function PurchaseForm({ onSaved, onCancel }: Props) {
     });
   }
 
+  // ---- Keyboard flow: item → Enter → quantity … → Enter → next line ------
+  // Each line's fields carry data-field; after a state change the focus
+  // request is honoured once the new line is on screen.
+  const linesRef = useRef(lines);
+  linesRef.current = lines;
+  const [quickAdd, setQuickAdd] = useState<{ key: number; name: string; barcode?: string } | null>(null);
+  // خصم الصيدلي from settings: the purchase price defaults to selling price − this %.
+  const [discountPct, setDiscountPct] = useState(20);
+  const discountPctRef = useRef(discountPct);
+  discountPctRef.current = discountPct;
+  useEffect(() => {
+    void window.api?.settings.get().then((s) => setDiscountPct(s.purchaseDiscountPct));
+  }, []);
+  const [suggestIndex, setSuggestIndex] = useState(0);
+  const [focusReq, setFocusReq] = useState<{ key: number; field: LineField } | null>(null);
+  const [lineHint, setLineHint] = useState<{ key: number; text: string } | null>(null);
+  useEffect(() => {
+    if (!focusReq) return;
+    const el = document.querySelector<HTMLElement>(`[data-line="${focusReq.key}"] [data-field="${focusReq.field}"]`);
+    if (el) {
+      el.focus();
+      if (el instanceof HTMLInputElement) el.select();
+      el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      setFocusReq(null);
+    }
+  }, [focusReq, lines]);
+
+  /** The first required field still missing on a line, or null when it is complete. */
+  function missingField(l: DraftLine): { field: LineField; text: string } | null {
+    if (!l.item) return { field: 'item', text: ar.purchases.lines.needItem };
+    if (!(Number(l.qtyInUnit) > 0) || safeBase(l.qtyInUnit, l.unitFactor) === null) return { field: 'qty', text: ar.purchases.lines.needQty };
+    if (l.unitPurchasePrice === null) return { field: 'price', text: ar.purchases.lines.needPrice };
+    if (!l.item.noExpiry && (!l.expiryDate || l.expiryDate <= todayLocal())) return { field: 'expiry', text: ar.purchases.lines.needExpiry };
+    return null;
+  }
+
+  /** Go to the next line — reusing an empty one, else adding it — and put the cursor in its item search. */
+  function nextLine(fromKey: number) {
+    const idx = lines.findIndex((l) => l.key === fromKey);
+    const empty = lines.slice(idx + 1).find((l) => l.item === null) ?? lines.find((l) => l.item === null && l.key !== fromKey);
+    if (empty) return setFocusReq({ key: empty.key, field: 'item' });
+    const fresh = newLine();
+    setLines((prev) => [...prev, fresh]);
+    setFocusReq({ key: fresh.key, field: 'item' });
+  }
+
+  /** Enter anywhere in a line: complete → next line; otherwise jump to what is missing. */
+  function onLineKeyDown(e: React.KeyboardEvent<HTMLDivElement>, line: DraftLine) {
+    if (e.code !== 'Enter' && e.code !== 'NumpadEnter') return;
+    const target = e.target as HTMLElement;
+    if (target.dataset.field === 'item') return; // handled by the search box itself
+    e.preventDefault();
+    // The latest values, not the render this handler was created in: a date
+    // typed digit by digit may land in state a moment after its keystrokes.
+    let current = linesRef.current.find((l) => l.key === line.key) ?? line;
+    if (target.dataset.field === 'expiry' && target instanceof HTMLInputElement && target.value !== current.expiryDate) {
+      current = { ...current, expiryDate: target.value };
+      updateLine(line.key, { expiryDate: target.value });
+    }
+    const missing = missingField(current);
+    if (missing) {
+      setLineHint({ key: line.key, text: missing.text });
+      setFocusReq({ key: line.key, field: missing.field });
+      return;
+    }
+    setLineHint(null);
+    nextLine(line.key);
+  }
+
+  /** ↑/↓ through the suggestions, Enter picks (the first one by default). */
+  function onItemKeyDown(e: React.KeyboardEvent<HTMLInputElement>, line: DraftLine) {
+    const n = line.itemResults.length;
+    if (e.code === 'ArrowDown' && n) {
+      e.preventDefault();
+      setSuggestIndex((i) => (i + 1) % n);
+    } else if (e.code === 'ArrowUp' && n) {
+      e.preventDefault();
+      setSuggestIndex((i) => (i - 1 + n) % n);
+    } else if (e.code === 'Enter' || e.code === 'NumpadEnter') {
+      e.preventDefault();
+      const pick = line.itemResults[Math.min(suggestIndex, n - 1)];
+      if (pick) selectItemForLine(line.key, pick);
+      else if (line.item) setFocusReq({ key: line.key, field: 'qty' });
+      else if (line.itemQuery.trim()) setQuickAdd({ key: line.key, name: line.itemQuery });
+    } else if (e.code === 'Escape' && n) {
+      updateLine(line.key, { itemResults: [] });
+    }
+  }
+
   function selectItemForLine(key: number, item: ItemListRow) {
+    setSuggestIndex(0);
+    setLineHint(null);
+    setFocusReq({ key, field: 'qty' });
     updateLine(key, {
       item,
       itemQuery: item.nameAr,
@@ -233,13 +349,24 @@ export function PurchaseForm({ onSaved, onCancel }: Props) {
     loadStockForLine(key, item.id);
     if (!window.api) return;
     void window.api.items.get(item.id).then((detail) => {
-      const options = detail?.units.map((u) => ({ id: u.id, nameAr: u.nameAr, factor: u.factor })) ?? [];
+      const options = detail?.units.map((u) => ({ id: u.id, nameAr: u.nameAr, factor: u.factor, salePrice: u.salePrice })) ?? [];
       const defaultUnit = detail?.units.find((u) => u.isDefaultSale) ?? detail?.units[0];
       // unit_id is a real foreign key to item_units (docs/schema.sql) — every
       // item has its own distinct rows there, so this must carry the actual
       // id resolved per item, never a hardcoded value that may belong to an
       // unrelated item or not exist at all.
-      if (defaultUnit) updateLine(key, { unitOptions: options, unitId: defaultUnit.id, unitFactor: defaultUnit.factor });
+      if (defaultUnit) {
+        // The selling price comes from the item; purchase price = it − خصم الصيدلي.
+        const salePrice = defaultUnit.salePrice > 0 ? defaultUnit.salePrice : null;
+        updateLine(key, {
+          unitOptions: options,
+          unitId: defaultUnit.id,
+          unitFactor: defaultUnit.factor,
+          salePrice,
+          salePriceEdited: false,
+          unitPurchasePrice: priceFromSale(salePrice ?? 0, discountPctRef.current),
+        });
+      }
       else updateLine(key, { unitOptions: options });
     });
   }
@@ -255,7 +382,8 @@ export function PurchaseForm({ onSaved, onCancel }: Props) {
       if (!window.api) return;
       const item = await window.api.items.findByBarcode(event.code);
       if (!item) {
-        setError(ar.sales.errors.barcodeNotFound.replace('{code}', event.code));
+        const target = lines.find((l) => l.item === null) ?? lines[lines.length - 1]!;
+        setQuickAdd({ key: target.key, name: '', barcode: event.code });
         return;
       }
       const emptyLine = lines.find((l) => l.item === null);
@@ -402,6 +530,7 @@ export function PurchaseForm({ onSaved, onCancel }: Props) {
           batchNumber: l.batchNumber.trim() || null,
           expiryDate: l.item!.noExpiry ? null : l.expiryDate || null,
           unitPurchasePrice: l.unitPurchasePrice ?? 0,
+          ...(l.salePriceEdited && priceChanged(l) ? { salePrice: l.salePrice! } : {}),
           discountPct: Number(l.discountPct || 0),
           taxPct: Number(l.taxPct || 0),
         })),
@@ -421,30 +550,26 @@ export function PurchaseForm({ onSaved, onCancel }: Props) {
     }
   }
 
+  /** «+ إضافة صنف» / F12: a new line with the cursor already in its item search. */
+  function addLine() {
+    const fresh = newLine();
+    setLines((prev) => [...prev, fresh]);
+    setFocusReq({ key: fresh.key, field: 'item' });
+  }
+  const addLineRef = useRef(addLine);
+  addLineRef.current = addLine;
+
   usePageShortcuts(
     () => [
       { id: 'cancel', code: 'Escape', run: onCancel },
-      { id: 'addRow', code: 'F12', run: () => setLines((prev) => [...prev, newLine()]) },
+      { id: 'addRow', code: 'F12', run: () => addLineRef.current() },
     ],
     [onCancel]
   );
 
   return (
     <div className="item-form">
-      <div className="item-form__toolbar">
-        <button type="button" className="btn btn--primary" onClick={() => void submit(false)} disabled={saving}>
-          {ar.purchases.save}
-        </button>
-        <button type="button" className="btn btn--primary" onClick={() => void submit(true)} disabled={saving}>
-          {ar.purchases.confirm}
-        </button>
-        <button type="button" className="btn" onClick={onCancel} disabled={saving}>
-          {ar.items.actions.cancel}
-        </button>
-      </div>
-
       {error && <div className="alert alert--error">{error}</div>}
-      <p className="hint">{ar.purchases.confirmWarning}</p>
 
       <div className="panel">
         <div className="grid2">
@@ -550,7 +675,12 @@ export function PurchaseForm({ onSaved, onCancel }: Props) {
             const unitName = line.unitOptions.find((u) => u.id === line.unitId)?.nameAr ?? '';
             const baseName = line.unitOptions.find((u) => u.factor === 1)?.nameAr ?? '';
             return (
-              <div key={line.key} className={line.item ? 'pline' : 'pline pline--empty'}>
+              <div
+                key={line.key}
+                data-line={line.key}
+                className={line.item ? 'pline' : 'pline pline--empty'}
+                onKeyDown={(e) => onLineKeyDown(e, line)}
+              >
                 <div className="pline__top">
                   <span className="pline__no">{index + 1}</span>
                   <div className="pline__item">
@@ -559,12 +689,20 @@ export function PurchaseForm({ onSaved, onCancel }: Props) {
                       className="field"
                       placeholder={ar.purchases.lines.itemPlaceholder}
                       aria-label={ar.purchases.grid.item}
+                      data-field="item"
                       value={line.itemQuery}
                       onChange={(e) => searchItemsForLine(line.key, e.target.value)}
+                      onKeyDown={(e) => onItemKeyDown(e, line)}
                     />
                     <PortalAutocomplete
                       anchorRef={getItemInputRef(line.key)}
                       items={line.itemResults}
+                      activeIndex={Math.min(suggestIndex, line.itemResults.length - 1)}
+                      footer={
+                        line.itemQuery.trim() && !line.item
+                          ? { label: ar.quickItem.openNamed.replace('{name}', line.itemQuery.trim()), onClick: () => setQuickAdd({ key: line.key, name: line.itemQuery }) }
+                          : null
+                      }
                       getKey={(it) => it.id}
                       onSelect={(it) => selectItemForLine(line.key, it)}
                     >
@@ -574,7 +712,7 @@ export function PurchaseForm({ onSaved, onCancel }: Props) {
                   {line.item && (
                     <span className="pline__stock" title={ar.purchases.grid.currentStock}>
                       {ar.purchases.grid.currentStock}:{' '}
-                      <b dir="ltr">{line.qtyOnHand === null ? '…' : line.qtyOnHand}</b>
+                      <b>{line.qtyOnHand === null ? '…' : line.qtyOnHand > 0 ? mixedQty(line.qtyOnHand, line.unitOptions) : ar.items.list.out}</b>
                     </span>
                   )}
                   <button
@@ -598,7 +736,21 @@ export function PurchaseForm({ onSaved, onCancel }: Props) {
                       disabled={line.unitOptions.length === 0}
                       onChange={(e) => {
                         const chosen = line.unitOptions.find((u) => u.id === Number(e.target.value));
-                        if (chosen) updateLine(line.key, { unitId: chosen.id, unitFactor: chosen.factor });
+                        if (!chosen) return;
+                        // The price follows the unit (box 80 → strip 40); a typed
+                        // price is carried over in proportion.
+                        const sale =
+                          line.salePriceEdited && line.salePrice != null
+                            ? Math.round((line.salePrice * chosen.factor) / line.unitFactor)
+                            : chosen.salePrice > 0
+                              ? chosen.salePrice
+                              : null;
+                        updateLine(line.key, {
+                          unitId: chosen.id,
+                          unitFactor: chosen.factor,
+                          salePrice: sale,
+                          unitPurchasePrice: priceFromSale(sale ?? 0, discountPctRef.current),
+                        });
                       }}
                     >
                       {line.unitOptions.length === 0 && <option value="">—</option>}
@@ -618,6 +770,7 @@ export function PurchaseForm({ onSaved, onCancel }: Props) {
                       className="field"
                       dir="ltr"
                       inputMode="decimal"
+                      data-field="qty"
                       value={line.qtyInUnit}
                       onChange={(e) => updateLine(line.key, { qtyInUnit: toAsciiDigits(e.target.value) })}
                     />
@@ -638,7 +791,27 @@ export function PurchaseForm({ onSaved, onCancel }: Props) {
                       {ar.purchases.grid.price}
                       <span className="req"> *</span>
                     </span>
-                    <MoneyInput value={line.unitPurchasePrice} onChange={(v) => updateLine(line.key, { unitPurchasePrice: v })} />
+                    <MoneyInput
+                      field="price"
+                      value={line.salePrice}
+                      onChange={(v) =>
+                        updateLine(line.key, {
+                          salePrice: v,
+                          salePriceEdited: true,
+                          unitPurchasePrice: priceFromSale(v ?? 0, discountPctRef.current),
+                        })
+                      }
+                    />
+                    {line.unitPurchasePrice != null && (
+                      <span className="hint">
+                        {ar.purchases.lines.purchasePrice
+                          .replace('{price}', fromPiastres(line.unitPurchasePrice))
+                          .replace('{pct}', String(discountPct))}
+                      </span>
+                    )}
+                    {line.salePriceEdited && priceChanged(line) && (
+                      <span className="hint">{ar.purchases.lines.priceWillUpdate}</span>
+                    )}
                   </label>
                   <label className="formfield">
                     <span className="formfield__label">{ar.purchases.grid.discount}</span>
@@ -681,6 +854,7 @@ export function PurchaseForm({ onSaved, onCancel }: Props) {
                       type="date"
                       dir="ltr"
                       min={todayLocal()}
+                      data-field="expiry"
                       disabled={Boolean(line.item?.noExpiry)}
                       value={line.item?.noExpiry ? '' : line.expiryDate}
                       onChange={(e) => updateLine(line.key, { expiryDate: e.target.value })}
@@ -688,6 +862,7 @@ export function PurchaseForm({ onSaved, onCancel }: Props) {
                   </label>
                 </div>
 
+                {lineHint?.key === line.key && <div className="pline__hint">{lineHint.text}</div>}
                 {line.item && (
                   <div className="pline__foot">
                     <span>
@@ -696,7 +871,7 @@ export function PurchaseForm({ onSaved, onCancel }: Props) {
                       {line.unitFactor > 1 && cost !== undefined && (
                         <span className="muted">
                           {' '}
-                          · {ar.purchases.lines.baseCost.replace('{base}', baseName)}: <span dir="ltr">{fromPiastres(cost)}</span>
+                          · {ar.purchases.lines.baseCost.replace('{base}', baseName)}: <span dir="ltr">{fromPiastresGrouped(cost)}</span>
                         </span>
                       )}
                     </span>
@@ -709,9 +884,12 @@ export function PurchaseForm({ onSaved, onCancel }: Props) {
             );
           })}
 
-          <button type="button" className="btn plines__add" onClick={() => setLines((prev) => [...prev, newLine()])}>
-            + {ar.purchases.lines.add}
-          </button>
+          <div className="plines__actions">
+            <button type="button" className="btn plines__add" onClick={() => addLineRef.current()}>
+              + {ar.purchases.lines.add}
+            </button>
+            <span className="muted small">{ar.purchases.lines.enterTip}</span>
+          </div>
         </section>
 
         <div className="grid2">
@@ -732,11 +910,11 @@ export function PurchaseForm({ onSaved, onCancel }: Props) {
         <div className="psummary">
           <div>
             <span>{ar.purchases.lines.gross}</span>
-            <b dir="ltr">{fromPiastres(preview.subtotal)}</b>
+            <b dir="ltr">{fromPiastresGrouped(preview.subtotal)}</b>
           </div>
           <div>
             <span>{ar.purchases.lines.afterLines}</span>
-            <b dir="ltr">{fromPiastres(lines.reduce((sum, l) => sum + (lineNet(l) ?? 0), 0))}</b>
+            <b dir="ltr">{fromPiastresGrouped(lines.reduce((sum, l) => sum + (lineNet(l) ?? 0), 0))}</b>
           </div>
           {(expenses ?? 0) > 0 && (
             <div>
@@ -752,10 +930,48 @@ export function PurchaseForm({ onSaved, onCancel }: Props) {
           )}
           <div className="psummary__total">
             <span>{ar.purchases.total}</span>
-            <b dir="ltr">{fromPiastres(preview.total)}</b>
+            <b dir="ltr">{fromPiastresGrouped(preview.total)}</b>
           </div>
         </div>
       </div>
+      {/* Always in view: what the invoice comes to, and what to do with it. */}
+      <div className="form-savebar">
+        <div className="form-savebar__sum">
+          <span className="form-savebar__label">{ar.purchases.total}</span>
+          <b dir="ltr">
+            {fromPiastresGrouped(preview.total)} <small>{ar.common.currency}</small>
+          </b>
+          <span className="form-savebar__hint">{ar.purchases.confirmWarning}</span>
+        </div>
+        <div className="form-savebar__actions">
+          <button type="button" className="btn" onClick={onCancel} disabled={saving}>
+            {ar.items.actions.cancel}
+          </button>
+          <button type="button" className="btn" onClick={() => void submit(false)} disabled={saving}>
+            {ar.purchases.save}
+          </button>
+          <button type="button" className="btn btn--primary" onClick={() => void submit(true)} disabled={saving}>
+            {ar.purchases.confirm}
+          </button>
+        </div>
+      </div>
+
+      {quickAdd && (
+        <QuickItemDialog
+          initialName={quickAdd.name}
+          initialBarcode={quickAdd.barcode}
+          onClose={() => {
+            const key = quickAdd.key;
+            setQuickAdd(null);
+            setFocusReq({ key, field: 'item' });
+          }}
+          onCreated={(item) => {
+            const key = quickAdd.key;
+            setQuickAdd(null);
+            selectItemForLine(key, item);
+          }}
+        />
+      )}
     </div>
   );
 }

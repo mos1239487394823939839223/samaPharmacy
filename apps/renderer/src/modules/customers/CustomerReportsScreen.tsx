@@ -5,13 +5,14 @@
 
 import { useEffect, useRef, useState } from 'react';
 import type { CustomerRow, CustomerLedgerRow } from '@pharmacy/shared';
-import { fromPiastres } from '@pharmacy/core';
+import { fromPiastres, fromPiastresGrouped } from '@pharmacy/core';
 import { ar } from '../../i18n/ar';
 import { useBusy } from '../../lib/useBusy';
 import { MoneyInput } from '../../components/MoneyInput';
 import { Stat } from '../../components/Stat';
 import { errorText } from '../../lib/errors';
 import { SearchInput } from '../../components/SearchInput';
+import { EmptyState } from '../../components/EmptyState';
 
 type EntryTypeKey = keyof typeof ar.customers.entryTypes;
 
@@ -109,7 +110,7 @@ export function CustomerReportsScreen() {
       {error && <div className="alert alert--error">{error}</div>}
 
       {!selected ? (
-        <p className="muted">{ar.customers.selectCustomer}</p>
+        <EmptyState title={ar.customers.selectCustomer} hint={ar.customers.selectCustomerHint} />
       ) : (
         <>
           <div className="panel stack">
@@ -120,7 +121,7 @@ export function CustomerReportsScreen() {
               </span>
             </h2>
             <div className="stats">
-              <Stat label={ar.customers.balance} value={fromPiastres(balance ?? 0)} good={(balance ?? 0) === 0} />
+              <Stat label={ar.customers.balance} value={fromPiastresGrouped(balance ?? 0)} good={(balance ?? 0) === 0} />
               <Stat
                 label={ar.customers.creditLimit}
                 value={selected.creditLimit === null ? ar.customers.noLimit : fromPiastres(selected.creditLimit)}
@@ -173,9 +174,9 @@ export function CustomerReportsScreen() {
                     <tr key={l.id}>
                       <td dir="ltr">{l.at.slice(0, 16)}</td>
                       <td>{ar.customers.entryTypes[l.entryType as EntryTypeKey] ?? l.entryType}</td>
-                      <td dir="ltr">{l.debit ? fromPiastres(l.debit) : '—'}</td>
-                      <td dir="ltr">{l.credit ? fromPiastres(l.credit) : '—'}</td>
-                      <td dir="ltr">{fromPiastres(l.balanceAfter)}</td>
+                      <td dir="ltr">{l.debit ? fromPiastresGrouped(l.debit) : '—'}</td>
+                      <td dir="ltr">{l.credit ? fromPiastresGrouped(l.credit) : '—'}</td>
+                      <td dir="ltr">{fromPiastresGrouped(l.balanceAfter)}</td>
                       <td>{l.note ?? '—'}</td>
                     </tr>
                   ))}

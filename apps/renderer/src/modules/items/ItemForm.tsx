@@ -39,7 +39,7 @@ const UNIT_NAMES: readonly string[] = ar.items.unitNames;
 /** Marker option that switches a unit name to free typing. */
 const OTHER = '__other__';
 /** Names older versions stored that are kept as-is (shown, never forced into "other"). */
-const LEGACY_NAMES = new Set(['وحدة', 'علبه']);
+const LEGACY_NAMES = new Set<string>(ar.items.legacyUnitNames);
 
 /** Name of the smallest unit, for labels like «عدد الأقراص فيها». */
 function BASE_NAME(units: UnitRow[]): string {

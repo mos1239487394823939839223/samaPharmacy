@@ -69,6 +69,25 @@ export interface ExpiryReport {
   bucketDays: ExpiryBucketDays;
 }
 
+export const openingStockSchema = z.object({
+  warehouseId: z.number().int().positive(),
+  lines: z
+    .array(
+      z.object({
+        itemId: z.number().int().positive(),
+        unitId: z.number().int().positive(),
+        qtyInUnit: z.number().positive().max(1000000),
+        expiryDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+        batchNumber: z.string().max(60).nullable().optional(),
+        /** Piastres per chosen unit; omitted = selling price − خصم الصيدلي. */
+        unitCost: z.number().int().nonnegative().nullable().optional(),
+      })
+    )
+    .min(1)
+    .max(2000),
+});
+export type OpeningStockInput = z.infer<typeof openingStockSchema>;
+
 export const adjustmentReasons = ['damage', 'expiry', 'theft', 'correction', 'count'] as const;
 export type AdjustmentReason = (typeof adjustmentReasons)[number];
 

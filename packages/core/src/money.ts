@@ -67,6 +67,18 @@ export function fromPiastres(value: Piastres): string {
   return `${negative ? '-' : ''}${whole}.${String(frac).padStart(2, '0')}`;
 }
 
+/**
+ * Display form with thousands separators: 1234567.5 EGP → "1,234,567.50".
+ * Display only — never parse this back (use toPiastres on raw input).
+ */
+export function fromPiastresGrouped(value: Piastres): string {
+  const plain = fromPiastres(value);
+  const negative = plain.startsWith('-');
+  const [whole, frac] = (negative ? plain.slice(1) : plain).split('.');
+  const grouped = whole!.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return `${negative ? '-' : ''}${grouped}.${frac}`;
+}
+
 /** Display form with the Egyptian pound suffix. */
 export function formatEGP(value: Piastres): string {
   return `${fromPiastres(value)} ج.م`;

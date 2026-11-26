@@ -307,15 +307,6 @@ app.whenReady().then(() => {
       return picked;
     }
 
-    if (request.kind === 'import.bundledCatalog') {
-      // The catalog ships next to the migrations, outside the asar.
-      const file = app.isPackaged
-        ? path.join(process.resourcesPath, 'seed', 'egypt-drugs.csv')
-        : path.join(__dirname, '../../packages/db/seed/egypt-drugs.csv');
-      pickedImportFiles.add(file);
-      return file;
-    }
-
     if (request.kind === 'import.preview' || request.kind === 'import.apply') {
       if (!pickedImportFiles.has(request.filePath)) {
         throw new Error(encodeAppError({ code: 'import.fileNotPicked', params: {}, message: 'File was not chosen in the dialog' }));

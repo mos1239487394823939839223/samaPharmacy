@@ -14,6 +14,9 @@ export const purchaseLineInputSchema = z.object({
   expiryDate: z.string().nullable().optional(),
   /** Piastres. */
   unitPurchasePrice: z.number().int().nonnegative(),
+  /** Selling price of this unit (piastres), when typed on the invoice: it
+      becomes the item's selling price everywhere (all units follow). */
+  salePrice: z.number().int().positive().optional(),
   discountPct: z.number().min(0).max(100).optional(),
   discountAmt: z.number().int().nonnegative().optional(),
   taxPct: z.number().min(0).max(100).optional(),
@@ -55,6 +58,9 @@ export interface PurchaseInvoiceRow {
   notes: string | null;
   createdAt: string;
   confirmedAt: string | null;
+  /** Joined for lists; absent on rows built elsewhere. */
+  supplierName?: string | null;
+  lineCount?: number;
 }
 
 export interface PurchaseLineRow {

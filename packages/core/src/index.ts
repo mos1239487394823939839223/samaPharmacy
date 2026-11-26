@@ -3,6 +3,7 @@ export {
   PIASTRES_PER_EGP,
   toPiastres,
   fromPiastres,
+  fromPiastresGrouped,
   formatEGP,
   addMoney,
   subtractMoney,
@@ -14,7 +15,7 @@ export {
 
 export { DomainError, ensure, type ErrorParams } from './errors';
 export { todayLocal, toLocalIsoDate, addDays, isIsoDate } from './dates';
-export { maxUnitPrice, boxFactorOf, proRataShare } from './pricing';
+export { maxUnitPrice, boxFactorOf, proRataShare, repriceUnits } from './pricing';
 
 export { normalizeArabic, normalizeLatin, normalizeName, toAsciiDigits } from './arabic';
 

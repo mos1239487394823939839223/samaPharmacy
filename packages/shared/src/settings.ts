@@ -41,6 +41,7 @@ export const printerSettingsSchema = z.object({
 export const pharmacySettingsInputSchema = z.object({
   expiryBucketDays: expiryBucketDaysSchema.optional(),
   salesReturnWindowDays: z.number().int().positive().max(365).optional(),
+  purchaseDiscountPct: z.number().min(0).max(99.99).optional(),
   backup: backupSettingsSchema.optional(),
   pharmacy: pharmacyProfileSchema.optional(),
   printer: printerSettingsSchema.optional(),
@@ -85,6 +86,8 @@ export interface PrinterStatus {
 export interface PharmacySettings {
   expiryBucketDays: ExpiryBucketDays;
   salesReturnWindowDays: number;
+  /** خصم الصيدلي %: the purchase price defaults to the selling price minus this. */
+  purchaseDiscountPct: number;
   backup: BackupSettings;
   pharmacy: PharmacyProfile;
   printer: PrinterSettings;

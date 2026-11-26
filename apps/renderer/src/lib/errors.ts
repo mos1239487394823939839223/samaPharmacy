@@ -13,7 +13,7 @@ import { fromPiastres } from '@pharmacy/core';
 import { ar } from '../i18n/ar';
 
 /** Params that hold piastres and must be shown as EGP. */
-const MONEY_PARAMS = new Set(['price', 'list', 'tendered', 'total', 'balance', 'limit', 'cap', 'variance', 'claimed']);
+const MONEY_PARAMS = new Set(['price', 'list', 'tendered', 'total', 'balance', 'limit', 'cap', 'variance', 'claimed', 'available']);
 
 const messages = ar.errors as Record<string, string>;
 
@@ -31,7 +31,7 @@ export function errorText(err: unknown): string {
   return template.replace(/\{(\w+)\}/g, (_m, key: string) => {
     const value = info.params[key];
     if (value === undefined || value === null) return '';
-    return MONEY_PARAMS.has(key) && typeof value === 'number' ? `${fromPiastres(value)} ج.م` : String(value);
+    return MONEY_PARAMS.has(key) && typeof value === 'number' ? `${fromPiastres(value)} ${ar.common.currency}` : String(value);
   });
 }
 

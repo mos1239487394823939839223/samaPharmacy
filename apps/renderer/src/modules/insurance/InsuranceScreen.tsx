@@ -18,7 +18,7 @@ import type {
   InsuranceReceivableRow,
   ItemListRow,
 } from '@pharmacy/shared';
-import { addDays, fromPiastres, toAsciiDigits, todayLocal } from '@pharmacy/core';
+import { addDays, fromPiastres, toAsciiDigits, todayLocal, fromPiastresGrouped } from '@pharmacy/core';
 import { ar } from '../../i18n/ar';
 import { useBusy } from '../../lib/useBusy';
 import { errorText } from '../../lib/errors';
@@ -26,6 +26,7 @@ import { useToast } from '../../components/Toast';
 import { MoneyInput } from '../../components/MoneyInput';
 import { Stat } from '../../components/Stat';
 import { exportCsv } from '../../lib/csv';
+import { EmptyState } from '../../components/EmptyState';
 
 type Tab = 'companies' | 'claims' | 'receivables';
 const t = ar.insurance;
@@ -83,6 +84,17 @@ function CompaniesTab() {
         </button>
       </div>
       {error && <div className="alert alert--error">{error}</div>}
+      {rows.length === 0 ? (
+        <EmptyState
+          title={t.emptyCompanies}
+          hint={t.emptyCompaniesHint}
+          action={
+            <button type="button" className="btn btn--primary btn--sm" onClick={() => setEditing('new')}>
+              {t.add}
+            </button>
+          }
+        />
+      ) : (
       <div className="table-wrap"><table className="datatable">
         <thead>
           <tr>
@@ -100,7 +112,7 @@ function CompaniesTab() {
             <tr key={c.id}>
               <td>{c.nameAr}</td>
               <td dir="ltr">{c.coveragePct}%</td>
-              <td dir="ltr">{c.maxPerInvoice != null ? fromPiastres(c.maxPerInvoice) : '—'}</td>
+              <td dir="ltr">{c.maxPerInvoice != null ? fromPiastresGrouped(c.maxPerInvoice) : '—'}</td>
               <td>{c.requiresApprovalNo ? '✓' : ''}</td>
               <td dir="ltr">{c.excludedCount}</td>
               <td>
@@ -118,6 +130,7 @@ function CompaniesTab() {
           ))}
         </tbody>
       </table></div>
+      )}
       {editing && (
         <CompanyDialog
           existing={editing === 'new' ? null : editing}
@@ -390,18 +403,21 @@ function ClaimsTab() {
                       <td dir="ltr">{i.confirmedAt.slice(0, 10)}</td>
                       <td dir="ltr">{i.memberNo ?? '—'}</td>
                       <td dir="ltr">{i.approvalNo ?? '—'}</td>
-                      <td dir="ltr">{fromPiastres(i.claimable)}</td>
+                      <td dir="ltr">{fromPiastresGrouped(i.claimable)}</td>
                     </tr>
                   ))}
                 </tbody>
               </table></div>
               <div className="stats">
-                <Stat label={t.claimed} value={fromPiastres(preview.reduce((s, i) => s + i.claimable, 0))} good />
+                <Stat label={t.claimed} value={fromPiastresGrouped(preview.reduce((s, i) => s + i.claimable, 0))} good />
               </div>
             </>
           ))}
       </div>
 
+      {claims.length === 0 ? (
+        <EmptyState title={t.emptyClaims} hint={t.emptyClaimsHint} />
+      ) : (
       <div className="table-wrap"><table className="datatable">
         <thead>
           <tr>
@@ -425,9 +441,9 @@ function ClaimsTab() {
                   {c.periodFrom} → {c.periodTo}
                 </td>
                 <td>{t.statuses[c.status]}</td>
-                <td dir="ltr">{fromPiastres(c.totalClaimed)}</td>
-                <td dir="ltr">{c.totalPaid != null ? fromPiastres(c.totalPaid) : '—'}</td>
-                <td dir="ltr">{c.totalRejected != null ? fromPiastres(c.totalRejected) : '—'}</td>
+                <td dir="ltr">{fromPiastresGrouped(c.totalClaimed)}</td>
+                <td dir="ltr">{c.totalPaid != null ? fromPiastresGrouped(c.totalPaid) : '—'}</td>
+                <td dir="ltr">{c.totalRejected != null ? fromPiastresGrouped(c.totalRejected) : '—'}</td>
                 <td className="datatable__actions">
                   <button type="button" className="btn btn--sm" onClick={() => void toggle(c)}>
                     {t.view}
@@ -462,7 +478,7 @@ function ClaimsTab() {
                             <td dir="ltr">{l.confirmedAt.slice(0, 10)}</td>
                             <td dir="ltr">{l.memberNo ?? '—'}</td>
                             <td dir="ltr">{l.approvalNo ?? '—'}</td>
-                            <td dir="ltr">{fromPiastres(l.amount)}</td>
+                            <td dir="ltr">{fromPiastresGrouped(l.amount)}</td>
                             <td>{l.rejectedReason ?? ''}</td>
                           </tr>
                         ))}
@@ -475,6 +491,7 @@ function ClaimsTab() {
           ))}
         </tbody>
       </table></div>
+      )}
 
       {settling && (
         <SettleDialog
@@ -557,7 +574,7 @@ function SettleDialog({ claim, onClose }: { claim: ClaimRow; onClose: (done: boo
                   />
                 </td>
                 <td dir="ltr">{l.serial}</td>
-                <td dir="ltr">{fromPiastres(l.amount)}</td>
+                <td dir="ltr">{fromPiastresGrouped(l.amount)}</td>
                 <td>
                   {rejected.has(l.invoiceId) && (
                     <input
@@ -582,8 +599,8 @@ function SettleDialog({ claim, onClose }: { claim: ClaimRow; onClose: (done: boo
           </label>
         </div>
         <div className="stats">
-          <Stat label={t.claimed} value={fromPiastres(claim.totalClaimed)} neutral />
-          <Stat label={t.totalRejected} value={fromPiastres(rejectedTotal)} bad={rejectedTotal > 0} />
+          <Stat label={t.claimed} value={fromPiastresGrouped(claim.totalClaimed)} neutral />
+          <Stat label={t.totalRejected} value={fromPiastresGrouped(rejectedTotal)} bad={rejectedTotal > 0} />
         </div>
         <div className="btn-row">
           <button type="button" className="btn btn--primary" disabled={busy} onClick={() => void run(submit)}>
@@ -609,6 +626,9 @@ function ReceivablesTab() {
   return (
     <>
       {error && <div className="alert alert--error">{error}</div>}
+      {rows.length === 0 ? (
+        <EmptyState title={t.emptyReceivables} />
+      ) : (
       <div className="table-wrap"><table className="datatable">
         <thead>
           <tr>
@@ -623,14 +643,15 @@ function ReceivablesTab() {
           {rows.map((r) => (
             <tr key={r.companyId}>
               <td>{r.companyName}</td>
-              <td dir="ltr">{fromPiastres(r.unclaimed)}</td>
-              <td dir="ltr" className="strong">{fromPiastres(r.pending)}</td>
-              <td dir="ltr">{fromPiastres(r.shortPaid)}</td>
-              <td dir="ltr" className={r.rejected > 0 ? 'text-bad' : ''}>{fromPiastres(r.rejected)}</td>
+              <td dir="ltr">{fromPiastresGrouped(r.unclaimed)}</td>
+              <td dir="ltr" className="strong">{fromPiastresGrouped(r.pending)}</td>
+              <td dir="ltr">{fromPiastresGrouped(r.shortPaid)}</td>
+              <td dir="ltr" className={r.rejected > 0 ? 'text-bad' : ''}>{fromPiastresGrouped(r.rejected)}</td>
             </tr>
           ))}
         </tbody>
       </table></div>
+      )}
     </>
   );
 }

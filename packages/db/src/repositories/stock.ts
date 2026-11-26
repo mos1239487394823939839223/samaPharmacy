@@ -76,7 +76,12 @@ const STOCK_COLUMNS = `
  * returned row's warehouseId to that one store, matching what the batch
  * drill-down (getItemBatches) already exposes per row.
  */
-export function searchItemStock(db: Db, query: string, limit = 100, warehouseId?: number): ItemStockRow[] {
+/**
+ * Items with their stock. `inStockOnly` keeps only items that have any
+ * stock (sellable, expired or quarantined) — with a 25,000-item catalogue,
+ * the alphabetical first page is otherwise all empty shelves.
+ */
+export function searchItemStock(db: Db, query: string, limit = 100, warehouseId?: number, inStockOnly = false): ItemStockRow[] {
   const norm = normalizeName(query);
   const conditions = [norm ? '(i.name_ar_norm LIKE @like OR i.name_en_norm LIKE @like)' : null, 'i.is_active = 1'].filter(
     Boolean
@@ -95,6 +100,7 @@ export function searchItemStock(db: Db, query: string, limit = 100, warehouseId?
        ${batchJoin}
        ${where}
        GROUP BY i.id
+       ${inStockOnly ? 'HAVING COALESCE(SUM(b.qty_on_hand), 0) > 0' : ''}
        ORDER BY i.name_ar
        LIMIT @limit`
     )

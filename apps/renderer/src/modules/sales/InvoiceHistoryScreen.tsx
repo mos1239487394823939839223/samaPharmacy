@@ -6,7 +6,7 @@
 
 import { Fragment, useEffect, useState } from 'react';
 import type { InvoiceSearchRow, SalesLineRow } from '@pharmacy/shared';
-import { addDays, fromPiastres, toAsciiDigits, todayLocal } from '@pharmacy/core';
+import { addDays, fromPiastres, toAsciiDigits, todayLocal, fromPiastresGrouped } from '@pharmacy/core';
 import { ar } from '../../i18n/ar';
 import { errorText } from '../../lib/errors';
 import { useToast } from '../../components/Toast';
@@ -154,7 +154,7 @@ export function InvoiceHistoryScreen() {
                   <td>{r.userName ?? '—'}</td>
                   <td>{r.invoiceType === 'cash' ? ar.sales.cash : ar.sales.credit}</td>
                   <td>{STATUS[r.status] ?? r.status}</td>
-                  <td dir="ltr" className="strong">{fromPiastres(r.total)}</td>
+                  <td dir="ltr" className="strong">{fromPiastresGrouped(r.total)}</td>
                   <td className="datatable__actions">
                     <button type="button" className="btn btn--sm" onClick={() => void toggle(r)}>
                       {ar.invoices.view}
@@ -183,8 +183,8 @@ export function InvoiceHistoryScreen() {
                             <tr key={l.id}>
                               <td>{l.name ?? l.itemId}</td>
                               <td dir="ltr">{l.qtyInUnit}</td>
-                              <td dir="ltr">{fromPiastres(l.unitPrice)}</td>
-                              <td dir="ltr">{fromPiastres(l.valueAfterDiscount)}</td>
+                              <td dir="ltr">{fromPiastresGrouped(l.unitPrice)}</td>
+                              <td dir="ltr">{fromPiastresGrouped(l.valueAfterDiscount)}</td>
                               <td dir="ltr" className="muted">{l.expiryDate ?? ''}</td>
                             </tr>
                           ))}

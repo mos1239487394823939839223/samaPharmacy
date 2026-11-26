@@ -18,9 +18,11 @@ interface Props {
   disabled?: boolean;
   /** Only balances may go below zero; prices and payments never do. */
   allowNegative?: boolean;
+  /** Marks the input for keyboard-flow focus (data-field). */
+  field?: string;
 }
 
-export function MoneyInput({ value, onChange, id, placeholder, disabled, allowNegative = false }: Props) {
+export function MoneyInput({ value, onChange, id, placeholder, disabled, allowNegative = false, field }: Props) {
   const [text, setText] = useState(() => (value === null ? '' : fromPiastres(value)));
   const [invalid, setInvalid] = useState(false);
 
@@ -47,6 +49,7 @@ export function MoneyInput({ value, onChange, id, placeholder, disabled, allowNe
   return (
     <input
       id={id}
+      data-field={field}
       type="text"
       inputMode="decimal"
       dir="ltr"

@@ -13,6 +13,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { mixedQty } from '../../lib/units';
 import type {
   AlternativeRow,
   CustomerRow,
@@ -22,7 +23,7 @@ import type {
   PharmacySettings,
   PrescriptionInput,
 } from '@pharmacy/shared';
-import { addDays, fromPiastres, lineValue, toAsciiDigits, toBaseUnits, toPiastres, todayLocal } from '@pharmacy/core';
+import { addDays, fromPiastres, lineValue, toAsciiDigits, toBaseUnits, toPiastres, todayLocal, fromPiastresGrouped } from '@pharmacy/core';
 import { ar } from '../../i18n/ar';
 import { Stat } from '../../components/Stat';
 import { useToast } from '../../components/Toast';
@@ -33,7 +34,10 @@ import { MoneyInput } from '../../components/MoneyInput';
 
 import { errorCode, errorText } from '../../lib/errors';
 import { PrescriptionDialog } from '../../components/PrescriptionDialog';
-import { usePageDirty, usePageShortcuts } from '../../lib/workspace';
+import { usePageDirty, usePageShortcuts, useRefreshOnActivate, useWorkspace } from '../../lib/workspace';
+import { useItemUpdated } from '../../lib/itemEvents';
+import { ShortageButton, useShortageItems } from '../../components/ShortageDialog';
+import { QuickItemDialog } from '../../components/QuickItemDialog';
 import { SearchInput } from '../../components/SearchInput';
 
 interface UnitOption {
@@ -180,20 +184,83 @@ export function SalesScreen() {
     };
   }
 
-  async function addItemToCart(item: ItemListRow) {
+  const { openItem, openScreen } = useWorkspace();
+
+  // Guide the cashier: no open shift (cash would not reach the drawer), or
+  // an empty shelf (nothing to sell yet). Re-checked whenever the page shows.
+  const [nudge, setNudge] = useState<{ noShift: boolean; noStock: boolean }>({ noShift: false, noStock: false });
+  function checkReadiness() {
+    if (!window.api || warehouseId == null) return;
+    void Promise.all([window.api.shifts.getOpen(warehouseId), window.api.valuation.get(warehouseId)])
+      .then(([shift, value]) => setNudge({ noShift: !shift, noStock: value.totals.items === 0 }))
+      .catch(() => undefined);
+  }
+  useEffect(checkReadiness, [warehouseId]);
+  useRefreshOnActivate(checkReadiness);
+  const shortageItems = useShortageItems();
+
+  // An item edited on its own page (from this invoice or anywhere else):
+  // rebuild its lines with the saved name, units and prices, keeping what
+  // the cashier already chose (unit, quantity, discount).
+  useItemUpdated((itemId) => {
+    const affected = cart.filter((l) => l.item.id === itemId);
+    if (affected.length === 0) return;
+    void Promise.all(
+      affected.map(async (l) => {
+        const fresh = await buildLine(l.item, { unitId: l.unitId, qtyInUnit: parseQty(l.qty) || 1, discountAmt: lineMoney(l).discount });
+        return fresh ? { ...fresh, key: l.key, qty: l.qty, discountEgp: l.discountEgp } : l;
+      })
+    ).then((updated) => {
+      const byKey = new Map(updated.map((l) => [l.key, l]));
+      setCart((prev) => prev.map((l) => byKey.get(l.key) ?? l));
+    });
+  });
+
+  /**
+   * Add an item. Picked by hand (Enter / click) the cursor goes to its
+   * quantity, and Enter there comes back to the search for the next item;
+   * a scan keeps the cursor in the search so box after box can be scanned.
+   */
+  async function addItemToCart(item: ItemListRow, opts: { focusQty?: boolean } = {}) {
     setError(null);
     const line = await buildLine(item);
     if (!line) return;
+    let targetKey = line.key;
     setCart((prev) => {
       const existing = prev.find((l) => l.item.id === item.id && l.unitId === line.unitId);
       if (existing) {
+        targetKey = existing.key;
         return prev.map((l) => (l === existing ? { ...l, qty: String(parseQty(l.qty) + 1) } : l));
       }
       return [...prev, line];
     });
     setQuery('');
     setResults([]);
+    setActiveResult(0);
     setAlternatives(null);
+    if (opts.focusQty) setFocusQtyKey(targetKey);
+    else searchRef.current?.focus();
+  }
+
+  // Focus the quantity of the line just added (after it is on screen).
+  const [focusQtyKey, setFocusQtyKey] = useState<number | null>(null);
+  const [activeResult, setActiveResult] = useState(0);
+  const [quickAdd, setQuickAdd] = useState<{ name: string; barcode?: string } | null>(null);
+  useEffect(() => setActiveResult(0), [query]);
+  useEffect(() => {
+    if (focusQtyKey == null) return;
+    const el = document.querySelector<HTMLInputElement>(`[data-qty="${focusQtyKey}"]`);
+    if (el) {
+      el.focus();
+      el.select();
+      setFocusQtyKey(null);
+    }
+  }, [focusQtyKey, cart]);
+
+  /** Enter in a line's quantity or discount: back to the search for the next item. */
+  function lineEnter(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.code !== 'Enter' && e.code !== 'NumpadEnter') return;
+    e.preventDefault();
     searchRef.current?.focus();
   }
 
@@ -203,7 +270,8 @@ export function SalesScreen() {
       if (!window.api) return;
       const item = await window.api.items.findByBarcode(event.code);
       if (item) await addItemToCart(item);
-      else setError(ar.sales.errors.barcodeNotFound.replace('{code}', event.code));
+      // An unknown box: add it as a new item right here, barcode filled in.
+      else setQuickAdd({ name: '', barcode: event.code });
     },
     {
       config: loadScannerConfig(),
@@ -218,7 +286,13 @@ export function SalesScreen() {
     }
     if (debounce.current) clearTimeout(debounce.current);
     debounce.current = setTimeout(() => {
-      void window.api!.items.search(query, 10).then(setResults);
+      void window.api!.items.search(query, 10).then((rows) => {
+        // A typed name: what is on the shelf first (Enter picks the top row).
+        // A typed code/barcode keeps the exact match on top.
+        if (/^\d+$/.test(toAsciiDigits(query.trim()))) return setResults(rows);
+        const inStock = rows.filter((r) => (r.stockBase ?? 1) > 0);
+        setResults([...inStock, ...rows.filter((r) => (r.stockBase ?? 1) <= 0)]);
+      });
     }, 120);
     return () => {
       if (debounce.current) clearTimeout(debounce.current);
@@ -513,7 +587,8 @@ export function SalesScreen() {
   usePageDirty(cart.length > 0);
 
   return (
-    <div className="pos">
+    <div className="pos pos2">
+      <div className="pos2__main">
       <div className="pos__search-bar">
         <SearchInput
           ref={searchRef}
@@ -522,8 +597,20 @@ export function SalesScreen() {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={(e) => {
-            if (e.code === 'Enter' || e.code === 'NumpadEnter') {
-              if (results[0]) void addItemToCart(results[0]);
+            if (e.code === 'ArrowDown' && results.length) {
+              e.preventDefault();
+              setActiveResult((i) => (i + 1) % results.length);
+            } else if (e.code === 'ArrowUp' && results.length) {
+              e.preventDefault();
+              setActiveResult((i) => (i - 1 + results.length) % results.length);
+            } else if (e.code === 'Enter' || e.code === 'NumpadEnter') {
+              // Swallow it: left alone, the same Enter would also submit the
+              // quick-add form that opens under the cursor.
+              e.preventDefault();
+              const pick = results[Math.min(activeResult, results.length - 1)];
+              if (pick) void addItemToCart(pick, { focusQty: true });
+              // Nothing found for what was typed: offer it as a new item.
+              else if (query.trim()) setQuickAdd({ name: query });
             } else if (e.code === 'Escape') {
               setQuery('');
               setResults([]);
@@ -533,16 +620,33 @@ export function SalesScreen() {
         <span className="pos__warehouse">
           {ar.sales.warehouse}: {warehouseName}
         </span>
-        {results.length > 0 && (
+        {query.trim() && (
           <ul className="autocomplete autocomplete--pos">
-            {results.map((it) => (
+            {results.map((it, i) => (
               <li key={it.id}>
-                <button type="button" onClick={() => void addItemToCart(it)}>
+                <button
+                  type="button"
+                  className={i === activeResult ? 'autocomplete__active' : undefined}
+                  onMouseEnter={() => setActiveResult(i)}
+                  onClick={() => void addItemToCart(it, { focusQty: true })}
+                >
                   <span>{it.nameAr}</span>
-                  {it.publicPrice !== null && <span dir="ltr">{fromPiastres(it.publicPrice)}</span>}
+                  <span className="pos__result-meta">
+                    {it.stockBase !== undefined && (
+                      <span className={it.stockBase > 0 ? 'stock-pill' : 'stock-pill stock-pill--out'}>
+                        {it.stockBase > 0 ? ar.sales.inStock : ar.items.list.out}
+                      </span>
+                    )}
+                    {it.publicPrice !== null && <span dir="ltr">{fromPiastresGrouped(it.publicPrice)}</span>}
+                  </span>
                 </button>
               </li>
             ))}
+            <li>
+              <button type="button" className="autocomplete__new" onClick={() => setQuickAdd({ name: query })}>
+                {ar.quickItem.openNamed.replace('{name}', query.trim())}
+              </button>
+            </li>
           </ul>
         )}
       </div>
@@ -557,15 +661,31 @@ export function SalesScreen() {
         </button>
         {prescription && <span className="badge badge--success">{ar.prescription.attached}</span>}
       </div>
+      {nudge.noStock && (
+        <div className="guide-note">
+          <span className="guide-note__text">{ar.nudge.noStock}</span>
+          <button type="button" className="btn btn--sm" onClick={() => openScreen('items.opening')}>
+            {ar.nudge.openStock}
+          </button>
+        </div>
+      )}
+      {!nudge.noStock && nudge.noShift && (
+        <div className="guide-note">
+          <span className="guide-note__text">{ar.nudge.noShift}</span>
+          <button type="button" className="btn btn--sm" onClick={() => openScreen('sales.shiftHandover')}>
+            {ar.nudge.openShift}
+          </button>
+        </div>
+      )}
       {error && <div className="alert alert--error">{error}</div>}
 
       {cart.length === 0 ? (
         <EmptyState title={ar.sales.emptyCart} />
       ) : (
-        <div className="table-wrap"><table className="datatable">
+        <div className="table-wrap"><table className="datatable pos2__cart">
           <thead>
             <tr>
-              <th>{ar.items.fields.nameAr}</th>
+              <th>{ar.sales.item}</th>
               <th>{ar.sales.unit}</th>
               <th>{ar.sales.qty}</th>
               <th>{ar.sales.unitPrice}</th>
@@ -584,7 +704,13 @@ export function SalesScreen() {
               return (
                 <tr key={l.key}>
                   <td>
-                    <div>{l.item.nameAr}</div>
+                    <div className="strong">{l.item.nameAr}</div>
+                    <div className="line-links">
+                      <button type="button" className="line-link" title={ar.sales.editItemHint} onClick={() => openItem(l.item.id)}>
+                        {ar.sales.editItem}
+                      </button>
+                      <ShortageButton itemId={l.item.id} itemName={l.item.nameAr} listed={shortageItems.has(l.item.id)} link />
+                    </div>
                     <div className="badges">
                       {l.requiresPrescription && <span className="badge badge--warning">{ar.sales.warnings.prescription}</span>}
                       {l.item.scheduleClass !== 'none' && <span className="badge badge--error">{ar.sales.warnings.controlled}</span>}
@@ -614,11 +740,13 @@ export function SalesScreen() {
                       className={base === null || short ? 'field field--sm field--invalid' : 'field field--sm'}
                       dir="ltr"
                       inputMode="decimal"
+                      data-qty={l.key}
                       value={l.qty}
                       onChange={(e) => updateLine(l.key, { qty: toAsciiDigits(e.target.value) })}
+                      onKeyDown={lineEnter}
                     />
                   </td>
-                  <td dir="ltr">{fromPiastres(m.unit.salePrice)}</td>
+                  <td dir="ltr">{fromPiastresGrouped(m.unit.salePrice)}</td>
                   <td>
                     <input
                       className="field field--xs"
@@ -627,15 +755,22 @@ export function SalesScreen() {
                       placeholder="0"
                       value={l.discountEgp}
                       onChange={(e) => updateLine(l.key, { discountEgp: toAsciiDigits(e.target.value) })}
+                      onKeyDown={lineEnter}
                     />
                   </td>
-                  <td dir="ltr" className="strong">{fromPiastres(m.after)}</td>
-                  <td dir="ltr" className={short ? 'text-bad' : 'muted'}>
-                    {l.availableBase}
+                  <td dir="ltr" className="strong">{fromPiastresGrouped(m.after)}</td>
+                  <td className={short ? 'text-bad small' : 'muted small'}>
+                    {l.availableBase > 0 ? mixedQty(l.availableBase, l.units) : ar.items.list.out}
                   </td>
                   <td>
-                    <button type="button" className="btn btn--danger btn--sm" onClick={() => removeLine(l.key)}>
-                      {ar.sales.remove}
+                    <button
+                      type="button"
+                      className="pline__remove"
+                      onClick={() => removeLine(l.key)}
+                      title={ar.sales.remove}
+                      aria-label={`${ar.sales.remove} — ${l.item.nameAr}`}
+                    >
+                      ×
                     </button>
                   </td>
                 </tr>
@@ -645,8 +780,34 @@ export function SalesScreen() {
         </table></div>
       )}
 
-      <div className="pos__footer">
-        <div className="grid2">
+      </div>
+
+      <aside className="pos2__side panel">
+        <div className="pos2__total">
+          <span className="pos2__total-label">{insurance ? ar.insurance.patientPays : ar.sales.total}</span>
+          <span className="pos2__total-value" dir="ltr">
+            {fromPiastresGrouped(insurance ? patientPays : totals.total)} <small>{ar.common.currency}</small>
+          </span>
+        </div>
+        <dl className="gret__facts">
+          <div>
+            <dt>{ar.sales.itemCount}</dt>
+            <dd>{cart.length}</dd>
+          </div>
+          {insurance && (
+            <>
+              <div>
+                <dt>{ar.sales.total}</dt>
+                <dd dir="ltr">{fromPiastresGrouped(totals.total)}</dd>
+              </div>
+              <div>
+                <dt>{ar.insurance.companyShare}</dt>
+                <dd dir="ltr">{fromPiastresGrouped(insuranceShare)}</dd>
+              </div>
+            </>
+          )}
+        </dl>
+        <div className="pos2__fields">
           <label className="formfield">
             <span className="formfield__label">{ar.sales.invoiceType}</span>
             <select
@@ -743,33 +904,33 @@ export function SalesScreen() {
           )}
         </div>
 
-        <div className="stats">
-          <Stat label={ar.sales.itemCount} value={String(cart.length)} neutral />
-          <Stat label={ar.sales.total} value={fromPiastres(totals.total)} good={!insurance} neutral={Boolean(insurance)} />
-          {insurance && <Stat label={ar.insurance.companyShare} value={fromPiastres(insuranceShare)} neutral />}
-          {insurance && <Stat label={ar.insurance.patientPays} value={fromPiastres(patientPays)} good />}
-          {invoiceType === 'cash' && tendered !== null && (
-            <Stat label={ar.sales.change} value={fromPiastres(Math.max(change, 0))} bad={change < 0} neutral={change >= 0} />
-          )}
-        </div>
+        {invoiceType === 'cash' && tendered !== null && (
+          <div className={change < 0 ? 'pos2__change pos2__change--short' : 'pos2__change'}>
+            <span>{change < 0 ? ar.sales.shortBy : ar.sales.change}</span>
+            <b dir="ltr">{fromPiastresGrouped(Math.abs(change))}</b>
+          </div>
+        )}
 
-        <div className="btn-row" style={{ marginBlockStart: 0 }}>
-          <button
-            type="button"
-            className="btn btn--primary"
-            onClick={() => void checkout()}
-            disabled={saving || cart.length === 0 || (invoiceType === 'credit' && !customer)}
-          >
-            {saving ? ar.sales.paying : invoiceType === 'cash' ? ar.sales.confirmCash : ar.sales.confirmCredit} (F12)
-          </button>
-          <button type="button" className="btn" disabled={saving || cart.length === 0} onClick={() => void hold()}>
+        <button
+          type="button"
+          className="btn btn--primary pos2__pay"
+          onClick={() => void checkout()}
+          disabled={saving || cart.length === 0 || (invoiceType === 'credit' && !customer)}
+        >
+          {saving ? ar.sales.paying : invoiceType === 'cash' ? ar.sales.confirmCash : ar.sales.confirmCredit}
+          <span className="gret__key" dir="ltr">
+            F12
+          </span>
+        </button>
+        <div className="pos2__secondary">
+          <button type="button" className="btn btn--sm" disabled={saving || cart.length === 0} onClick={() => void hold()}>
             {ar.till.hold}
           </button>
-          <button type="button" className="btn" disabled={!results[0] && cart.length === 0} onClick={() => void showAlternatives()}>
+          <button type="button" className="btn btn--sm" disabled={!results[0] && cart.length === 0} onClick={() => void showAlternatives()}>
             {ar.till.alternatives}
           </button>
         </div>
-      </div>
+      </aside>
 
       {askPrescription && (
         <PrescriptionDialog
@@ -806,7 +967,7 @@ export function SalesScreen() {
                         {a.nameAr}
                         {a.shelfLocation && <span className="muted small"> · {a.shelfLocation}</span>}
                       </td>
-                      <td dir="ltr">{a.publicPrice != null ? fromPiastres(a.publicPrice) : '—'}</td>
+                      <td dir="ltr">{a.publicPrice != null ? fromPiastresGrouped(a.publicPrice) : '—'}</td>
                       <td dir="ltr" className={a.qtyOnHand > 0 ? 'strong' : 'muted'}>{a.qtyOnHand}</td>
                       <td>
                         <button
@@ -850,7 +1011,7 @@ export function SalesScreen() {
                       <td dir="ltr">#{h.serial}</td>
                       <td dir="ltr">{h.heldAt.slice(11, 16)}</td>
                       <td>{h.customerName ?? ar.invoices.walkIn}</td>
-                      <td dir="ltr">{fromPiastres(h.total)}</td>
+                      <td dir="ltr">{fromPiastresGrouped(h.total)}</td>
                       <td>
                         <button type="button" className="btn btn--primary btn--sm" autoFocus={i === 0} onClick={() => void resume(h)}>
                           {ar.till.resume}
@@ -868,6 +1029,21 @@ export function SalesScreen() {
             </div>
           </div>
         </div>
+      )}
+      {quickAdd && (
+        <QuickItemDialog
+          initialName={quickAdd.name}
+          initialBarcode={quickAdd.barcode}
+          onClose={() => {
+            setQuickAdd(null);
+            searchRef.current?.focus();
+          }}
+          onCreated={(item) => {
+            setQuickAdd(null);
+            showToast(ar.quickItem.created.replace('{name}', item.nameAr));
+            void addItemToCart(item, { focusQty: true });
+          }}
+        />
       )}
     </div>
   );

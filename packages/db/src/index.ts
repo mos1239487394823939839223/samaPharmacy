@@ -20,3 +20,6 @@ export * from './repositories/narcotics';
 export * from './repositories/catalog-tools';
 export * from './repositories/printable';
 export * from './repositories/insurance';
+export * from './repositories/shortages';
+export * from './repositories/valuation';
+export * from './repositories/opening-stock';

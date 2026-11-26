@@ -8,7 +8,7 @@
 
 import { useEffect, useState } from 'react';
 import type { ExpiryBucket, ExpiryReport, ExpiryBucketDays } from '@pharmacy/shared';
-import { fromPiastres, todayLocal } from '@pharmacy/core';
+import { fromPiastres, todayLocal, fromPiastresGrouped } from '@pharmacy/core';
 import { ar } from '../../i18n/ar';
 import { Stat } from '../../components/Stat';
 import { EmptyState, TableSkeleton } from '../../components/EmptyState';
@@ -95,8 +95,8 @@ export function ExpiryReportScreen() {
 
   return (
     <div className="stack">
-      <div className="panel">
-        <div className="grid2">
+      <div className="filterbar">
+        <div className="filterbar__fields">
           <label className="formfield">
             <span className="formfield__label">{ar.expiryReport.asOf}</span>
             <input
@@ -107,14 +107,29 @@ export function ExpiryReportScreen() {
               onChange={(e) => setAsOf(e.target.value)}
             />
           </label>
-        </div>
-        <div className="btn-row">
-          <button type="button" className="btn btn--primary btn--sm" onClick={() => void load()}>
+          <button type="button" className="btn btn--primary" onClick={() => void load()}>
             {ar.expiryReport.apply}
           </button>
+        </div>
+        <div className="btn-row" style={{ marginBlockStart: 0 }}>
           {(report?.summary.find((b) => b.bucket === 'expired')?.batchCount ?? 0) > 0 && (
             <button type="button" className="btn btn--danger btn--sm" onClick={() => void writeOff()}>
               {ar.adjustments.writeOffExpired}
+            </button>
+          )}
+          {report && report.rows.length > 0 && (
+          <button
+              type="button"
+              className="btn btn--sm"
+              onClick={() =>
+                void exportCsv(
+                  `expiry-${asOf}.csv`,
+                  [ar.expiryReport.code, ar.expiryReport.itemName, ar.expiryReport.batchNumber, ar.expiryReport.expiryDate, ar.expiryReport.qtyOnHand, ar.expiryReport.unitCost, ar.expiryReport.value],
+                  rows.map((r) => [r.code, r.nameAr, r.batchNumber ?? '', r.expiryDate, r.qtyOnHand, fromPiastres(r.unitCost), fromPiastres(r.value)])
+                ).then((msg) => msg && setNotice(msg))
+              }
+            >
+              {ar.exportCsv.button}
             </button>
           )}
         </div>
@@ -122,37 +137,20 @@ export function ExpiryReportScreen() {
 
       {error && <div className="alert alert--error">{error}</div>}
       {notice && <div className="alert alert--success">{notice}</div>}
-      {report && report.rows.length > 0 && (
-        <div className="btn-row" style={{ marginBlockStart: 0 }}>
-          <button
-            type="button"
-            className="btn btn--sm"
-            onClick={() =>
-              void exportCsv(
-                `expiry-${asOf}.csv`,
-                [ar.expiryReport.code, ar.expiryReport.itemName, ar.expiryReport.batchNumber, ar.expiryReport.expiryDate, ar.expiryReport.qtyOnHand, ar.expiryReport.unitCost, ar.expiryReport.value],
-                rows.map((r) => [r.code, r.nameAr, r.batchNumber ?? '', r.expiryDate, r.qtyOnHand, fromPiastres(r.unitCost), fromPiastres(r.value)])
-              ).then((msg) => msg && setNotice(msg))
-            }
-          >
-            {ar.exportCsv.button}
-          </button>
-        </div>
-      )}
 
       {loading ? (
         <TableSkeleton cols={8} />
       ) : report ? (
         <>
-          <div className="stats">
+          <div className="stats expiry-buckets">
             <button
               type="button"
               className={`stat-btn${bucketFilter === null ? ' stat-btn--active' : ''}`}
               onClick={() => setBucketFilter(null)}
             >
               <Stat
-                label={ar.expiryReport.allBuckets}
-                value={String(report.summary.reduce((s, b) => s + b.batchCount, 0))}
+                label={`${ar.expiryReport.allBuckets} · ${ar.expiryReport.batchesCount.replace('{n}', String(report.summary.reduce((s, b) => s + b.batchCount, 0)))}`}
+                value={fromPiastresGrouped(report.summary.reduce((s, b) => s + b.value, 0))}
                 neutral
               />
             </button>
@@ -167,8 +165,8 @@ export function ExpiryReportScreen() {
                   onClick={() => setBucketFilter(bucket)}
                 >
                   <Stat
-                    label={labels[bucket]}
-                    value={`${s.batchCount} / ${fromPiastres(s.value)}`}
+                    label={`${labels[bucket]} · ${ar.expiryReport.batchesCount.replace('{n}', String(s.batchCount))}`}
+                    value={s.batchCount === 0 ? '—' : fromPiastresGrouped(s.value)}
                     good={bucket === 'over180' || bucket === 'd180'}
                     bad={bucket === 'expired'}
                   />
@@ -208,8 +206,8 @@ export function ExpiryReportScreen() {
                           <span className={bucketBadgeClass(r.bucket)}>{labels[r.bucket]}</span>
                         </td>
                         <td dir="ltr">{r.qtyOnHand}</td>
-                        <td dir="ltr">{fromPiastres(r.unitCost)}</td>
-                        <td dir="ltr">{fromPiastres(r.value)}</td>
+                        <td dir="ltr">{fromPiastresGrouped(r.unitCost)}</td>
+                        <td dir="ltr">{fromPiastresGrouped(r.value)}</td>
                       </tr>
                     );
                   })}

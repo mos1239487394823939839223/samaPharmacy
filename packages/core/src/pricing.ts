@@ -33,3 +33,32 @@ export function proRataShare(total: Piastres, already: number, part: number, who
   const upTo = (q: number) => Math.round((total * q) / whole);
   return upTo(already + part) - upTo(already);
 }
+
+/**
+ * New selling prices for every unit of an item after one unit is repriced
+ * (e.g. the box price typed on a purchase invoice). Each other unit keeps its
+ * ratio to the repriced one, so a strip priced a little under its share stays
+ * a little under; a unit with no usable reference falls back to its exact
+ * share. Returns only the units whose price changes.
+ */
+export function repriceUnits(
+  units: Array<{ id: number; factor: number; salePrice: Piastres }>,
+  unitId: number,
+  newPrice: Piastres
+): Array<{ id: number; salePrice: Piastres }> {
+  if (!Number.isInteger(newPrice) || newPrice < 0) throw new RangeError('Price must be a non-negative integer');
+  const chosen = units.find((u) => u.id === unitId);
+  if (!chosen) throw new RangeError(`Unit ${unitId} is not one of the item's units`);
+  const old = chosen.salePrice;
+  const out: Array<{ id: number; salePrice: Piastres }> = [];
+  for (const u of units) {
+    const price =
+      u.id === unitId
+        ? newPrice
+        : old > 0 && u.salePrice > 0
+          ? Math.round((u.salePrice * newPrice) / old)
+          : Math.round((newPrice * u.factor) / chosen.factor);
+    if (price !== u.salePrice) out.push({ id: u.id, salePrice: price });
+  }
+  return out;
+}

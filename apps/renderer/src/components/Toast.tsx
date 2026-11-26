@@ -9,6 +9,7 @@
  * Usage: const { showToast } = useToast(); showToast(ar.cashInOut.cashIn);
  */
 
+import { ar } from '../i18n/ar';
 import { createContext, useCallback, useContext, useRef, useState, type ReactNode } from 'react';
 
 export type ToastVariant = 'success' | 'error' | 'info';
@@ -54,7 +55,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               {t.variant === 'success' ? '✓' : t.variant === 'error' ? '×' : 'ℹ'}
             </span>
             <span className="toast__message">{t.message}</span>
-            <button type="button" className="toast__close" onClick={() => dismiss(t.id)} aria-label="إغلاق">
+            <button type="button" className="toast__close" onClick={() => dismiss(t.id)} aria-label={ar.common.close}>
               ×
             </button>
           </div>

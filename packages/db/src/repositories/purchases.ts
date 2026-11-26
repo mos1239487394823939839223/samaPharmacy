@@ -24,7 +24,7 @@
 import { DomainError, isIsoDate, landedCost, lineValue, toBaseUnits, type LandedCostLine } from '@pharmacy/core';
 import type { Db } from '../connection';
 import { NOW, TODAY } from '../time';
-import { nextSequence } from './items';
+import { applyUnitSalePrice, nextSequence } from './items';
 import { getSupplierBalance } from './suppliers';
 import { recordNarcoticMove } from './narcotics';
 
@@ -41,6 +41,8 @@ export interface PurchaseLineInput {
   batchNumber?: string | null;
   expiryDate?: string | null;
   unitPurchasePrice: number;
+  /** Selling price of this unit, when typed on the invoice — applied to the item everywhere. */
+  salePrice?: number;
   discountPct?: number;
   discountAmt?: number;
   taxPct?: number;
@@ -222,6 +224,12 @@ export function createPurchaseInvoice(db: Db, input: PurchaseInvoiceInput, userI
       return { line, v, qtyBase, bonusBase, expiryDate };
     });
 
+    // A selling price typed on the invoice is the item's new price everywhere
+    // (POS, item card, stock valuation) — same transaction as the invoice.
+    for (const line of data.lines) {
+      if (line.salePrice != null) applyUnitSalePrice(db, line.itemId, line.unitId, line.salePrice, userId, 'purchase');
+    }
+
     const extraDiscountPct = pct(data.extraDiscountPct, 'purchase.extraDiscountInvalid', 'extraDiscountPct');
     const extraDiscountAmt = data.extraDiscountAmt ?? Math.round((linesTotal * extraDiscountPct) / 100);
     if (!Number.isInteger(extraDiscountAmt) || extraDiscountAmt < 0 || extraDiscountAmt > linesTotal) {
@@ -304,7 +312,9 @@ const SELECT_INVOICE = `
          warehouse_id AS warehouseId, purchase_type AS purchaseType,
          invoice_date AS invoiceDate, status, expenses,
          extra_discount_amt AS extraDiscountAmt, subtotal, tax_total AS taxTotal,
-         total, paid, notes, created_at AS createdAt, confirmed_at AS confirmedAt
+         total, paid, notes, created_at AS createdAt, confirmed_at AS confirmedAt,
+         (SELECT s.name_ar FROM suppliers s WHERE s.id = purchase_invoices.supplier_id) AS supplierName,
+         (SELECT COUNT(*) FROM purchase_invoice_lines l WHERE l.invoice_id = purchase_invoices.id) AS lineCount
   FROM purchase_invoices
 `;
 

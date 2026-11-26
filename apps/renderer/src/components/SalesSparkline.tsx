@@ -21,6 +21,8 @@
  * without adding a second visual element to the chart.
  */
 
+import { ar } from '../i18n/ar';
+
 interface Point {
   label: string;
   value: number;
@@ -104,7 +106,7 @@ export function SalesSparkline({ points }: { points: Point[] }) {
       viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
       preserveAspectRatio="none"
       role="img"
-      aria-label="اتجاه المبيعات خلال آخر أيام"
+      aria-label={ar.dashboard.trendAria}
     >
       <defs>
         {/* One gradient per bar: full value-scaled tone at the top, easing

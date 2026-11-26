@@ -60,10 +60,26 @@ export interface ItemListRow {
   storageCondition: string;
   noExpiry: number;
   isActive: number;
+  /** Sellable stock in base units (item list and search only). */
+  stockBase?: number;
+  /** The largest unit (the box): factor and name, for showing stock. */
+  boxFactor?: number;
+  boxName?: string | null;
+  baseName?: string | null;
 }
+
+/** add = new items only · update = existing items only · upsert = both. */
+export type ImportMode = 'add' | 'update' | 'upsert';
 
 export interface ImportPreview {
   filePath: string;
+  mode: ImportMode;
+  /** Valid rows that would create a new item. */
+  newCount: number;
+  /** Valid rows that match an existing item (by name or barcode). */
+  existingCount: number;
+  /** Valid rows the chosen mode leaves alone. */
+  skippedCount: number;
   headers: string[];
   /** Suggested column mapping; the user confirms or overrides it. */
   mapping: Record<string, number>;
@@ -76,6 +92,11 @@ export interface ImportPreview {
 
 export interface ImportResult {
   inserted: number;
+  updated: number;
+  /** Rows the chosen mode left alone. */
+  skipped: number;
+  /** Updated items whose unit layout differs from the file — their prices were kept. */
+  unitsMismatch: number;
   rejectedCount: number;
   elapsedMs: number;
 }

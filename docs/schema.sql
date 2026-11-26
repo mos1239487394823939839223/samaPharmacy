@@ -692,3 +692,23 @@ CREATE TABLE insurance_claim_lines (
   id INTEGER PRIMARY KEY, claim_id INTEGER NOT NULL, invoice_id INTEGER NOT NULL UNIQUE,
   amount INTEGER NOT NULL, rejected INTEGER NOT NULL DEFAULT 0, rejected_reason TEXT
 );
+
+-- النواقص (migration 0014): items to order; never deleted, closed instead.
+CREATE TABLE shortages (
+  id            INTEGER PRIMARY KEY,
+  item_id       INTEGER NOT NULL REFERENCES items(id),
+  unit_id       INTEGER REFERENCES item_units(id),
+  required_qty  INTEGER CHECK (required_qty IS NULL OR required_qty > 0),
+  note          TEXT,
+  status        TEXT NOT NULL DEFAULT 'open'
+                CHECK (status IN ('open', 'ordered', 'resolved', 'cancelled')),
+  created_at    TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+  updated_at    TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+  closed_at     TEXT
+);
+
+CREATE UNIQUE INDEX ux_shortages_active_item ON shortages(item_id) WHERE status IN ('open', 'ordered');
+CREATE INDEX ix_shortages_status ON shortages(status, created_at);
+
+CREATE TRIGGER trg_shortages_no_delete BEFORE DELETE ON shortages
+BEGIN SELECT RAISE(ABORT, 'immutable: shortages are closed, not deleted'); END;

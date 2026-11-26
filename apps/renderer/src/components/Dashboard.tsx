@@ -14,10 +14,11 @@
 import { useEffect, useState } from 'react';
 import type { ScreenId } from '../lib/navigation';
 import type { SalesInvoiceRow, WarehouseRow } from '@pharmacy/shared';
-import { addDays, fromPiastres, todayLocal } from '@pharmacy/core';
+import { addDays, fromPiastres, todayLocal, fromPiastresGrouped } from '@pharmacy/core';
 import { ar } from '../i18n/ar';
 import { EmptyState } from './EmptyState';
 import { SalesSparkline } from './SalesSparkline';
+import { SetupChecklist } from './SetupChecklist';
 import {
   ReceiptIcon,
   TrendingUpIcon,
@@ -30,6 +31,9 @@ import {
   UsersIcon,
   TruckIcon,
   RefreshIcon,
+  CartIcon,
+  AlertIcon,
+  CalendarIcon,
 } from './icons';
 import { errorText } from '../lib/errors';
 
@@ -115,7 +119,7 @@ async function isolated<T>(fn: () => Promise<T>): Promise<T | null> {
   }
 }
 
-const WEEKDAY_SHORT = ['أحد', 'إثنين', 'ثلاثاء', 'أربعاء', 'خميس', 'جمعة', 'سبت'];
+const WEEKDAY_SHORT: readonly string[] = ar.dashboard.weekdaysShort;
 
 /** Human-relative Arabic time, e.g. "منذ 3 دقائق" — built from the invoice's
     own confirmedAt/createdAt timestamp, not a guess. */
@@ -139,12 +143,12 @@ interface QuickLink {
 }
 
 const QUICK_LINKS: QuickLink[] = [
-  { label: ar.drawer.salesInvoices, target: 'sales.invoices', icon: <ReceiptIcon /> },
-  { label: ar.drawer.itemsList, target: 'items.list', icon: <BoxIcon /> },
-  { label: ar.drawer.itemsExpiry, target: 'items.expiry', icon: <ClockIcon /> },
-  { label: ar.drawer.itemsStock, target: 'items.stock', icon: <LayersIcon /> },
+  { label: ar.drawer.salesInvoices, target: 'sales.invoices', icon: <CartIcon /> },
   { label: ar.drawer.purchaseInvoices, target: 'purchases.invoices', icon: <TruckIcon /> },
-  { label: ar.drawer.customersList, target: 'customers.list', icon: <UsersIcon /> },
+  { label: ar.drawer.itemsList, target: 'items.list', icon: <BoxIcon /> },
+  { label: ar.drawer.itemsShortages, target: 'items.shortages', icon: <AlertIcon /> },
+  { label: ar.drawer.itemsExpiry, target: 'items.expiry', icon: <CalendarIcon /> },
+  { label: ar.drawer.salesShiftHandover, target: 'sales.shiftHandover', icon: <ClockIcon /> },
 ];
 
 export function Dashboard({ onNavigate }: { onNavigate: (screen: ScreenId) => void }) {
@@ -373,6 +377,18 @@ export function Dashboard({ onNavigate }: { onNavigate: (screen: ScreenId) => vo
         </div>
       )}
 
+      <SetupChecklist onNavigate={onNavigate} />
+
+      {/* Quick actions: the day's common jobs, one click away */}
+      <div className="dash-quick-links dash-quick-links--top">
+        {QUICK_LINKS.map((link) => (
+          <button key={link.target} type="button" className="dash-quick-link" onClick={() => onNavigate(link.target)}>
+            <span className="dash-quick-link__icon">{link.icon}</span>
+            {link.label}
+          </button>
+        ))}
+      </div>
+
       {/* Today's business at a glance */}
       <div className="dash-hero">
         <div className="dash-card dash-card--success">
@@ -382,10 +398,10 @@ export function Dashboard({ onNavigate }: { onNavigate: (screen: ScreenId) => vo
           <div className="dash-card__body">
             <span className="dash-card__label">{ar.dashboard.todaySales}</span>
             <span className="dash-card__value" dir="ltr">
-              {fromPiastres(base.todaySalesTotal)}
+              {fromPiastresGrouped(base.todaySalesTotal)}
             </span>
             <span className="dash-card__sub">
-              {ar.dashboard.todayProfit}: <span dir="ltr">{fromPiastres(base.todayProfit)}</span>
+              {ar.dashboard.todayProfit}: <span dir="ltr">{fromPiastresGrouped(base.todayProfit)}</span>
             </span>
           </div>
         </div>
@@ -412,7 +428,7 @@ export function Dashboard({ onNavigate }: { onNavigate: (screen: ScreenId) => vo
               <span className="skeleton" style={{ inlineSize: '5rem', blockSize: '1.4rem', display: 'inline-block' }} />
             ) : shiftState?.shiftOpen ? (
               <span className="dash-card__value" dir="ltr">
-                {fromPiastres(shiftState.expectedCash ?? 0)}
+                {fromPiastresGrouped(shiftState.expectedCash ?? 0)}
               </span>
             ) : (
               <span className="dash-card__sub">{ar.dashboard.noOpenShift}</span>
@@ -421,70 +437,7 @@ export function Dashboard({ onNavigate }: { onNavigate: (screen: ScreenId) => vo
         </div>
       </div>
 
-      {/* Sales trend, with a real date-range filter */}
-      <div className="panel">
-        <div className="dash-panel-header">
-          <h2 className="section-heading section-heading--inline">{ar.dashboard.salesTrend}</h2>
-          <span className="dash-chart-tabs">
-            {TREND_PRESETS.map((n) => (
-              <button
-                key={n}
-                type="button"
-                className={n === activeTrendPreset ? 'dash-chart-tab dash-chart-tab--active' : 'dash-chart-tab'}
-                onClick={() => applyTrendPreset(n)}
-              >
-                {ar.dashboard.lastNDays.replace('{n}', String(n))}
-              </button>
-            ))}
-          </span>
-        </div>
-
-        <div className="dash-trend-range">
-          <label className="dash-trend-range__field">
-            <span className="dash-trend-range__label">{ar.salesReport.fromDate}</span>
-            <input
-              className="field field--sm field--date"
-              type="date"
-              dir="ltr"
-              value={trendFrom}
-              max={trendTo}
-              onChange={(e) => setTrendFrom(e.target.value)}
-            />
-          </label>
-          <label className="dash-trend-range__field">
-            <span className="dash-trend-range__label">{ar.salesReport.toDate}</span>
-            <input
-              className="field field--sm field--date"
-              type="date"
-              dir="ltr"
-              value={trendTo}
-              min={trendFrom}
-              max={todayIso()}
-              onChange={(e) => setTrendTo(e.target.value)}
-            />
-          </label>
-        </div>
-
-        {trendRangeInvalid ? (
-          <div className="alert alert--error">{ar.salesReport.errors.invalidRange}</div>
-        ) : trendLoading ? (
-          <span className="skeleton" style={{ display: 'block', blockSize: '9rem', borderRadius: 'var(--radius-md)' }} />
-        ) : trendError ? (
-          <div className="dash-chart-empty">{ar.dashboard.salesTrendFailed}</div>
-        ) : (
-          <SalesSparkline
-            points={trend.map((p) => ({
-              label: p.label,
-              value: p.total,
-              displayValue: fromPiastres(p.total),
-            }))}
-          />
-        )}
-      </div>
-
-
       {/* Operations: inventory + recent activity side by side */}
-      <h2 className="section-heading section-heading--inline">{ar.dashboard.operationsSection}</h2>
       <div className="dash-band">
         <div className="panel">
           <div className="dash-panel-header">
@@ -546,7 +499,7 @@ export function Dashboard({ onNavigate }: { onNavigate: (screen: ScreenId) => vo
                     <span className="dash-tx-meta">{relativeTime(inv.confirmedAt ?? inv.createdAt)}</span>
                   </span>
                   <span className="dash-tx-amount" dir="ltr">
-                    {fromPiastres(inv.total)}
+                    {fromPiastresGrouped(inv.total)}
                   </span>
                 </div>
               ))}
@@ -556,7 +509,6 @@ export function Dashboard({ onNavigate }: { onNavigate: (screen: ScreenId) => vo
       </div>
 
       {/* Financial: cash drawer + receivables side by side */}
-      <h2 className="section-heading section-heading--inline">{ar.dashboard.financialSection}</h2>
       <div className="dash-band">
         <div className="panel">
           <h2 className="section-heading">{ar.dashboard.cashSnapshot}</h2>
@@ -568,19 +520,19 @@ export function Dashboard({ onNavigate }: { onNavigate: (screen: ScreenId) => vo
             <div className="dash-cash-rows">
               <div className="dash-cash-row">
                 <span className="dash-cash-row__label">{ar.dashboard.cashSalesLabel}</span>
-                <span className="dash-cash-row__value" dir="ltr">{fromPiastres(shiftState.cash.cashSales)}</span>
+                <span className="dash-cash-row__value" dir="ltr">{fromPiastresGrouped(shiftState.cash.cashSales)}</span>
               </div>
               <div className="dash-cash-row">
                 <span className="dash-cash-row__label">{ar.dashboard.cashInLabel}</span>
-                <span className="dash-cash-row__value" dir="ltr">{fromPiastres(shiftState.cash.cashIn)}</span>
+                <span className="dash-cash-row__value" dir="ltr">{fromPiastresGrouped(shiftState.cash.cashIn)}</span>
               </div>
               <div className="dash-cash-row">
                 <span className="dash-cash-row__label">{ar.dashboard.cashOutLabel}</span>
-                <span className="dash-cash-row__value" dir="ltr">{fromPiastres(shiftState.cash.cashOut)}</span>
+                <span className="dash-cash-row__value" dir="ltr">{fromPiastresGrouped(shiftState.cash.cashOut)}</span>
               </div>
               <div className="dash-cash-row dash-cash-row--net">
                 <span className="dash-cash-row__label">{ar.dashboard.netCashLabel}</span>
-                <span className="dash-cash-row__value" dir="ltr">{fromPiastres(netCash)}</span>
+                <span className="dash-cash-row__value" dir="ltr">{fromPiastresGrouped(netCash)}</span>
               </div>
             </div>
           )}
@@ -593,7 +545,7 @@ export function Dashboard({ onNavigate }: { onNavigate: (screen: ScreenId) => vo
           ) : (
             <div className="dash-stat-block">
               <span className="dash-stat-block__value dash-stat-block__value--warning" dir="ltr">
-                {fromPiastres(base.receivables.totalOwed)}
+                {fromPiastresGrouped(base.receivables.totalOwed)}
               </span>
               <span className="dash-stat-block__hint">
                 {base.receivables.customerCount} {ar.dashboard.receivablesHint}
@@ -606,18 +558,68 @@ export function Dashboard({ onNavigate }: { onNavigate: (screen: ScreenId) => vo
         </div>
       </div>
 
-      {/* Quick access */}
-      <div>
-        <h2 className="section-heading">{ar.dashboard.quickLinks}</h2>
-        <div className="dash-quick-links">
-          {QUICK_LINKS.map((link) => (
-            <button key={link.target} type="button" className="dash-quick-link" onClick={() => onNavigate(link.target)}>
-              <span className="dash-quick-link__icon">{link.icon}</span>
-              {link.label}
-            </button>
-          ))}
+      {/* Sales trend, with a real date-range filter */}
+      <div className="panel dash-trend">
+        <div className="dash-panel-header">
+          <h2 className="section-heading section-heading--inline">{ar.dashboard.salesTrend}</h2>
+          <span className="dash-chart-tabs">
+            {TREND_PRESETS.map((n) => (
+              <button
+                key={n}
+                type="button"
+                className={n === activeTrendPreset ? 'dash-chart-tab dash-chart-tab--active' : 'dash-chart-tab'}
+                onClick={() => applyTrendPreset(n)}
+              >
+                {ar.dashboard.lastNDays.replace('{n}', String(n))}
+              </button>
+            ))}
+          </span>
         </div>
+
+        <div className="dash-trend-range">
+          <label className="dash-trend-range__field">
+            <span className="dash-trend-range__label">{ar.salesReport.fromDate}</span>
+            <input
+              className="field field--sm field--date"
+              type="date"
+              dir="ltr"
+              value={trendFrom}
+              max={trendTo}
+              onChange={(e) => setTrendFrom(e.target.value)}
+            />
+          </label>
+          <label className="dash-trend-range__field">
+            <span className="dash-trend-range__label">{ar.salesReport.toDate}</span>
+            <input
+              className="field field--sm field--date"
+              type="date"
+              dir="ltr"
+              value={trendTo}
+              min={trendFrom}
+              max={todayIso()}
+              onChange={(e) => setTrendTo(e.target.value)}
+            />
+          </label>
+        </div>
+
+        {trendRangeInvalid ? (
+          <div className="alert alert--error">{ar.salesReport.errors.invalidRange}</div>
+        ) : trendLoading ? (
+          <span className="skeleton" style={{ display: 'block', blockSize: '9rem', borderRadius: 'var(--radius-md)' }} />
+        ) : trendError ? (
+          <div className="dash-chart-empty">{ar.dashboard.salesTrendFailed}</div>
+        ) : (
+          <SalesSparkline
+            points={trend.map((p) => ({
+              label: p.label,
+              value: p.total,
+              displayValue: fromPiastres(p.total),
+            }))}
+          />
+        )}
       </div>
+
+
     </div>
   );
 }

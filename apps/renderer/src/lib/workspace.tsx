@@ -12,16 +12,38 @@
 
 import { createContext, useContext, useEffect, useRef, type DependencyList } from 'react';
 import { attachShortcuts, type ShortcutBinding } from './shortcuts';
+import type { ScreenId } from './navigation';
 
 interface PageContextValue {
   active: boolean;
   /** Mark the page as holding unsaved work (closing it then asks first). */
   setDirty: (dirty: boolean) => void;
+  /** Open an item's edit page; closing it comes back to this page. */
+  openItem: (itemId: number) => void;
+  /** Open (or focus) a screen. */
+  openScreen: (screen: ScreenId) => void;
+  /** Close this page and return to the page that opened it. */
+  finish: () => void;
+  /** The item this page edits (items.edit pages only). */
+  itemId: number | null;
 }
 
-const PageContext = createContext<PageContextValue>({ active: true, setDirty: () => undefined });
+const PageContext = createContext<PageContextValue>({
+  active: true,
+  setDirty: () => undefined,
+  openItem: () => undefined,
+  openScreen: () => undefined,
+  finish: () => undefined,
+  itemId: null,
+});
 
 export const PageProvider = PageContext.Provider;
+
+/** Navigation from inside a page: open an item, open a screen, or finish and go back. */
+export function useWorkspace(): Pick<PageContextValue, 'openItem' | 'openScreen' | 'finish' | 'itemId'> {
+  const { openItem, openScreen, finish, itemId } = useContext(PageContext);
+  return { openItem, openScreen, finish, itemId };
+}
 
 /** True while this page is the one on screen. */
 export function usePageActive(): boolean {

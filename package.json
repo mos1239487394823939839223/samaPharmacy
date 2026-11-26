@@ -63,10 +63,6 @@
       {
         "from": "packages/db/migrations",
         "to": "migrations"
-      },
-      {
-        "from": "packages/db/seed",
-        "to": "seed"
       }
     ],
     "win": {

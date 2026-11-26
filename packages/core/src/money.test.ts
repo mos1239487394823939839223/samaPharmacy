@@ -166,3 +166,14 @@ describe('allocate', () => {
     expect(allocate(500, [])).toEqual([]);
   });
 });
+
+describe('fromPiastresGrouped', () => {
+  it('groups thousands and keeps two decimals', async () => {
+    const { fromPiastresGrouped } = await import('./money');
+    expect(fromPiastresGrouped(100000000000)).toBe('1,000,000,000.00');
+    expect(fromPiastresGrouped(123456789)).toBe('1,234,567.89');
+    expect(fromPiastresGrouped(99999)).toBe('999.99');
+    expect(fromPiastresGrouped(0)).toBe('0.00');
+    expect(fromPiastresGrouped(-150000)).toBe('-1,500.00');
+  });
+});

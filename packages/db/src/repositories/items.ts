@@ -6,7 +6,7 @@
  * without its barcodes or units.
  */
 
-import { boxFactorOf, DomainError, maxUnitPrice, normalizeName, toAsciiDigits, validateUnitSet } from '@pharmacy/core';
+import { boxFactorOf, DomainError, maxUnitPrice, normalizeName, repriceUnits, toAsciiDigits, validateUnitSet } from '@pharmacy/core';
 import type { Db } from '../connection';
 import { NOW } from '../time';
 
@@ -57,7 +57,20 @@ export interface ItemRow {
   storageCondition: string;
   noExpiry: number;
   isActive: number;
+  /** Sellable stock in base units (list/search only). */
+  stockBase?: number;
+  /** The largest unit (the box): its factor and name, for showing stock. */
+  boxFactor?: number;
+  boxName?: string | null;
+  baseName?: string | null;
 }
+
+/** Stock and box unit for list rows — cheap per row (indexed by item_id). */
+const STOCK_COLUMNS = `,
+              (SELECT COALESCE(SUM(b.qty_on_hand), 0) FROM batches b WHERE b.item_id = items.id AND b.is_quarantined = 0) AS stockBase,
+              (SELECT MAX(u.factor) FROM item_units u WHERE u.item_id = items.id) AS boxFactor,
+              (SELECT u.name_ar FROM item_units u WHERE u.item_id = items.id ORDER BY u.factor DESC LIMIT 1) AS boxName,
+              (SELECT u.name_ar FROM item_units u WHERE u.item_id = items.id ORDER BY u.factor ASC LIMIT 1) AS baseName`;
 
 /**
  * Full row shape for a single item (the "اضافة/تعديل صنف" form) — the
@@ -482,16 +495,17 @@ export function searchItems(db: Db, query: string, limit = 50): ItemRow[] {
       `SELECT id, code, name_ar AS nameAr, name_en AS nameEn,
               public_price AS publicPrice, shelf_location AS shelfLocation,
               schedule_class AS scheduleClass, storage_condition AS storageCondition,
-              no_expiry AS noExpiry, is_active AS isActive
+              no_expiry AS noExpiry, is_active AS isActive${STOCK_COLUMNS}
        FROM items
        WHERE is_active = 1
          AND (
            (@norm != '' AND (name_ar_norm LIKE @like OR name_en_norm LIKE @like OR ingredient_norm LIKE @like))
            OR id IN (SELECT item_id FROM item_barcodes WHERE barcode = @rawBarcode)
            OR international_code = @rawBarcode
+           OR CAST(code AS TEXT) = @rawBarcode
          )
        ORDER BY
-         CASE WHEN id IN (SELECT item_id FROM item_barcodes WHERE barcode = @rawBarcode) OR international_code = @rawBarcode THEN 0
+         CASE WHEN id IN (SELECT item_id FROM item_barcodes WHERE barcode = @rawBarcode) OR international_code = @rawBarcode OR CAST(code AS TEXT) = @rawBarcode THEN 0
               WHEN name_ar_norm LIKE @prefix THEN 1
               ELSE 2 END,
          name_ar
@@ -506,7 +520,7 @@ export function listItems(db: Db, opts: { limit?: number; offset?: number } = {}
       `SELECT id, code, name_ar AS nameAr, name_en AS nameEn,
               public_price AS publicPrice, shelf_location AS shelfLocation,
               schedule_class AS scheduleClass, storage_condition AS storageCondition,
-              no_expiry AS noExpiry, is_active AS isActive
+              no_expiry AS noExpiry, is_active AS isActive${STOCK_COLUMNS}
        FROM items WHERE is_active = 1
        ORDER BY name_ar
        LIMIT ? OFFSET ?`
@@ -524,4 +538,50 @@ export function countItems(db: Db): number {
 /** Nothing is deleted (rule 9) — deactivate instead. */
 export function deactivateItem(db: Db, id: number): void {
   db.prepare(`UPDATE items SET is_active = 0, updated_at = ${NOW} WHERE id = ?`).run(id);
+}
+
+/**
+ * Sets one unit's selling price and carries the change to the item's other
+ * units (same ratio) and to its public price (the box). Every screen reads
+ * item_units.sale_price, so the POS, the item card and the stock valuation
+ * all follow. Runs inside the caller's transaction when there is one.
+ * Returns true when anything changed.
+ */
+export function applyUnitSalePrice(
+  db: Db,
+  itemId: number,
+  unitId: number,
+  newPrice: number,
+  userId: number,
+  source: 'manual' | 'purchase' = 'manual'
+): boolean {
+  const run = db.transaction(() => {
+    const units = db
+      .prepare('SELECT id, factor, sale_price AS salePrice FROM item_units WHERE item_id = ?')
+      .all(itemId) as Array<{ id: number; factor: number; salePrice: number }>;
+    if (!units.some((u) => u.id === unitId)) {
+      throw new DomainError('purchase.unitInvalid', `Unit ${unitId} does not belong to item ${itemId}`);
+    }
+    const changes = repriceUnits(units, unitId, newPrice);
+    if (changes.length === 0) return false;
+
+    const update = db.prepare('UPDATE item_units SET sale_price = ? WHERE id = ?');
+    for (const c of changes) update.run(c.salePrice, c.id);
+
+    // The box price is the public price (D9) — keep it in step, or BR-4
+    // would cap the new unit prices at the old box price.
+    const box = boxFactorOf(units);
+    const boxUnit = units.find((u) => u.factor === box)!;
+    const boxPrice = changes.find((c) => c.id === boxUnit.id)?.salePrice ?? boxUnit.salePrice;
+    const item = db.prepare('SELECT public_price AS p FROM items WHERE id = ?').get(itemId) as { p: number | null };
+    if (item.p !== boxPrice) {
+      db.prepare(
+        `INSERT INTO price_history (item_id, old_price, new_price, changed_at, changed_by, source)
+         VALUES (?, ?, ?, ${NOW}, ?, ?)`
+      ).run(itemId, item.p, boxPrice, userId, source);
+    }
+    db.prepare(`UPDATE items SET public_price = ?, updated_at = ${NOW} WHERE id = ?`).run(boxPrice, itemId);
+    return true;
+  });
+  return run();
 }

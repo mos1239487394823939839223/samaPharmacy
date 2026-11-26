@@ -2,9 +2,10 @@
  * فواتير الشراء — list plus form host.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { SearchInput } from '../../components/SearchInput';
 import type { PurchaseInvoiceRow } from '@pharmacy/shared';
-import { fromPiastres } from '@pharmacy/core';
+import { fromPiastres, fromPiastresGrouped } from '@pharmacy/core';
 import { ar } from '../../i18n/ar';
 import { PurchaseForm } from './PurchaseForm';
 import { EmptyState, TableSkeleton } from '../../components/EmptyState';
@@ -33,6 +34,18 @@ export function PurchasesScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
+  const [filter, setFilter] = useState('');
+  const shown = useMemo(() => {
+    const f = filter.trim().toLowerCase();
+    if (!f) return rows;
+    return rows.filter(
+      (r) =>
+        (r.supplierName ?? '').toLowerCase().includes(f) ||
+        r.supplierInvoiceNo.toLowerCase().includes(f) ||
+        String(r.serial) === f ||
+        r.invoiceDate.includes(f)
+    );
+  }, [rows, filter]);
   const { showToast } = useToast();
 
   async function printInvoice(id: number) {
@@ -90,6 +103,12 @@ export function PurchasesScreen() {
   return (
     <div className="items">
       <div className="items__bar">
+        <SearchInput
+          className="field items__search"
+          placeholder={ar.purchases.listFilter}
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+        />
         <button type="button" className="btn btn--primary" onClick={() => setMode({ view: 'form' })}>
           {ar.purchases.add}
         </button>
@@ -100,31 +119,47 @@ export function PurchasesScreen() {
       {loading ? (
         <TableSkeleton cols={6} />
       ) : rows.length === 0 ? (
-        <EmptyState title={ar.purchases.empty} />
+        <EmptyState
+          title={ar.purchases.empty}
+          hint={ar.emptyHints.purchases}
+          action={
+            <button type="button" className="btn btn--primary btn--sm" onClick={() => setMode({ view: 'form' })}>
+              {ar.purchases.add}
+            </button>
+          }
+        />
       ) : (
         <div className="table-wrap"><table className="datatable">
           <thead>
             <tr>
               <th>{ar.purchases.serial}</th>
-              <th>{ar.purchases.supplierInvoiceNo}</th>
+              <th>{ar.purchases.supplier}</th>
               <th>{ar.purchases.invoiceDate}</th>
               <th>{ar.purchases.status}</th>
-              <th>{ar.purchases.total}</th>
+              <th className="num">{ar.purchases.total}</th>
               <th />
             </tr>
           </thead>
           <tbody>
-            {rows.map((r) => (
+            {shown.map((r) => (
               <tr key={r.id}>
-                <td dir="ltr">{r.serial}</td>
-                <td dir="ltr">{r.supplierInvoiceNo}</td>
+                <td dir="ltr" className="strong">{r.serial}</td>
+                <td>
+                  <div className="itemlist__name">{r.supplierName ?? '—'}</div>
+                  <div className="itemlist__meta">
+                    <span>
+                      {ar.purchases.supplierInvoiceNo}: <span dir="ltr">{r.supplierInvoiceNo}</span>
+                    </span>
+                    {r.lineCount != null && <span>{ar.purchases.linesCount.replace('{n}', String(r.lineCount))}</span>}
+                  </div>
+                </td>
                 <td dir="ltr">{r.invoiceDate}</td>
                 <td>
                   <span className={STATUS_BADGE[r.status] ?? 'badge badge--muted'}>
                     {STATUS_LABEL[r.status] ?? r.status}
                   </span>
                 </td>
-                <td dir="ltr">{fromPiastres(r.total)}</td>
+                <td dir="ltr" className="num strong">{fromPiastresGrouped(r.total)}</td>
                 <td className="datatable__actions">
                   <button type="button" className="btn btn--sm" onClick={() => void printInvoice(r.id)}>
                     {ar.print.a4}

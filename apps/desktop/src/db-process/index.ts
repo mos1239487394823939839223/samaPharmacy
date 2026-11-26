@@ -40,7 +40,16 @@ import {
   countItems,
   deactivateItem,
   readSheet,
-  existingKeys,
+  exportItemsSheet,
+  listShortages,
+  getStockValuation,
+  postOpeningStock,
+  activeShortageItemIds,
+  addShortage,
+  updateShortage,
+  setShortageStatus,
+  planImport,
+  updateImportedItems,
   bulkInsertItems,
   listWarehouses,
   getWarehouse,
@@ -164,6 +173,10 @@ import {
   pharmacySettingsInputSchema,
   prescriptionSchema,
   insuranceCompanyInputSchema,
+  shortageInputSchema,
+  openingStockSchema,
+  shortageUpdateSchema,
+  shortageStatusSchema,
   claimSettlementSchema,
 } from '@pharmacy/shared';
 import type {
@@ -283,6 +296,7 @@ function shutdown(): void {
   }
 }
 
+const importModeSchema = z.enum(['add', 'update', 'upsert']);
 const idSchema = z.number().int().positive();
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
@@ -390,38 +404,57 @@ function dispatch(envelope: DbRequestEnvelope): DbResponseEnvelope {
 
       case 'import.preview': {
         const conn = requireDb();
+        const mode = importModeSchema.parse(req.mode ?? 'add');
         const { headers, rows } = readSheet(req.filePath);
         const mapping = (req.mapping ?? guessMapping(headers)) as Partial<
           Record<ImportField, number>
         >;
-        const { accepted, rejected } = validateRows(rows, mapping, existingKeys(conn));
+        // Rows naming an existing item are matched (planImport), not rejected:
+        // "add" skips them, the other modes update them. Only duplicates
+        // inside the file itself are rejected.
+        const { accepted, rejected } = validateRows(rows, mapping, {});
+        const plan = planImport(conn, accepted, mode);
         return ok({
           filePath: req.filePath,
+          mode,
           headers,
           mapping,
           totalRows: rows.length,
-          acceptedCount: accepted.length,
-          sample: accepted.slice(0, 20),
+          acceptedCount: plan.toInsert.length + plan.toUpdate.length,
+          newCount: plan.toInsert.length,
+          existingCount: plan.toUpdate.length,
+          sample: [...plan.toInsert, ...plan.toUpdate.map((u) => u.row)].slice(0, 20),
           // Cap what crosses the boundary: a wholly mismatched mapping can
           // reject all 35,000 rows, and serialising those would stall the UI.
           rejected: rejected.slice(0, 200),
+          skippedCount: plan.skipped,
         });
       }
 
       case 'import.apply': {
         const conn = requireDb();
+        const mode = importModeSchema.parse(req.mode ?? 'add');
         const { rows } = readSheet(req.filePath);
         const mapping = req.mapping as Partial<Record<ImportField, number>>;
-        const { accepted, rejected } = validateRows(rows, mapping, existingKeys(conn));
+        const { accepted, rejected } = validateRows(rows, mapping, {});
+        const plan = planImport(conn, accepted, mode);
+        const total = plan.toInsert.length + plan.toUpdate.length;
+        const progress = (offset: number) => (p: { done: number }) =>
+          process.parentPort.postMessage({ type: 'progress', channel: 'import', data: { done: offset + p.done, total } });
 
-        const outcome = bulkInsertItems(conn, accepted, (p) =>
-          process.parentPort.postMessage({ type: 'progress', channel: 'import', data: p })
-        );
+        const started = Date.now();
+        const inserted = plan.toInsert.length ? bulkInsertItems(conn, plan.toInsert, progress(0)).inserted : 0;
+        const upd = plan.toUpdate.length
+          ? updateImportedItems(conn, plan.toUpdate, { minStock: mapping.minStock !== undefined }, progress(inserted))
+          : { updated: 0, unitsMismatch: 0 };
 
         return ok({
-          inserted: outcome.inserted,
+          inserted,
+          updated: upd.updated,
+          skipped: plan.skipped,
+          unitsMismatch: upd.unitsMismatch,
           rejectedCount: rejected.length,
-          elapsedMs: outcome.elapsedMs,
+          elapsedMs: Date.now() - started,
         });
       }
 
@@ -499,7 +532,7 @@ function dispatch(envelope: DbRequestEnvelope): DbResponseEnvelope {
         return ok(undefined);
 
       case 'stock.search':
-        return ok(searchItemStock(requireDb(), req.query, req.limit, req.warehouseId));
+        return ok(searchItemStock(requireDb(), req.query, req.limit, req.warehouseId, req.inStockOnly === true));
 
       case 'stock.batches':
         return ok(getItemBatches(requireDb(), req.itemId));
@@ -755,6 +788,34 @@ function dispatch(envelope: DbRequestEnvelope): DbResponseEnvelope {
       case 'items.alternatives':
         return ok(findAlternatives(requireDb(), req.id, idSchema.parse(req.warehouseId)));
 
+      case 'stock.valuation':
+        return ok(getStockValuation(requireDb(), req.warehouseId ? idSchema.parse(req.warehouseId) : null));
+
+      case 'stock.opening': {
+        const input = openingStockSchema.parse(req.input);
+        return ok(postOpeningStock(requireDb(), input.warehouseId, input.lines, userId));
+      }
+
+      case 'shortages.list':
+        return ok(listShortages(requireDb(), z.enum(['active', 'closed', 'all']).parse(req.scope ?? 'active')));
+
+      case 'shortages.activeItems':
+        return ok(activeShortageItemIds(requireDb()));
+
+      case 'shortages.add':
+        return ok(addShortage(requireDb(), shortageInputSchema.parse(req.input)));
+
+      case 'shortages.update':
+        updateShortage(requireDb(), req.id, shortageUpdateSchema.parse(req.input));
+        return ok(undefined);
+
+      case 'shortages.setStatus':
+        setShortageStatus(requireDb(), req.id, shortageStatusSchema.parse(req.status));
+        return ok(undefined);
+
+      case 'items.export':
+        return ok(exportItemsSheet(requireDb()));
+
       case 'items.unitPriceIssues':
         return ok(unitPriceIssues(requireDb()));
 
@@ -831,7 +892,6 @@ function dispatch(envelope: DbRequestEnvelope): DbResponseEnvelope {
       // Handled in the main process, which owns the window and the filesystem.
       // Listed so the exhaustiveness check below stays meaningful.
       case 'import.pickFile':
-      case 'import.bundledCatalog':
       case 'import.saveRejects':
       case 'backup.pickFolder':
       case 'print.receipt':

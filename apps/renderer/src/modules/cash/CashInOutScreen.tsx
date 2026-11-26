@@ -12,7 +12,7 @@
 
 import { useEffect, useState } from 'react';
 import type { ShiftRow, CashTransactionRow } from '@pharmacy/shared';
-import { fromPiastres } from '@pharmacy/core';
+import { fromPiastres, fromPiastresGrouped } from '@pharmacy/core';
 import { ar } from '../../i18n/ar';
 import { MoneyInput } from '../../components/MoneyInput';
 import { Stat } from '../../components/Stat';
@@ -84,7 +84,7 @@ export function CashInOutScreen() {
     setError(null);
     if (amount === null || amount <= 0) return setError(ar.cashInOut.errors.invalidAmount);
     if (direction === 'out' && expectedCash !== null && amount > expectedCash) {
-      return setError(ar.errors['shift.insufficientCash'].replace('{available}', fromPiastres(expectedCash)));
+      return setError(ar.errors['shift.insufficientCash'].replace('{available}', `${fromPiastres(expectedCash)} ${ar.common.currency}`));
     }
     if (category === 'other' && !note.trim()) return setError(ar.cashInOut.errors.noteRequired);
 
@@ -122,8 +122,7 @@ export function CashInOutScreen() {
 
       <div className="panel">
         <div className="stats">
-          <Stat label={ar.cashInOut.warehouse} value={warehouseName} neutral />
-          <Stat label={ar.cashInOut.expectedCash} value={fromPiastres(expectedCash ?? 0)} good />
+          <Stat label={`${ar.cashInOut.expectedCash} — ${warehouseName}`} value={fromPiastresGrouped(expectedCash ?? 0)} good />
         </div>
       </div>
 
@@ -171,7 +170,7 @@ export function CashInOutScreen() {
           <div className="table-wrap"><table className="datatable">
             <thead>
               <tr>
-                <th>{ar.purchases.invoiceDate}</th>
+                <th>{ar.common.timeCol}</th>
                 <th>{ar.cashInOut.direction}</th>
                 <th>{ar.cashInOut.amount}</th>
                 <th>{ar.cashInOut.category}</th>
@@ -183,8 +182,8 @@ export function CashInOutScreen() {
                 <tr key={t.id}>
                   <td dir="ltr">{t.at.slice(0, 16)}</td>
                   <td>{t.direction === 'in' ? ar.cashInOut.cashIn : ar.cashInOut.cashOut}</td>
-                  <td dir="ltr">{fromPiastres(t.amount)}</td>
-                  <td>{CATEGORIES.find((c) => c.value === t.category)?.label ?? t.category ?? '—'}</td>
+                  <td dir="ltr">{fromPiastresGrouped(t.amount)}</td>
+                  <td>{CATEGORIES.find((c) => c.value === t.category)?.label ?? (t.category ? (ar.cashInOut.categories as Record<string, string>)[t.category] ?? t.category : '—')}</td>
                   <td>{t.note ?? '—'}</td>
                 </tr>
               ))}

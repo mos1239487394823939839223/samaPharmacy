@@ -9,6 +9,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ImportPreview, ImportProgressEvent } from '@pharmacy/shared';
 import { IMPORTABLE_FIELDS, REQUIRED_FIELDS, rejectedToCsv, type ImportField } from '@pharmacy/core';
+import type { ImportMode } from '@pharmacy/shared';
 import { ar } from '../../i18n/ar';
 import { Stat } from '../../components/Stat';
 import { errorText } from '../../lib/errors';
@@ -25,6 +26,7 @@ const fill = (template: string, vars: Record<string, string | number>) =>
 
 export function ImportWizard({ onClose, onImported }: Props) {
   const [phase, setPhase] = useState<Phase>('idle');
+  const [mode, setMode] = useState<ImportMode>('add');
   const [preview, setPreview] = useState<ImportPreview | null>(null);
   const [progress, setProgress] = useState<ImportProgressEvent | null>(null);
   const [summary, setSummary] = useState<string | null>(null);
@@ -39,15 +41,15 @@ export function ImportWizard({ onClose, onImported }: Props) {
     return () => unsubscribe.current?.();
   }, []);
 
-  async function pickFile(bundled = false) {
+  async function pickFile() {
     if (!window.api) return setError(ar.status.noBridge);
     setError(null);
-    const path = bundled ? await window.api.import.bundledCatalog() : await window.api.import.pickFile();
+    const path = await window.api.import.pickFile();
     if (!path) return;
 
     setPhase('previewing');
     try {
-      setPreview(await window.api.import.preview(path));
+      setPreview(await window.api.import.preview(path, undefined, mode));
       setPhase('ready');
     } catch (err) {
       setError(`${ar.items.import.errors.previewFailed}: ${errorText(err)}`);
@@ -63,7 +65,21 @@ export function ImportWizard({ onClose, onImported }: Props) {
 
     setPhase('previewing');
     try {
-      setPreview(await window.api.import.preview(preview.filePath, mapping));
+      setPreview(await window.api.import.preview(preview.filePath, mapping, mode));
+    } catch (err) {
+      setError(`${ar.items.import.errors.previewFailed}: ${errorText(err)}`);
+    } finally {
+      setPhase('ready');
+    }
+  }
+
+  /** Changing the mode re-plans which rows are new / existing / skipped. */
+  async function changeMode(next: ImportMode) {
+    setMode(next);
+    if (!preview || !window.api) return;
+    setPhase('previewing');
+    try {
+      setPreview(await window.api.import.preview(preview.filePath, preview.mapping, next));
     } catch (err) {
       setError(`${ar.items.import.errors.previewFailed}: ${errorText(err)}`);
     } finally {
@@ -74,22 +90,20 @@ export function ImportWizard({ onClose, onImported }: Props) {
   async function apply() {
     if (!preview || !window.api) return;
     if (preview.acceptedCount === 0) return setError(ar.items.import.nothingToImport);
+    if (mode !== 'add' && preview.existingCount > 0 && !window.confirm(fill(ar.items.import.confirmUpdate, { n: preview.existingCount }))) return;
 
     setPhase('applying');
     setProgress({ done: 0, total: preview.acceptedCount });
     try {
-      const result = await window.api.import.apply(preview.filePath, preview.mapping);
-      setSummary(
-        result.rejectedCount > 0
-          ? fill(ar.items.import.doneWithRejects, {
-              count: result.inserted,
-              rejected: result.rejectedCount,
-            })
-          : fill(ar.items.import.done, {
-              count: result.inserted,
-              seconds: (result.elapsedMs / 1000).toFixed(1),
-            })
-      );
+      const result = await window.api.import.apply(preview.filePath, preview.mapping, mode);
+      const parts = [
+        fill(ar.items.import.result.inserted, { n: result.inserted }),
+        fill(ar.items.import.result.updated, { n: result.updated }),
+      ];
+      if (result.skipped) parts.push(fill(ar.items.import.result.skipped, { n: result.skipped }));
+      if (result.rejectedCount) parts.push(fill(ar.items.import.result.rejected, { n: result.rejectedCount }));
+      if (result.unitsMismatch) parts.push(fill(ar.items.import.result.unitsMismatch, { n: result.unitsMismatch }));
+      setSummary(parts.join(' · '));
       setPhase('done');
       onImported();
     } catch (err) {
@@ -123,17 +137,7 @@ export function ImportWizard({ onClose, onImported }: Props) {
         >
           {ar.items.import.pickFile}
         </button>
-        <button
-          type="button"
-          className="btn"
-          onClick={() => void pickFile(true)}
-          disabled={phase === 'applying' || phase === 'previewing'}
-          title={ar.items.import.catalogHint}
-        >
-          {ar.items.import.catalog}
-        </button>
       </div>
-      {phase === 'idle' && <p className="hint">{ar.items.import.catalogHint}</p>}
 
       {error && <div className="alert alert--error">{error}</div>}
       {summary && <div className="alert alert--info">{summary}</div>}
@@ -151,15 +155,39 @@ export function ImportWizard({ onClose, onImported }: Props) {
             {preview.filePath}
           </p>
 
+          <fieldset className="fieldset import-mode">
+            <legend>{ar.items.import.mode.title}</legend>
+            <div className="import-mode__options" role="radiogroup">
+              {(['add', 'update', 'upsert'] as const).map((m) => (
+                <label key={m} className={mode === m ? 'import-mode__option import-mode__option--active' : 'import-mode__option'}>
+                  <input
+                    type="radio"
+                    name="importMode"
+                    checked={mode === m}
+                    disabled={phase === 'applying'}
+                    onChange={() => void changeMode(m)}
+                  />
+                  <span>
+                    <strong>{ar.items.import.mode[m]}</strong>
+                    <span className="hint">{ar.items.import.mode[`${m}Hint`]}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+
           <div className="stats">
             <Stat label={ar.items.import.totalRows} value={String(preview.totalRows)} neutral />
-            <Stat label={ar.items.import.accepted} value={String(preview.acceptedCount)} good />
+            <Stat label={ar.items.import.newItems} value={String(preview.newCount)} good={preview.newCount > 0} neutral={preview.newCount === 0} />
+            <Stat label={ar.items.import.existingItems} value={String(preview.existingCount)} good={preview.existingCount > 0} neutral={preview.existingCount === 0} />
+            {preview.skippedCount > 0 && <Stat label={ar.items.import.skippedItems} value={String(preview.skippedCount)} neutral />}
             <Stat
               label={ar.items.import.rejected}
-              value={String(preview.totalRows - preview.acceptedCount)}
-              bad={preview.totalRows - preview.acceptedCount > 0}
+              value={String(preview.totalRows - preview.acceptedCount - preview.skippedCount)}
+              bad={preview.totalRows - preview.acceptedCount - preview.skippedCount > 0}
             />
           </div>
+          {mode !== 'add' && preview.existingCount > 0 && <p className="hint">{ar.items.import.updateRule}</p>}
 
           <fieldset className="fieldset">
             <legend>{ar.items.import.mapping}</legend>
@@ -209,7 +237,7 @@ export function ImportWizard({ onClose, onImported }: Props) {
                   ))}
                 </tbody>
               </table></div>
-              {preview.totalRows - preview.acceptedCount > preview.rejected.length && (
+              {preview.totalRows - preview.acceptedCount - preview.skippedCount > preview.rejected.length && (
                 <p className="hint">
                   {fill(ar.items.import.moreRejects, { shown: preview.rejected.length })}
                 </p>
@@ -238,7 +266,7 @@ export function ImportWizard({ onClose, onImported }: Props) {
             onClick={() => void apply()}
             disabled={phase === 'applying' || preview.acceptedCount === 0}
           >
-            {phase === 'applying' ? ar.items.import.applying : ar.items.import.apply}
+            {phase === 'applying' ? ar.items.import.applying : ar.items.import.applyMode[mode]}
           </button>
         </>
       )}

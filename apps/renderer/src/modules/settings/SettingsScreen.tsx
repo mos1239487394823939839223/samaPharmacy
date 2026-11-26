@@ -33,6 +33,7 @@ export function SettingsScreen() {
   const [d90, setD90] = useState('');
   const [d180, setD180] = useState('');
   const [returnWindowDays, setReturnWindowDays] = useState('');
+  const [discountPct, setDiscountPct] = useState('');
 
   const [scanner, setScanner] = useState<ScannerConfig>(() => loadScannerConfig());
 
@@ -61,6 +62,7 @@ export function SettingsScreen() {
       setD90(String(s.expiryBucketDays.d90));
       setD180(String(s.expiryBucketDays.d180));
       setReturnWindowDays(String(s.salesReturnWindowDays));
+      setDiscountPct(String(s.purchaseDiscountPct));
     } catch (err) {
       setError(errorText(err));
     } finally {
@@ -111,11 +113,18 @@ export function SettingsScreen() {
       return;
     }
 
+    const pct = Number(discountPct);
+    if (!discountPct.trim() || !(pct >= 0 && pct < 100)) {
+      setError(ar.settings.discountError);
+      return;
+    }
+
     setSaving(true);
     try {
       const updated = await window.api.settings.update({
         expiryBucketDays: bucketDays,
         salesReturnWindowDays: windowDays,
+        purchaseDiscountPct: pct,
       });
       setSettings(updated);
       saveScannerConfig(scanner);
@@ -150,7 +159,7 @@ export function SettingsScreen() {
   if (loading) return <p className="muted">{ar.items.loading}</p>;
 
   return (
-    <div className="stack">
+    <div className="stack settings-form">
       {error && <div className="alert alert--error">{error}</div>}
 
       <PharmacyNameCard />
@@ -220,6 +229,25 @@ export function SettingsScreen() {
       </fieldset>
 
       <fieldset className="fieldset">
+        <legend>{ar.settings.pricingSection}</legend>
+        <div className="grid2">
+          <label className="formfield">
+            <span className="formfield__label">{ar.settings.discountPct}</span>
+            <input
+              className="field field--sm"
+              dir="ltr"
+              inputMode="decimal"
+              value={discountPct}
+              onChange={(e) => setDiscountPct(toAsciiDigits(e.target.value))}
+            />
+          </label>
+        </div>
+        <p className="hint">
+          {ar.settings.discountHint.replace('{cost}', Number(discountPct) >= 0 && Number(discountPct) < 100 ? String(100 - Number(discountPct)) : '—')}
+        </p>
+      </fieldset>
+
+      <fieldset className="fieldset">
         <legend>{ar.settings.scannerSection}</legend>
         <p className="hint">{ar.settings.scannerHint}</p>
         <div className="grid2">
@@ -237,6 +265,10 @@ export function SettingsScreen() {
               <option value="None">{ar.settings.scannerTerminatorNone}</option>
             </select>
           </label>
+        </div>
+        <details className="settings-advanced">
+          <summary>{ar.settings.scannerAdvanced}</summary>
+        <div className="grid2">
           <label className="formfield">
             <span className="formfield__label">{ar.settings.scannerMinLength}</span>
             <input
@@ -278,6 +310,7 @@ export function SettingsScreen() {
             />
           </label>
         </div>
+        </details>
 
         <div className="btn-row">
           <button type="button" className="btn btn--sm" onClick={testScanner} disabled={testState === 'waiting'}>
@@ -305,7 +338,7 @@ export function SettingsScreen() {
             {testCode ? (
               <>
                 <span dir="ltr">{testCode}</span>
-                {testProblems.length > 0 && ' — ' + testProblems.join('؛ ')}
+                {testProblems.length > 0 && ' — ' + testProblems.join(ar.common.listSeparator)}
               </>
             ) : (
               ar.settings.scannerTestFailed
@@ -314,7 +347,8 @@ export function SettingsScreen() {
         )}
       </fieldset>
 
-      <div className="btn-row" style={{ marginBlockStart: 0 }}>
+      <div className="settings-savebar">
+        <span className="muted small">{ar.settings.saveHint}</span>
         <button type="button" className="btn btn--primary" onClick={() => void save()} disabled={saving}>
           {ar.settings.save}
         </button>

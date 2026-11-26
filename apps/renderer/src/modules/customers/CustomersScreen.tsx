@@ -5,7 +5,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import type { CustomerDetail, CustomerRow } from '@pharmacy/shared';
-import { fromPiastres } from '@pharmacy/core';
+import { fromPiastres, fromPiastresGrouped } from '@pharmacy/core';
 import { ar } from '../../i18n/ar';
 import { CustomerForm } from './CustomerForm';
 import { EmptyState, TableSkeleton } from '../../components/EmptyState';
@@ -100,31 +100,42 @@ export function CustomersScreen({ initialQuery }: { initialQuery?: string } = {}
       {loading ? (
         <TableSkeleton cols={5} />
       ) : rows.length === 0 ? (
-        <EmptyState title={query.trim() ? ar.customers.noResults : ar.customers.empty} />
+        <EmptyState
+          title={query.trim() ? ar.customers.noResults : ar.customers.empty}
+          hint={query.trim() ? undefined : ar.emptyHints.customers}
+          action={
+            <button type="button" className="btn btn--primary btn--sm" onClick={() => setMode({ view: 'create' })}>
+              {ar.customers.add}
+            </button>
+          }
+        />
       ) : (
         <div className="table-wrap"><table className="datatable">
           <thead>
             <tr>
-              <th>{ar.customers.code}</th>
               <th>{ar.customers.name}</th>
               <th>{ar.customers.mobile1}</th>
               <th>{ar.customers.paymentMethod}</th>
-              <th>{ar.customers.balance}</th>
+              <th className="num">{ar.customers.balance}</th>
               <th />
             </tr>
           </thead>
           <tbody>
             {rows.map((r) => (
               <tr key={r.id} onDoubleClick={() => void openEdit(r.id)}>
-                <td dir="ltr">{r.code}</td>
                 <td>
-                  {r.name}
-                  {Boolean(r.isVip) && <span className="badge badge--info"> VIP</span>}
-                  {Boolean(r.isSuspended) && <span className="badge badge--warning"> {ar.customers.suspended}</span>}
+                  <div className="itemlist__name">
+                    {r.name}
+                    {Boolean(r.isVip) && <span className="badge badge--info"> VIP</span>}
+                    {Boolean(r.isSuspended) && <span className="badge badge--warning"> {ar.customers.suspended}</span>}
+                  </div>
+                  <div className="itemlist__meta">
+                    <span dir="ltr" className="itemlist__code">#{r.code}</span>
+                  </div>
                 </td>
-                <td dir="ltr">{r.mobile1}</td>
+                <td dir="ltr" className="muted">{r.mobile1}</td>
                 <td>{r.paymentMethod === 'credit' ? ar.customers.credit : ar.customers.cash}</td>
-                <td dir="ltr" className={r.balance > 0 ? 'strong' : 'muted'}>{fromPiastres(r.balance)}</td>
+                <td dir="ltr" className={r.balance > 0 ? 'num strong' : 'num muted'}>{fromPiastresGrouped(r.balance)}</td>
                 <td className="datatable__actions">
                   <button type="button" className="btn btn--sm" onClick={() => void openEdit(r.id)}>
                     {ar.customers.edit}

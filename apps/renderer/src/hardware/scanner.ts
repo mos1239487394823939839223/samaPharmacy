@@ -552,7 +552,9 @@ export function useBarcodeScanner(
     if (!enabled) return;
     const handle = createScanner((e) => scanRef.current(e), {
       config,
-      shouldIgnore: () => ignoreRef.current?.() ?? false,
+      // A dialog in front of the page owns the keyboard: a scan typed into
+      // one of its fields stays there instead of reaching the page behind.
+      shouldIgnore: () => Boolean(document.querySelector('.modal-backdrop')) || (ignoreRef.current?.() ?? false),
       onReject: (r, b) => rejectRef.current?.(r, b),
       onGuard: (g, d) => guardRef.current?.(g, d),
     });

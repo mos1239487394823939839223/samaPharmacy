@@ -101,7 +101,6 @@ export function BackupScreen() {
 
   return (
     <div className="stack">
-      <p className="hint">{ar.backup.intro}</p>
       {error && <div className="alert alert--error">{error}</div>}
       {status.lastError && (
         <div className="alert alert--error">
@@ -112,13 +111,13 @@ export function BackupScreen() {
       <div className="panel stack">
         <div className="formfield">
           <span className="formfield__label">{ar.backup.primaryDir}</span>
-          <span dir="ltr" className="small">{status.primaryDir}</span>
+          <span dir="ltr" className="small path-text">{status.primaryDir}</span>
         </div>
 
         <label className="formfield">
           <span className="formfield__label">{ar.backup.secondaryDir}</span>
-          <div className="btn-row" style={{ marginBlockStart: 0 }}>
-            <input className="field" dir="ltr" value={secondaryDir} readOnly />
+          <div className="inline-field">
+            <input className="field" dir="ltr" value={secondaryDir} placeholder={ar.backup.noSecondary} readOnly onClick={() => void chooseFolder()} />
             <button type="button" className="btn btn--sm" onClick={() => void chooseFolder()}>
               {ar.backup.choose}
             </button>

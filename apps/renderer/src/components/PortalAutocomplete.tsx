@@ -29,6 +29,10 @@ interface Props<T> {
       width. Defaults to a size that fits typical Arabic drug names
       (strength, form, pack size) without wrapping. */
   minWidth?: number;
+  /** Row highlighted by the keyboard (↑/↓ on the anchor input). */
+  activeIndex?: number;
+  /** Extra action under the results (e.g. «+ صنف جديد»); shown even with no results. */
+  footer?: { label: string; onClick: () => void } | null;
 }
 
 const DEFAULT_MIN_WIDTH = 360;
@@ -42,6 +46,8 @@ export function PortalAutocomplete<T>({
   onSelect,
   children,
   minWidth = DEFAULT_MIN_WIDTH,
+  activeIndex = -1,
+  footer = null,
 }: Props<T>) {
   const [rect, setRect] = useState<{ top: number; left: number; width: number } | null>(null);
 
@@ -69,22 +75,35 @@ export function PortalAutocomplete<T>({
       window.removeEventListener('scroll', update, true);
       window.removeEventListener('resize', update);
     };
-  }, [anchorRef, items.length, minWidth]);
+  }, [anchorRef, items.length, minWidth, Boolean(footer)]);
 
-  if (items.length === 0 || !rect) return null;
+  if ((items.length === 0 && !footer) || !rect) return null;
 
   return createPortal(
     <ul
       className="autocomplete autocomplete--portal"
       style={{ top: rect.top, left: rect.left, width: rect.width }}
     >
-      {items.map((item) => (
+      {items.map((item, i) => (
         <li key={getKey(item)}>
-          <button type="button" onClick={() => onSelect(item)}>
+          <button
+            type="button"
+            className={i === activeIndex ? 'autocomplete__active' : undefined}
+            // Keep focus in the input: the click must not blur it first.
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => onSelect(item)}
+          >
             {children(item)}
           </button>
         </li>
       ))}
+      {footer && (
+        <li>
+          <button type="button" className="autocomplete__new" onMouseDown={(e) => e.preventDefault()} onClick={footer.onClick}>
+            {footer.label}
+          </button>
+        </li>
+      )}
     </ul>,
     document.body
   );

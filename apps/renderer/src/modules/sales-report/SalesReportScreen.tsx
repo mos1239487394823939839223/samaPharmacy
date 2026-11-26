@@ -8,7 +8,7 @@
 
 import { useEffect, useState } from 'react';
 import type { SalesReportRow, SalesReportInvoiceRow } from '@pharmacy/shared';
-import { addDays, fromPiastres, todayLocal } from '@pharmacy/core';
+import { addDays, fromPiastres, todayLocal, fromPiastresGrouped } from '@pharmacy/core';
 import { ar } from '../../i18n/ar';
 import { Stat } from '../../components/Stat';
 import { EmptyState, TableSkeleton } from '../../components/EmptyState';
@@ -132,15 +132,15 @@ export function SalesReportScreen() {
         <>
           <div className="stats">
             <Stat label={ar.salesReport.invoiceCount} value={String(report.invoiceCount)} neutral />
-            <Stat label={ar.salesReport.cashTotal} value={fromPiastres(report.cashTotal)} />
-            <Stat label={ar.salesReport.creditTotal} value={fromPiastres(report.creditTotal)} />
-            <Stat label={ar.salesReport.grandTotal} value={fromPiastres(report.grandTotal)} />
+            <Stat label={ar.salesReport.cashTotal} value={fromPiastresGrouped(report.cashTotal)} />
+            <Stat label={ar.salesReport.creditTotal} value={fromPiastresGrouped(report.creditTotal)} />
+            <Stat label={ar.salesReport.grandTotal} value={fromPiastresGrouped(report.grandTotal)} />
             {report.insuranceTotal > 0 && (
-              <Stat label={ar.salesReport.insuranceTotal} value={fromPiastres(report.insuranceTotal)} />
+              <Stat label={ar.salesReport.insuranceTotal} value={fromPiastresGrouped(report.insuranceTotal)} />
             )}
-            <Stat label={ar.salesReport.returnsTotal} value={fromPiastres(report.returnsTotal)} bad={report.returnsTotal > 0} />
-            <Stat label={ar.salesReport.netTotal} value={fromPiastres(report.netTotal)} good />
-            <Stat label={ar.salesReport.grossProfit} value={fromPiastres(report.grossProfit)} good />
+            <Stat label={ar.salesReport.returnsTotal} value={fromPiastresGrouped(report.returnsTotal)} bad={report.returnsTotal > 0} />
+            <Stat label={ar.salesReport.netTotal} value={fromPiastresGrouped(report.netTotal)} good />
+            <Stat label={ar.salesReport.grossProfit} value={fromPiastresGrouped(report.grossProfit)} good />
           </div>
 
           <div className="panel">
@@ -163,8 +163,8 @@ export function SalesReportScreen() {
                     <tr key={inv.id}>
                       <td dir="ltr">{inv.serial}</td>
                       <td>{inv.invoiceType === 'cash' ? ar.salesReport.cash : ar.salesReport.credit}</td>
-                      <td dir="ltr">{fromPiastres(inv.total)}</td>
-                      <td dir="ltr">{fromPiastres(inv.total - inv.costTotal)}</td>
+                      <td dir="ltr">{fromPiastresGrouped(inv.total)}</td>
+                      <td dir="ltr">{fromPiastresGrouped(inv.total - inv.costTotal)}</td>
                       <td dir="ltr">{inv.confirmedAt?.slice(0, 16) ?? '—'}</td>
                     </tr>
                   ))}

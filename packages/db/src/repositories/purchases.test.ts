@@ -384,3 +384,26 @@ describe('voidPurchaseInvoice', () => {
     expect(() => voidPurchaseInvoice(db, id)).toThrow(/purchase return/);
   });
 });
+
+describe('selling price typed on a purchase invoice', () => {
+  it('becomes the item price everywhere: every unit and the public price', () => {
+    const [box, tab] = db.prepare('SELECT id FROM item_units WHERE item_id = ? ORDER BY factor DESC').all(itemId) as Array<{ id: number }>;
+    const input = baseInvoice();
+    input.lines[0] = { ...input.lines[0]!, unitId: box!.id, salePrice: 5000, unitPurchasePrice: 4000 };
+    createPurchaseInvoice(db, input);
+
+    const price = (id: number) => (db.prepare('SELECT sale_price AS p FROM item_units WHERE id = ?').get(id) as { p: number }).p;
+    expect(price(box!.id)).toBe(5000);
+    expect(price(tab!.id)).toBe(500);
+    const item = db.prepare('SELECT public_price AS p FROM items WHERE id = ?').get(itemId) as { p: number };
+    expect(item.p).toBe(5000);
+    const hist = db.prepare('SELECT new_price AS n, source FROM price_history WHERE item_id = ?').all(itemId);
+    expect(hist).toEqual([{ n: 5000, source: 'purchase' }]);
+  });
+
+  it('a line without a selling price leaves the item prices alone', () => {
+    const before = db.prepare('SELECT id, sale_price FROM item_units WHERE item_id = ?').all(itemId);
+    createPurchaseInvoice(db, baseInvoice());
+    expect(db.prepare('SELECT id, sale_price FROM item_units WHERE item_id = ?').all(itemId)).toEqual(before);
+  });
+});

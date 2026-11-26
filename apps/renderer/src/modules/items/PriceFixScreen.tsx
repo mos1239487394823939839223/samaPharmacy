@@ -6,7 +6,7 @@
 
 import { useEffect, useState } from 'react';
 import type { UnitPriceIssue } from '@pharmacy/shared';
-import { fromPiastres } from '@pharmacy/core';
+import { fromPiastres, fromPiastresGrouped } from '@pharmacy/core';
 import { ar } from '../../i18n/ar';
 import { errorText } from '../../lib/errors';
 import { useToast } from '../../components/Toast';
@@ -60,7 +60,6 @@ export function PriceFixScreen() {
 
   return (
     <div className="stack">
-      <p className="hint">{ar.priceFix.intro}</p>
       {error && <div className="alert alert--error">{error}</div>}
       {issues.length === 0 ? (
         <div className="alert alert--success">{ar.priceFix.none}</div>
@@ -100,12 +99,12 @@ export function PriceFixScreen() {
                       )}
                     </td>
                     <td>{i === 0 ? issue.nameAr : ''}</td>
-                    <td dir="ltr">{i === 0 && issue.publicPrice != null ? fromPiastres(issue.publicPrice) : ''}</td>
+                    <td dir="ltr">{i === 0 && issue.publicPrice != null ? fromPiastresGrouped(issue.publicPrice) : ''}</td>
                     <td>
                       {u.nameAr} <span className="muted small">×{u.factor}</span>
                     </td>
-                    <td dir="ltr" className="text-bad">{fromPiastres(u.salePrice)}</td>
-                    <td dir="ltr" className="strong">{fromPiastres(u.suggested)}</td>
+                    <td dir="ltr" className="text-bad">{fromPiastresGrouped(u.salePrice)}</td>
+                    <td dir="ltr" className="strong">{fromPiastresGrouped(u.suggested)}</td>
                   </tr>
                 ))
               )}
