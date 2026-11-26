@@ -89,7 +89,10 @@ try {
   // On Apple Silicon without Rosetta it cannot start ("bad CPU type"), so
   // that one step is skipped: the app is identical, only Explorer shows the
   // stock Electron icon. `softwareupdate --install-rosetta` restores it.
-  const args = ['electron-builder', '--win', '--x64'];
+  // Extra arguments pick the targets, e.g. `npm run package:win -- zip`
+  // (the zip needs no makensis, which is x86-only and needs Rosetta).
+  const targets = process.argv.slice(2);
+  const args = ['electron-builder', '--win', ...targets, '--x64'];
   if (process.platform === 'darwin' && process.arch === 'arm64' && !hasRosetta()) {
     console.warn('[package-win] Rosetta not installed — building without the exe icon/version stamp.');
     args.push('-c.win.signAndEditExecutable=false');
