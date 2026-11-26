@@ -14,7 +14,7 @@ export {
 } from './money';
 
 export { DomainError, ensure, type ErrorParams } from './errors';
-export { todayLocal, toLocalIsoDate, addDays, isIsoDate } from './dates';
+export { todayLocal, toLocalIsoDate, addDays, isIsoDate, parseExpiry, formatExpiry } from './dates';
 export { maxUnitPrice, boxFactorOf, proRataShare, repriceUnits } from './pricing';
 
 export { normalizeArabic, normalizeLatin, normalizeName, toAsciiDigits } from './arabic';

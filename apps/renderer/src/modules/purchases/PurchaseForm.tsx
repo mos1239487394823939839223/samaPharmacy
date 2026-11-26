@@ -14,9 +14,10 @@
 import { mixedQty } from '../../lib/units';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ItemListRow, SupplierRow, WarehouseRow } from '@pharmacy/shared';
-import { fromPiastres, landedCost, lineValue, toAsciiDigits, toBaseUnits, todayLocal, type LandedCostLine, fromPiastresGrouped } from '@pharmacy/core';
+import { fromPiastres, landedCost, lineValue, parseExpiry, toAsciiDigits, toBaseUnits, todayLocal, type LandedCostLine, fromPiastresGrouped } from '@pharmacy/core';
 import { ar } from '../../i18n/ar';
 import { MoneyInput } from '../../components/MoneyInput';
+import { ExpiryInput } from '../../components/ExpiryInput';
 import { PortalAutocomplete } from '../../components/PortalAutocomplete';
 import { QuickItemDialog } from '../../components/QuickItemDialog';
 
@@ -225,8 +226,17 @@ export function PurchaseForm({ onSaved, onCancel }: Props) {
     // item, not editing free text next to the old one.
     updateLine(key, { itemQuery: query, item: null, itemResults: [], qtyOnHand: null });
     setSuggestIndex(0);
+    // Only the latest keystroke's results may land: an older, slower search
+    // would otherwise replace them (or reopen the list after a pick).
+    const seq = (searchSeq.current.get(key) ?? 0) + 1;
+    searchSeq.current.set(key, seq);
+    pendingSearch.current.delete(key);
     if (!window.api || query.trim() === '') return;
-    void window.api.items.search(query, 10).then((results) => updateLine(key, { itemResults: results }));
+    const p = window.api.items.search(query, 10).then((results) => {
+      if (searchSeq.current.get(key) === seq) updateLine(key, { itemResults: results });
+      return results;
+    });
+    pendingSearch.current.set(key, p);
   }
 
   // Current stock for this item in the invoice's warehouse — the whole
@@ -247,6 +257,8 @@ export function PurchaseForm({ onSaved, onCancel }: Props) {
   // request is honoured once the new line is on screen.
   const linesRef = useRef(lines);
   linesRef.current = lines;
+  const searchSeq = useRef(new Map<number, number>());
+  const pendingSearch = useRef(new Map<number, Promise<ItemListRow[]>>());
   const [quickAdd, setQuickAdd] = useState<{ key: number; name: string; barcode?: string } | null>(null);
   // خصم الصيدلي from settings: the purchase price defaults to selling price − this %.
   const [discountPct, setDiscountPct] = useState(20);
@@ -280,8 +292,9 @@ export function PurchaseForm({ onSaved, onCancel }: Props) {
 
   /** Go to the next line — reusing an empty one, else adding it — and put the cursor in its item search. */
   function nextLine(fromKey: number) {
-    const idx = lines.findIndex((l) => l.key === fromKey);
-    const empty = lines.slice(idx + 1).find((l) => l.item === null) ?? lines.find((l) => l.item === null && l.key !== fromKey);
+    const all = linesRef.current;
+    const idx = all.findIndex((l) => l.key === fromKey);
+    const empty = all.slice(idx + 1).find((l) => l.item === null) ?? all.find((l) => l.item === null && l.key !== fromKey);
     if (empty) return setFocusReq({ key: empty.key, field: 'item' });
     const fresh = newLine();
     setLines((prev) => [...prev, fresh]);
@@ -297,9 +310,12 @@ export function PurchaseForm({ onSaved, onCancel }: Props) {
     // The latest values, not the render this handler was created in: a date
     // typed digit by digit may land in state a moment after its keystrokes.
     let current = linesRef.current.find((l) => l.key === line.key) ?? line;
-    if (target.dataset.field === 'expiry' && target instanceof HTMLInputElement && target.value !== current.expiryDate) {
-      current = { ...current, expiryDate: target.value };
-      updateLine(line.key, { expiryDate: target.value });
+    if (target.dataset.field === 'expiry' && target instanceof HTMLInputElement) {
+      const iso = parseExpiry(target.value) ?? '';
+      if (iso !== current.expiryDate) {
+        current = { ...current, expiryDate: iso };
+        updateLine(line.key, { expiryDate: iso });
+      }
     }
     const missing = missingField(current);
     if (missing) {
@@ -325,13 +341,28 @@ export function PurchaseForm({ onSaved, onCancel }: Props) {
       const pick = line.itemResults[Math.min(suggestIndex, n - 1)];
       if (pick) selectItemForLine(line.key, pick);
       else if (line.item) setFocusReq({ key: line.key, field: 'qty' });
-      else if (line.itemQuery.trim()) setQuickAdd({ key: line.key, name: line.itemQuery });
+      else if (line.itemQuery.trim()) {
+        // Enter pressed before the results came back: wait for them and take
+        // the first, instead of opening «new item» for a name that exists.
+        const pending = pendingSearch.current.get(line.key);
+        const seq = searchSeq.current.get(line.key);
+        const name = line.itemQuery;
+        if (!pending) return setQuickAdd({ key: line.key, name });
+        void pending.then((results) => {
+          if (searchSeq.current.get(line.key) !== seq) return;
+          if (results[0]) selectItemForLine(line.key, results[0]);
+          else setQuickAdd({ key: line.key, name });
+        });
+      }
     } else if (e.code === 'Escape' && n) {
       updateLine(line.key, { itemResults: [] });
     }
   }
 
   function selectItemForLine(key: number, item: ItemListRow) {
+    // A search still in flight must not reopen the list over the picked item.
+    searchSeq.current.set(key, (searchSeq.current.get(key) ?? 0) + 1);
+    pendingSearch.current.delete(key);
     setSuggestIndex(0);
     setLineHint(null);
     setFocusReq({ key, field: 'qty' });
@@ -849,15 +880,11 @@ export function PurchaseForm({ onSaved, onCancel }: Props) {
                       {ar.purchases.grid.expiryDate}
                       {!line.item?.noExpiry && <span className="req"> *</span>}
                     </span>
-                    <input
-                      className="field"
-                      type="date"
-                      dir="ltr"
-                      min={todayLocal()}
-                      data-field="expiry"
+                    <ExpiryInput
+                      field="expiry"
                       disabled={Boolean(line.item?.noExpiry)}
                       value={line.item?.noExpiry ? '' : line.expiryDate}
-                      onChange={(e) => updateLine(line.key, { expiryDate: e.target.value })}
+                      onChange={(iso) => updateLine(line.key, { expiryDate: iso })}
                     />
                   </label>
                 </div>
